@@ -308,4 +308,108 @@ describe('Prover Storage RLP Tests', () => {
     )
     expect(validRaw).to.be.true
   })
+
+  // GameStatus StorageSlot
+  it('should verify SLOT12 game Status Storage Slot 32 bytes', async () => {
+    const slot = 12
+    // Note the fields in GameStatus Storage slot are inserted into the slot data in reverse order
+    const createdAt = 1722565476 // uin64 offset 0: value 000000006689aa08
+    const resolvedAt = 1722867948 // uint64 offset 8 : value 00000000668e4784
+    const gameStatus = 2 // enum GameStatus offset 16: uint8 value 02
+    const initialized = true // bool offset 17: value 01 (true)
+    const l2BlockNumberChallenged = true // bool offset 18 value 01 (true)
+    // filler: '0x00000000000000000000000000', // 13 bytes
+    const originalGameStatusStorageSlot =
+      await prover.assembleGameStatusStorageOriginal(
+        createdAt,
+        resolvedAt,
+        gameStatus,
+        initialized,
+        l2BlockNumberChallenged,
+      )
+    const gameStatusStorageSlot =
+      await prover.assembleGameStatusStorageOriginal(
+        createdAt,
+        resolvedAt,
+        gameStatus,
+        initialized,
+        l2BlockNumberChallenged,
+      )
+    expect(originalGameStatusStorageSlot).to.eq(gameStatusStorageSlot)
+    const { key, value, proof, hash } = await getStorageProof(storage, slot)
+    const valueRlp = encodeRlp(stripZerosLeft(toBeHex(value)))
+    const lengthPrefix = valueRlp.slice(0, 4)
+
+    expect(value).to.eq('0x101020000000066b0e0ec0000000066ac4364')
+    expect(valueRlp).to.eq('0x930101020000000066b0e0ec0000000066ac4364')
+    expect(lengthPrefix).to.eq('0x93') // 80 + 19 = 93
+
+    expect(valueRlp).to.eq(originalGameStatusStorageSlot)
+
+    const valid = await verifyStorageProof(prover, key, valueRlp, proof, hash)
+    expect(valid).to.be.true
+
+    const validRaw = await verifyStorageProof(
+      prover,
+      key,
+      //valueRlp,
+      // BigInt(gameStatusStorageSlot),
+      toBeHex(gameStatusStorageSlot),
+      proof,
+      hash,
+    )
+    expect(validRaw).to.be.true
+  })
+
+  // GameStatus StorageSlot
+  it('should verify SLOT13 game Status Storage Slot 32 bytes', async () => {
+    const slot = 13
+    // Note the fields in GameStatus Storage slot are inserted into the slot data in reverse order
+    const createdAt = 1722565476 // uin64 offset 0: value 000000006689aa08
+    const resolvedAt = 1722867948 // uint64 offset 8 : value 00000000668e4784
+    const gameStatus = 2 // enum GameStatus offset 16: uint8 value 02
+    const initialized = true // bool offset 17: value 01 (true)
+    const l2BlockNumberChallenged = false // bool offset 18 value 00 (false)
+    // filler: '0x00000000000000000000000000', // 13 bytes
+    const originalGameStatusStorageSlot =
+      await prover.assembleGameStatusStorageOriginal(
+        createdAt,
+        resolvedAt,
+        gameStatus,
+        initialized,
+        l2BlockNumberChallenged,
+      )
+    const gameStatusStorageSlot =
+      await prover.assembleGameStatusStorageOriginal(
+        createdAt,
+        resolvedAt,
+        gameStatus,
+        initialized,
+        l2BlockNumberChallenged,
+      )
+    expect(originalGameStatusStorageSlot).to.eq(gameStatusStorageSlot)
+    const { key, value, proof, hash } = await getStorageProof(storage, slot)
+    const valueRlp = encodeRlp(stripZerosLeft(toBeHex(value)))
+    const lengthPrefix = valueRlp.slice(0, 4)
+
+    expect(value).to.eq('0x1020000000066b0e0ec0000000066ac4364')
+    expect(valueRlp).to.eq('0x9201020000000066b0e0ec0000000066ac4364')
+    expect(lengthPrefix).to.eq('0x92') // 80 + 18 = 92
+
+    expect(valueRlp).to.eq(originalGameStatusStorageSlot)
+
+    const valid = await verifyStorageProof(prover, key, valueRlp, proof, hash)
+    expect(valid).to.be.true
+
+    const validRaw = await verifyStorageProof(
+      prover,
+      key,
+      //valueRlp,
+      // BigInt(gameStatusStorageSlot),
+      toBeHex(gameStatusStorageSlot),
+      proof,
+      hash,
+    )
+    expect(validRaw).to.be.true
+  })
 })

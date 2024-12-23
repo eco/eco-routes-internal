@@ -529,8 +529,8 @@ const cannon: any = {
           '0x000000000000000000000000000001020000000066b0e0ec0000000066ac4364',
         storage: {
           // Note the fields are inserted into the slot data in reverse order
-          createdAt: 1722565476, // uin64 offset 0: value 000000006689aa08
-          resolvedAt: 1722867948, // uint64 offset 8 : value 00000000668e4784
+          createdAt: 1722565476, // uin64 offset 0: value 0000000066ac4364
+          resolvedAt: 1722867948, // uint64 offset 8 : value 0000000066b0e0ec
           gameStatus: 2, // enum GameStatus offset 16: uint8 value 02
           initialized: 1, // bool offset 17: value 01 (true)
           l2BlockNumberChallenged: 0, // bool offset 18 value 00 (false)

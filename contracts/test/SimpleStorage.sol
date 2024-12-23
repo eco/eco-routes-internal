@@ -63,6 +63,9 @@ contract SimpleStorage {
     address public slot10claimant = 0x5FB30336A8d0841cf15d452afA297cB6D10877D7;
     address public slot11claimant = 0x00000000A8d0841Cf15D452aFA297cb6D10877d7;
 
+    bytes32 public slot12gameStatusSlot = 0x000000000000000000000000000101020000000066b0e0ec0000000066ac4364;
+    bytes32 public slot13gameStatusSlot = 0x000000000000000000000000000001020000000066b0e0ec0000000066ac4364;
+
     /**
      * @notice emitted when proveStorage fails
      * we validate a storage proof  using SecureMerkleTrie.verifyInclusionProof
@@ -83,6 +86,21 @@ contract SimpleStorage {
     function proveStorage(bytes memory _key, bytes memory _val, bytes[] memory _proof, bytes32 _root) public pure {
         if (!SecureMerkleTrie.verifyInclusionProof(_key, _val, _proof, _root)) {
             revert InvalidStorageProof(_key, _val, _proof, _root);
+        }
+    }
+
+    /**
+     * @notice validates a storage proof against using SecureMerkleTrie.verifyInclusionProof
+     * @param _key key
+     * @param _val value
+     * @param _proof proof
+     * @param _root root
+     */
+    function proveStorageBytes32(bytes memory _key, bytes32 _val, bytes[] memory _proof, bytes32 _root) public pure {
+        // `RLPWriter.writeUint` properly encodes values by removing any leading zeros.
+        bytes memory rlpEncodedValue = RLPWriter.writeUint(uint256(_val));
+        if (!SecureMerkleTrie.verifyInclusionProof(_key, rlpEncodedValue, _proof, _root)) {
+            revert InvalidStorageProof(_key, rlpEncodedValue, _proof, _root);
         }
     }
 
@@ -119,5 +137,77 @@ contract SimpleStorage {
         bytes32 latestBlockHash
     ) public pure returns (bytes32) {
         return keccak256(abi.encode(outputRootVersion, worldStateRoot, messagePasserStateRoot, latestBlockHash));
+    }
+
+     /**
+     * @notice assembles the game status storage slot (this is provided as a helper function for external calls)
+     * @param createdAt the time the game was created
+     * @param resolvedAt the time the game was resolved
+     * @param gameStatus the status of the game
+     * @param initialized whether the game has been initialized
+     * @param l2BlockNumberChallenged whether the l2 block number has been challenged
+     * @return gameStatusStorageSlotRLP the game status storage slot in RLP format
+     */
+    function assembleGameStatusStorage(
+        uint64 createdAt,
+        uint64 resolvedAt,
+        uint8 gameStatus,
+        bool initialized,
+        bool l2BlockNumberChallenged
+    ) public pure returns (bytes32 gameStatusStorageSlotRLP) {
+      // Packed data is 64 + 64 + 8 + 8 + 8 = 152 bits / 19 bytes.
+      // Need to convert to `uint152` to preserve right alignment.
+        return bytes32(
+            uint256(
+                uint152(
+                    bytes19(
+                        abi.encodePacked(
+                            l2BlockNumberChallenged,
+                            initialized,
+                            gameStatus,
+                            resolvedAt,
+                            createdAt
+                        )
+                    )
+                )
+            )
+        );
+    }
+
+        /**
+     * @notice assembles the game status storage slot
+     * @param createdAt the time the game was created
+     * @param resolvedAt the time the game was resolved
+     * @param gameStatus the status of the game
+     * @param initialized whether the game has been initialized
+     * @param l2BlockNumberChallenged whether the l2 block number has been challenged
+     * @return gameStatusStorageSlotRLP the game status storage slot in RLP format
+     */
+    function assembleGameStatusStorageOriginal(
+        uint64 createdAt,
+        uint64 resolvedAt,
+        uint8 gameStatus,
+        bool initialized,
+        bool l2BlockNumberChallenged
+    ) public pure returns (bytes memory gameStatusStorageSlotRLP) {
+        // The if test is to remove leaing zeroes from the bytes
+        // Assumption is that initialized is always true
+        if (l2BlockNumberChallenged) {
+            gameStatusStorageSlotRLP = RLPWriter.writeBytes(
+                abi.encodePacked(l2BlockNumberChallenged, initialized, gameStatus, resolvedAt, createdAt)
+            );
+        } else {
+            gameStatusStorageSlotRLP = bytes.concat(
+                RLPWriter.writeBytes(
+                    abi.encodePacked(
+                        // abi.encodePacked(l2BlockNumberChallenged),
+                        initialized,
+                        gameStatus,
+                        resolvedAt,
+                        createdAt
+                    )
+                )
+            );
+        }
     }
 }
