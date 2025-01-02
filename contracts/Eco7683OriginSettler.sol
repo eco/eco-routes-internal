@@ -36,4 +36,12 @@ contract Eco7683OriginSettler is IOriginSettler {
             intentOrderData.addRewards
         );
     }
+
+    function resolveFor(GaslessCrossChainOrder calldata order, bytes calldata originFillerData) external view override returns (ResolvedCrossChainOrder memory) {
+        return ResolvedCrossChainOrder();
+    }
+
+    function resolve(OnchainCrossChainOrder calldata order) external view override returns (ResolvedCrossChainOrder memory) {
+        return ResolvedCrossChainOrder();
+    }
 }
