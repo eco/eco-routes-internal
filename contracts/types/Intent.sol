@@ -8,7 +8,7 @@ struct Call {
     uint256 value;
 }
 
-struct TokenReward {
+struct TokenAmount {
     address token;
     uint256 amount;
 }
@@ -36,7 +36,7 @@ struct Reward {
     // native tokens offered as reward
     uint256 nativeValue;
     // addresses and amounts of reward tokens
-    TokenReward[] tokens;
+    TokenAmount[] tokens;
 }
 
 struct Intent {
