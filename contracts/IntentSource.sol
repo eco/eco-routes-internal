@@ -72,12 +72,12 @@ contract IntentSource is IIntentSource {
                             abi.encodePacked(
                                 hex"ff",
                                 address(this),
-                                intent.nonce,
+                                keccak256(abi.encode(intent.route)),
                                 // Encoding delegateData and refundAddress as constructor params
                                 keccak256(
                                     abi.encodePacked(
                                         type(IntentVault).creationCode,
-                                        abi.encode(intent)
+                                        abi.encode(intent.reward)
                                     )
                                 )
                             )
@@ -94,10 +94,13 @@ contract IntentSource is IIntentSource {
      * @param intent The intent struct with all the intent params
      */
     function publishIntent(Intent calldata intent, bool addRewards) external payable {
-        uint256 rewardsLength = intent.rewards.length;
+        Route calldata route = intent.route;
+        Reward calldata reward = intent.reward;
+
+        uint256 rewardsLength = reward.tokens.length;
 
         require(
-            intent.sourceChainID == CHAIN_ID,
+            route.source == CHAIN_ID,
             "IntentSource: invalid source chain ID"
         );
 
@@ -105,28 +108,31 @@ contract IntentSource is IIntentSource {
             revert NoRewards();
         }
 
-        if (intent.expiryTime < block.timestamp + MINIMUM_DURATION) {
+        if (reward.expiryTime < block.timestamp + MINIMUM_DURATION) {
             revert ExpiryTooSoon();
         }
 
-        bytes32 intentHash = keccak256(abi.encode(intent));
+
+        bytes32 routeHash = keccak256(abi.encode(route));
+        bytes32 rewardHash = keccak256(abi.encode(reward));
+        bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
 
         address vault = intentVaultAddress(intent);
 
         if (addRewards) {
-            if (intent.nativeReward > 0) {
-                require(msg.value >= intent.nativeReward, "IntentSource: insufficient native reward");
+            if (reward.nativeValue > 0) {
+                require(msg.value >= reward.nativeValue, "IntentSource: insufficient native reward");
 
-                payable(vault).transfer(intent.nativeReward);
+                payable(vault).transfer(reward.nativeValue);
 
-                if (msg.value > intent.nativeReward) {
-                    payable(msg.sender).transfer(msg.value - intent.nativeReward);
+                if (msg.value > reward.nativeValue) {
+                    payable(msg.sender).transfer(msg.value - reward.nativeValue);
                 }
             }
 
             for (uint256 i = 0; i < rewardsLength; i++) {
-                address token = intent.rewards[i].token;
-                uint256 amount = intent.rewards[i].amount;
+                address token = reward.tokens[i].token;
+                uint256 amount = reward.tokens[i].amount;
 
                 IERC20(token).safeTransferFrom(msg.sender, vault, amount);
             }
@@ -136,15 +142,15 @@ contract IntentSource is IIntentSource {
 
         emit IntentCreated(
             intentHash,
-            intent.creator,
-            intent.nonce,
-            intent.destinationChainID,
-            intent.destinationInbox,
-            intent.calls,
-            intent.rewards,
-            intent.nativeReward,
-            intent.expiryTime,
-            intent.prover
+            route.nonce,
+            route.destination,
+            route.inbox,
+            route.calls,
+            reward.creator,
+            reward.prover,
+            reward.expiryTime,
+            reward.nativeValue,
+            reward.tokens
         );
     }
 
@@ -160,17 +166,18 @@ contract IntentSource is IIntentSource {
         Intent calldata intent,
         address vault
     ) internal view returns (bool) {
-        uint256 rewardsLength = intent.rewards.length;
+        Reward calldata reward = intent.reward;
+        uint256 rewardsLength = reward.tokens.length;
 
-        if (intent.expiryTime < block.timestamp + MINIMUM_DURATION / 2) {
+        if (reward.expiryTime < block.timestamp + MINIMUM_DURATION / 2) {
             return false;
         }
 
-        if (vault.balance < intent.nativeReward) return false;
+        if (vault.balance < reward.nativeValue) return false;
 
         for (uint256 i = 0; i < rewardsLength; i++) {
-            address token = intent.rewards[i].token;
-            uint256 amount = intent.rewards[i].amount;
+            address token = reward.tokens[i].token;
+            uint256 amount = reward.tokens[i].amount;
             uint256 balance = IERC20(token).balanceOf(vault);
 
             if (balance < amount) return false;
@@ -181,11 +188,14 @@ contract IntentSource is IIntentSource {
 
     /**
      * @notice Withdraws the rewards associated with an intent to its claimant
-     * @param intent The intent struct with all the intent params
+     * @param routeHash The hash of the route of the intent
+     * @param reward The reward of the intent
      */
-    function withdrawRewards(Intent calldata intent) public {
-        bytes32 intentHash = keccak256(abi.encode(intent));
-        address claimant = SimpleProver(intent.prover).provenIntents(
+    function withdrawRewards(bytes32 routeHash, Reward calldata reward) public {
+        bytes32 rewardHash = keccak256(abi.encode(reward));
+        bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
+
+        address claimant = SimpleProver(reward.prover).provenIntents(
             intentHash
         );
 
@@ -196,44 +206,47 @@ contract IntentSource is IIntentSource {
 
             emit Withdrawal(intentHash, claimant);
 
-            new IntentVault{salt: intent.nonce}(intent);
+            new IntentVault{salt: routeHash}(reward);
 
             vaultClaimant = address(0);
             return;
         }
 
         // Refund the rewards if the intent has expired
-        if (block.timestamp < intent.expiryTime) {
+        if (block.timestamp < reward.expiryTime) {
             revert UnauthorizedWithdrawal(intentHash);
         }
 
-        emit Withdrawal(intentHash, intent.creator);
+        emit Withdrawal(intentHash, reward.creator);
 
-        new IntentVault{salt: intent.nonce}(intent);
+        new IntentVault{salt: routeHash}(reward);
     }
 
     /**
      * @notice Withdraws a batch of intents that all have the same claimant
-     * @param intents The array of intents to withdraw
+     * @param routeHashes The hashes of the routes of the intents
+     * @param rewards The rewards of the intents
      */
-    function batchWithdraw(Intent[] calldata intents) external {
-        uint256 length = intents.length;
+    function batchWithdraw(bytes32[] calldata routeHashes, Reward[] calldata rewards) external {
+        uint256 length = routeHashes.length;
+        require(length == rewards.length, "IntentSource: array length mismatch");
 
         for (uint256 i = 0; i < length; i++) {
-            withdrawRewards(intents[i]);
+            withdrawRewards(routeHashes[i], rewards[i]);
         }
     }
 
-    function refundToken(Intent calldata intent, address token) external {
-        bytes32 intentHash = keccak256(abi.encode(intent));
+    function refundToken(bytes32 routeHash, Reward calldata reward, address token) external {
+        bytes32 rewardHash = keccak256(abi.encode(reward));
+        bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
 
-        if (!claimed[intentHash] || block.timestamp < intent.expiryTime) {
+        if (!claimed[intentHash] || block.timestamp < reward.expiryTime) {
             revert UnauthorizedWithdrawal(intentHash);
         }
 
         vaultRefundToken = token;
 
-        new IntentVault{salt: intent.nonce}(intent);
+        new IntentVault{salt: routeHash}(reward);
 
         vaultRefundToken = address(0);
     }

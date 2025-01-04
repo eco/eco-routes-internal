@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {Call, Reward, Intent} from "../types/Intent.sol";
+import {Call, TokenReward, Reward, Intent} from "../types/Intent.sol";
 import "./ISemver.sol";
 /**
  * This contract is the source chain portion of the Eco Protocol's intent system.
@@ -63,27 +63,27 @@ interface IIntentSource is ISemver {
     /**
      * @notice emitted on a successful call to createIntent
      * @param hash the hash of the intent, also the key to the intents mapping
-     * @param creator the address that created the intent
      * @param nonce the nonce provided by the creator
-     * @param destinationChain the destination chain
-     * @param destinationInbox the inbox contract on the destination chain
+     * @param destination the destination chain
+     * @param inbox the inbox contract on the destination chain
      * @param calls the instructions
-     * @param nativeReward the amount of native tokens offered as reward
-     * @param rewards the reward tokens and amounts
-     * @param expiryTime the time by which the storage proof must have been created in order for the solver to redeem rewards.
+     * @param creator the address that created the intent
      * @param prover the prover contract address for the intent
+     * @param expiryTime the time by which the storage proof must have been created in order for the solver to redeem rewards.
+     * @param nativeValue the amount of native tokens offered as reward
+     * @param tokens the reward tokens and amounts
      */
     event IntentCreated(
         bytes32 indexed hash,
-        address indexed creator,
         bytes32 nonce,
-        uint256 destinationChain,
-        address destinationInbox,
+        uint256 destination,
+        address inbox,
         Call[] calls,
-        Reward[] rewards,
-        uint256 nativeReward,
+        address indexed creator,
+        address indexed prover,
         uint256 expiryTime,
-        address indexed prover
+        uint256 nativeValue,
+        TokenReward[] tokens
     );
 
     /**
@@ -105,15 +105,25 @@ interface IIntentSource is ISemver {
      */
     function publishIntent(Intent calldata intent, bool addRewards) external payable;
 
+    /**
+     * @notice Validates an intent by checking that the intent's rewards are  valid.
+     * @param intent the intent to validate
+     */
     function validateIntent(
         Intent calldata intent
     ) external view returns (bool);
 
     /**
      * @notice allows withdrawal of reward funds locked up for a given intent
-     * @param intent The intent struct with all the intent params
+     * @param routeHash the hash of the route of the intent
+        * @param reward the reward struct of the intent
      */
-    function withdrawRewards(Intent calldata intent) external;
+    function withdrawRewards(bytes32 routeHash, Reward calldata reward) external;
 
-    function batchWithdraw(Intent[] calldata intents) external;
+    /**
+     * @notice allows withdrawal of reward funds locked up for a given intent
+     * @param routeHashes the hashes of the routes of the intents
+     * @param rewards the rewards struct of the intents
+     */
+    function batchWithdraw(bytes32[] calldata routeHashes, Reward[] calldata rewards) external;
 }

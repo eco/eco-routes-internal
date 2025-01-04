@@ -8,30 +8,38 @@ struct Call {
     uint256 value;
 }
 
-struct Reward {
+struct TokenReward {
     address token;
     uint256 amount;
 }
 
-struct Intent {
-    // creator of the intent
-    address creator;
+struct Route {
     // nonce provided by the creator
     bytes32 nonce;
     // ID of chain where the intent was created
-    uint256 sourceChainID;
+    uint256 source;
     // ID of chain where we want instructions executed
-    uint256 destinationChainID;
-    // The inbox contract on the destination chain will be the msg.sender for the instructions that are executed.
-    address destinationInbox;
-    // instructions to be executed on destinationChain
+    uint256 destination;
+    // The inbox contract on the destination chain will be the msg.sender
+    address inbox;
+    // instructions
     Call[] calls;
-    // addresses and amounts of reward tokens
-    Reward[] rewards;
-    // native tokens offered as reward
-    uint256 nativeReward;
-    // intent expiry timestamp
-    uint256 expiryTime;
+}
+
+struct Reward {
+    // creator of the intent
+    address creator;
     // address of the prover this intent will be checked against
     address prover;
+    // intent expiry timestamp
+    uint256 expiryTime;
+    // native tokens offered as reward
+    uint256 nativeValue;
+    // addresses and amounts of reward tokens
+    TokenReward[] tokens;
+}
+
+struct Intent {
+    Route route;
+    Reward reward;
 }

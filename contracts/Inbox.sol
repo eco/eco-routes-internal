@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import "./interfaces/IInbox.sol";
+import "./types/Intent.sol";
 import "@hyperlane-xyz/core/contracts/interfaces/IMailbox.sol";
 import "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
@@ -29,18 +30,6 @@ contract Inbox is IInbox, Ownable {
     // Is solving public
     bool public isSolvingPublic;
 
-    // Check that the intent has not expired and that the sender is permitted to solve intents
-    modifier validated(uint256 _expiryTime, address _solver) {
-        if (!isSolvingPublic && !solverWhitelist[_solver]) {
-            revert UnauthorizedSolveAttempt(_solver);
-        }
-        if (block.timestamp <= _expiryTime) {
-            _;
-        } else {
-            revert IntentExpired();
-        }
-    }
-
     /**
      * constructor
      *  _owner the owner of the contract that gets access to privileged functions
@@ -59,38 +48,28 @@ contract Inbox is IInbox, Ownable {
 
     /** 
      * @notice fulfills an intent to be proven via storage proofs
-     * @param _sourceChainID the chainID of the source chain
-     * @param _targets The addresses upon which {_data} will be executed, respectively
-     * @param _data The calldata to be executed on {_targets}, respectively
-     * @param _expiryTime The timestamp at which the intent expires
-     * @param _nonce The nonce of the calldata. Composed of the hash on the source chain of a global nonce & chainID
+     * @param _route The route of the intent
+     * @param _rewardHash The hash of the reward
      * @param _claimant The address that will receive the reward on the source chain
      * @param _expectedHash The hash of the intent as created on the source chain 
      */
     function fulfillStorage(
-        uint256 _sourceChainID,
-        address[] calldata _targets,
-        bytes[] calldata _data,
-        uint256 _expiryTime,
-        bytes32 _nonce,
+        Route calldata _route,
+        bytes32 _rewardHash,
         address _claimant,
         bytes32 _expectedHash
     ) external returns (bytes[] memory) {
+        bytes[] memory result = _fulfill(_route, _rewardHash, _claimant, _expectedHash);
 
-        bytes[] memory result = _fulfill(_sourceChainID, _targets, _data, _expiryTime, _nonce, _claimant, _expectedHash);
-
-        emit ToBeProven(_expectedHash, _sourceChainID, _claimant);
+        emit ToBeProven(_expectedHash, _route.source, _claimant);
 
         return result;
     }
     
     /** 
      * @notice fulfills an intent to be proven immediately via Hyperlane's mailbox
-     * @param _sourceChainID the chainID of the source chain
-     * @param _targets The addresses upon which {_data} will be executed, respectively
-     * @param _data The calldata to be executed on {_targets}, respectively
-     * @param _expiryTime The timestamp at which the intent expires
-     * @param _nonce The nonce of the calldata. Composed of the hash on the source chain of a global nonce & chainID
+     * @param _route The route of the intent
+     * @param _rewardHash The hash of the reward
      * @param _claimant The address that will receive the reward on the source chain
      * @param _expectedHash The hash of the intent as created on the source chain 
      * @param _prover The address of the hyperprover on the source chain
@@ -98,25 +77,19 @@ contract Inbox is IInbox, Ownable {
      * @dev a fee is required to be sent with the transaction, it pays for the use of Hyperlane's architecture
      */
     function fulfillHyperInstant(
-        uint256 _sourceChainID,
-        address[] calldata _targets,
-        bytes[] calldata _data,
-        uint256 _expiryTime,
-        bytes32 _nonce,
+        Route calldata _route,
+        bytes32 _rewardHash,
         address _claimant,
         bytes32 _expectedHash,
         address _prover
     ) external payable returns (bytes[] memory) {
-        return fulfillHyperInstantWithRelayer(_sourceChainID, _targets, _data, _expiryTime, _nonce, _claimant, _expectedHash, _prover, bytes(""), address(0));
+        return fulfillHyperInstantWithRelayer(_route, _rewardHash, _claimant, _expectedHash, _prover, bytes(""), address(0));
     }
 
         /** 
      * @notice fulfills an intent to be proven immediately via Hyperlane's mailbox
-     * @param _sourceChainID the chainID of the source chain
-     * @param _targets The addresses upon which {_data} will be executed, respectively
-     * @param _data The calldata to be executed on {_targets}, respectively
-     * @param _expiryTime The timestamp at which the intent expires
-     * @param _nonce The nonce of the calldata. Composed of the hash on the source chain of a global nonce & chainID
+     * @param _route The route of the intent
+     * @param _rewardHash The hash of the reward
      * @param _claimant The address that will receive the reward on the source chain
      * @param _expectedHash The hash of the intent as created on the source chain 
      * @param _prover The address of the hyperprover on the source chain
@@ -126,19 +99,16 @@ contract Inbox is IInbox, Ownable {
      * @dev a fee is required to be sent with the transaction, it pays for the use of Hyperlane's architecture
      */
     function fulfillHyperInstantWithRelayer(
-        uint256 _sourceChainID,
-        address[] calldata _targets,
-        bytes[] calldata _data,
-        uint256 _expiryTime,
-        bytes32 _nonce,
+        Route calldata _route,
+        bytes32 _rewardHash,
         address _claimant,
         bytes32 _expectedHash,
         address _prover,
         bytes memory _metadata,
         address _postDispatchHook
     ) public payable returns (bytes[] memory) {
-        bytes[] memory results =  _fulfill(_sourceChainID, _targets, _data, _expiryTime, _nonce, _claimant, _expectedHash);
-        emit HyperInstantFulfillment(_expectedHash, _sourceChainID, _claimant);
+        bytes[] memory results =  _fulfill(_route, _rewardHash, _claimant, _expectedHash);
+        emit HyperInstantFulfillment(_expectedHash, _route.source, _claimant);
         bytes32[] memory hashes = new bytes32[](1);
         address[] memory claimants = new address[](1);
         hashes[0] = _expectedHash;
@@ -146,19 +116,19 @@ contract Inbox is IInbox, Ownable {
 
         bytes memory messageBody = abi.encode(hashes, claimants);
         bytes32 _prover32 = _prover.addressToBytes32();
-        uint256 fee = fetchFee(_sourceChainID, _prover32, messageBody, _metadata, _postDispatchHook);
+        uint256 fee = fetchFee(_route.source, _prover32, messageBody, _metadata, _postDispatchHook);
         if (msg.value < fee) {
             revert InsufficientFee(fee);
         }
         if (_postDispatchHook == address(0)) {
             IMailbox(mailbox).dispatch{value: fee}(
-                uint32(_sourceChainID), 
+                uint32(_route.source),
                 _prover32,
                 messageBody
             );
         } else { 
             IMailbox(mailbox).dispatch{value: fee}(
-                uint32(_sourceChainID),
+                uint32(_route.source),
                 _prover32,
                 messageBody,
                 _metadata,
@@ -170,11 +140,7 @@ contract Inbox is IInbox, Ownable {
 
     /** 
      * @notice fulfills an intent to be proven in a batch via Hyperlane's mailbox
-     * @param _sourceChainID the chainID of the source chain
-     * @param _targets The addresses upon which {_data} will be executed, respectively
-     * @param _data The calldata to be executed on {_targets}, respectively
-     * @param _expiryTime The timestamp at which the intent expires
-     * @param _nonce The nonce of the calldata. Composed of the hash on the source chain of a global nonce & chainID
+
      * @param _claimant The address that will receive the reward on the source chain
      * @param _expectedHash The hash of the intent as created on the source chain 
      * @param _prover The address of the hyperprover on the source chain
@@ -183,18 +149,15 @@ contract Inbox is IInbox, Ownable {
      * @dev this method is not currently supported by Eco's solver services, but is included for completeness. 
      */
     function fulfillHyperBatched(
-        uint256 _sourceChainID,
-        address[] calldata _targets,
-        bytes[] calldata _data,
-        uint256 _expiryTime,
-        bytes32 _nonce,
+        Route calldata _route,
+        bytes32 _rewardHash,
         address _claimant,
         bytes32 _expectedHash,
         address _prover
     ) external returns (bytes[] memory){
-        bytes[] memory results =  _fulfill(_sourceChainID, _targets, _data, _expiryTime, _nonce, _claimant, _expectedHash);
+        bytes[] memory results =  _fulfill( _route, _rewardHash, _claimant, _expectedHash);
 
-        emit AddToBatch(_expectedHash, _sourceChainID, _claimant, _prover);
+        emit AddToBatch(_expectedHash, _route.source, _claimant, _prover);
 
         return results;
     }
@@ -343,16 +306,17 @@ contract Inbox is IInbox, Ownable {
     }
 
     function _fulfill(
-        uint256 _sourceChainID,
-        address[] calldata _targets,
-        bytes[] calldata _data,
-        uint256 _expiryTime,
-        bytes32 _nonce,
+        Route calldata _route,
+        bytes32 _rewardHash,
         address _claimant,
         bytes32 _expectedHash
-    ) internal validated(_expiryTime, msg.sender) returns (bytes[] memory) {
-        bytes32 intentHash =
-            encodeHash(_sourceChainID, block.chainid, address(this), _targets, _data, _expiryTime, _nonce);
+    ) internal returns (bytes[] memory) {
+        if (!isSolvingPublic && !solverWhitelist[msg.sender]) {
+            revert UnauthorizedSolveAttempt(msg.sender);
+        }
+
+        bytes32 routeHash = keccak256(abi.encode(_route));
+        bytes32 intentHash = keccak256(abi.encodePacked(routeHash, _rewardHash));
 
         // revert if locally calculated hash does not match expected hash
         if (intentHash != _expectedHash) {
@@ -364,18 +328,18 @@ contract Inbox is IInbox, Ownable {
             revert IntentAlreadyFulfilled(intentHash);
         }
         // Store the results of the calls
-        bytes[] memory results = new bytes[](_data.length);
+        bytes[] memory results = new bytes[](_route.calls.length);
         // Call the addresses with the calldata
 
-        for (uint256 i = 0; i < _data.length; i++) {
-            address target = _targets[i];
-            if (target == mailbox) {
+        for (uint256 i = 0; i < _route.calls.length; i++) {
+            Call calldata call = _route.calls[i];
+            if (call.target == mailbox) {
                 // no executing calls on the mailbox
                 revert CallToMailbox();
             }
-            (bool success, bytes memory result) = _targets[i].call(_data[i]);
+            (bool success, bytes memory result) = call.target.call{value: call.value}(call.data);
             if (!success) {
-                revert IntentCallFailed(_targets[i], _data[i], result);
+                revert IntentCallFailed(call.target, call.data, call.value,  result);
             }
             results[i] = result;
         }
@@ -383,36 +347,9 @@ contract Inbox is IInbox, Ownable {
         // Mark the intent as fulfilled
         fulfilled[intentHash] = _claimant;
 
-        emit Fulfillment(_expectedHash, _sourceChainID, _claimant);
+        emit Fulfillment(_expectedHash, _route.source, _claimant);
 
         return results;
-    }
-
-    /**
-     * This function generates the intent hash
-     * @param _sourceChainID the chainID of the source chain
-     * @param _chainId the chainId of this chain
-     * @param _inboxAddress the address of this contract
-     * @param _targets The addresses to call
-     * @param _data The calldata to call
-     * @param _expiryTime The timestamp at which the intent expires
-     * @param _nonce The nonce of the calldata. Composed of the hash on the src chain of a global nonce & chainID
-     * @return hash The hash of the intent parameters
-     */
-    function encodeHash(
-        uint256 _sourceChainID,
-        uint256 _chainId,
-        address _inboxAddress,
-        address[] calldata _targets,
-        bytes[] calldata _data,
-        uint256 _expiryTime,
-        bytes32 _nonce
-    ) internal pure returns (bytes32) {
-        return keccak256(
-            abi.encode(
-                _inboxAddress, keccak256(abi.encode(_sourceChainID, _chainId, _targets, _data, _expiryTime, _nonce))
-            )
-        );
     }
 
     receive() external payable {}
