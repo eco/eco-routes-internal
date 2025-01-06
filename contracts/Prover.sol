@@ -241,6 +241,13 @@ contract Prover is SimpleProver {
             revert InvalidStorageProof(_key, _val, _proof, _root);
         }
     }
+    /**
+     * @notice validates an account proof against using SecureMerkleTrie.verifyInclusionProof
+     * @param _address address of contract
+     * @param _data data
+     * @param _proof proof
+     * @param _root root
+     */
 
     /**
      * @notice validates a storage proof against using SecureMerkleTrie.verifyInclusionProof
@@ -343,7 +350,7 @@ contract Prover is SimpleProver {
     }
 
     /**
-     * @notice assembles the game status storage slot (this is provided as a helper function for external calls)
+     * @notice assembles the game status storage slot
      * @param createdAt the time the game was created
      * @param resolvedAt the time the game was resolved
      * @param gameStatus the status of the game
