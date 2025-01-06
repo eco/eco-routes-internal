@@ -3,7 +3,6 @@ import {
   optimismSepolia,
   arbitrum,
   base,
-  polygon,
   arbitrumSepolia,
   baseSepolia,
 } from '@alchemy/aa-core'
