@@ -6,7 +6,6 @@ import { time, loadFixture } from '@nomicfoundation/hardhat-network-helpers'
 import { keccak256, BytesLike, ZeroAddress } from 'ethers'
 import { DataHexString } from 'ethers/lib/utils'
 import { encodeIdentifier, encodeTransfer } from '../utils/encode'
-import exp from 'constants'
 
 describe('Intent Source Test', (): void => {
   let intentSource: IntentSource
@@ -18,7 +17,6 @@ describe('Intent Source Test', (): void => {
   let claimant: SignerWithAddress
   let otherPerson: SignerWithAddress
   const mintAmount: number = 1000
-  const minimumDuration = 1000
 
   let expiry: number
   let intentHash: BytesLike
@@ -45,7 +43,7 @@ describe('Intent Source Test', (): void => {
     prover = await (await ethers.getContractFactory('TestProver')).deploy()
 
     const intentSourceFactory = await ethers.getContractFactory('IntentSource')
-    const intentSource = await intentSourceFactory.deploy(minimumDuration, 0)
+    const intentSource = await intentSourceFactory.deploy(0)
     inbox = await (
       await ethers.getContractFactory('Inbox')
     ).deploy(owner.address, false, [owner.address])
@@ -84,16 +82,12 @@ describe('Intent Source Test', (): void => {
 
   describe('constructor', () => {
     it('is initialized correctly', async () => {
-      expect(await intentSource.CHAIN_ID()).to.eq(
-        (await ethers.provider.getNetwork()).chainId,
-      )
-      expect(await intentSource.MINIMUM_DURATION()).to.eq(minimumDuration)
       expect(await intentSource.counter()).to.eq(0)
     })
   })
   describe('intent creation', async () => {
     beforeEach(async (): Promise<void> => {
-      expiry = (await time.latest()) + minimumDuration + 10
+      expiry = (await time.latest()) + 123
       chainId = 1
       targets = [await tokenA.getAddress()]
       data = [await encodeTransfer(creator.address, mintAmount)]
@@ -108,7 +102,7 @@ describe('Intent Source Test', (): void => {
         abiCoder.encode(
           ['uint256', 'uint256', 'address[]', 'bytes[]', 'uint256', 'bytes32'],
           [
-            await intentSource.CHAIN_ID(),
+            (await intentSource.runner?.provider?.getNetwork())?.chainId,
             chainId,
             targets,
             data,
@@ -137,7 +131,7 @@ describe('Intent Source Test', (): void => {
               [await encodeTransfer(creator.address, mintAmount)],
               [await tokenA.getAddress()],
               [mintAmount],
-              (await time.latest()) + minimumDuration,
+              await time.latest(),
               await prover.getAddress(),
             ),
         ).to.be.revertedWithCustomError(intentSource, 'CalldataMismatch')
@@ -152,7 +146,7 @@ describe('Intent Source Test', (): void => {
               [],
               [await tokenA.getAddress()],
               [mintAmount],
-              (await time.latest()) + minimumDuration,
+              await time.latest(),
               await prover.getAddress(),
             ),
         ).to.be.revertedWithCustomError(intentSource, 'CalldataMismatch')
@@ -169,43 +163,10 @@ describe('Intent Source Test', (): void => {
               [await encodeTransfer(creator.address, mintAmount)],
               [await tokenA.getAddress(), await tokenB.getAddress()],
               [mintAmount],
-              (await time.latest()) + minimumDuration,
+              await time.latest(),
               await prover.getAddress(),
             ),
         ).to.be.revertedWithCustomError(intentSource, 'RewardsMismatch')
-      })
-      it('reverts if rewardtokens and rewardAmounts are empty and msg.value is 0', async () => {
-        // length 0
-        await expect(
-          intentSource
-            .connect(creator)
-            .createIntent(
-              1,
-              await inbox.getAddress(),
-              [await tokenA.getAddress()],
-              [await encodeTransfer(creator.address, mintAmount)],
-              [],
-              [],
-              (await time.latest()) + minimumDuration,
-              await prover.getAddress(),
-            ),
-        ).to.be.revertedWithCustomError(intentSource, 'NoRewards')
-      })
-      it('reverts if expiryTime is too early', async () => {
-        await expect(
-          intentSource
-            .connect(creator)
-            .createIntent(
-              1,
-              await inbox.getAddress(),
-              [await tokenA.getAddress()],
-              [await encodeTransfer(creator.address, mintAmount)],
-              [await tokenA.getAddress()],
-              [mintAmount],
-              (await time.latest()) + minimumDuration - 1,
-              await prover.getAddress(),
-            ),
-        ).to.be.revertedWithCustomError(intentSource, 'ExpiryTooSoon')
       })
     })
     it('creates properly with erc20 rewards', async () => {
@@ -226,7 +187,7 @@ describe('Intent Source Test', (): void => {
       expect(intent.creator).to.eq(creator.address)
       expect(intent.destinationChainID).to.eq(chainId)
       expect(intent.expiryTime).to.eq(expiry)
-      expect(intent.hasBeenWithdrawn).to.eq(false)
+      expect(intent.isActive).to.eq(true)
       expect(intent.nonce).to.eq(nonce)
       // getIntent complete call
       const intentDetail = await intentSource.getIntent(intentHash)
@@ -237,7 +198,7 @@ describe('Intent Source Test', (): void => {
       expect(intentDetail.rewardTokens).to.deep.eq(rewardTokens)
       expect(intentDetail.rewardAmounts).to.deep.eq(rewardAmounts)
       expect(intentDetail.expiryTime).to.eq(expiry)
-      expect(intentDetail.hasBeenWithdrawn).to.eq(false)
+      expect(intentDetail.isActive).to.eq(true)
       expect(intentDetail.nonce).to.eq(nonce)
       expect(intentDetail.prover).to.eq(await prover.getAddress())
       expect(intentDetail.rewardNative).to.eq(0)
@@ -261,7 +222,7 @@ describe('Intent Source Test', (): void => {
       expect(intent.creator).to.eq(creator.address)
       expect(intent.destinationChainID).to.eq(chainId)
       expect(intent.expiryTime).to.eq(expiry)
-      expect(intent.hasBeenWithdrawn).to.eq(false)
+      expect(intent.isActive).to.eq(true)
       expect(intent.nonce).to.eq(nonce)
       // getIntent complete call
       const intentDetail = await intentSource.getIntent(intentHash)
@@ -272,7 +233,7 @@ describe('Intent Source Test', (): void => {
       expect(intentDetail.rewardTokens).to.deep.eq([])
       expect(intentDetail.rewardAmounts).to.deep.eq([])
       expect(intentDetail.expiryTime).to.eq(expiry)
-      expect(intentDetail.hasBeenWithdrawn).to.eq(false)
+      expect(intentDetail.isActive).to.eq(true)
       expect(intentDetail.nonce).to.eq(nonce)
       expect(intentDetail.prover).to.eq(await prover.getAddress())
       expect(intentDetail.rewardNative).to.eq(rewardNativeEth)
@@ -347,7 +308,7 @@ describe('Intent Source Test', (): void => {
   })
   describe('claiming rewards', async () => {
     beforeEach(async (): Promise<void> => {
-      expiry = (await time.latest()) + minimumDuration + 10
+      expiry = (await time.latest()) + 123
       nonce = await encodeIdentifier(
         0,
         (await ethers.provider.getNetwork()).chainId,
@@ -362,7 +323,7 @@ describe('Intent Source Test', (): void => {
         abiCoder.encode(
           ['uint256', 'uint256', 'address[]', 'bytes[]', 'uint256', 'bytes32'],
           [
-            await intentSource.CHAIN_ID(),
+            (await intentSource.runner?.provider?.getNetwork())?.chainId,
             chainId,
             targets,
             data,
@@ -417,13 +378,11 @@ describe('Intent Source Test', (): void => {
           await claimant.getAddress(),
         )
 
-        expect((await intentSource.intents(intentHash)).hasBeenWithdrawn).to.be
-          .false
+        expect((await intentSource.intents(intentHash)).isActive).to.be.true
 
         await intentSource.connect(otherPerson).withdrawRewards(intentHash)
 
-        expect((await intentSource.intents(intentHash)).hasBeenWithdrawn).to.be
-          .true
+        expect((await intentSource.intents(intentHash)).isActive).to.be.false
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(
           Number(initialBalanceA) + rewardAmounts[0],
         )
@@ -459,13 +418,11 @@ describe('Intent Source Test', (): void => {
         const initialBalanceB = await tokenB.balanceOf(
           await creator.getAddress(),
         )
-        expect((await intentSource.intents(intentHash)).hasBeenWithdrawn).to.be
-          .false
+        expect((await intentSource.intents(intentHash)).isActive).to.be.true
 
         await intentSource.connect(otherPerson).withdrawRewards(intentHash)
 
-        expect((await intentSource.intents(intentHash)).hasBeenWithdrawn).to.be
-          .true
+        expect((await intentSource.intents(intentHash)).isActive).to.be.false
         expect(await tokenA.balanceOf(await creator.getAddress())).to.eq(
           Number(initialBalanceA) + rewardAmounts[0],
         )
@@ -488,13 +445,11 @@ describe('Intent Source Test', (): void => {
         const initialBalanceB = await tokenB.balanceOf(
           await claimant.getAddress(),
         )
-        expect((await intentSource.intents(intentHash)).hasBeenWithdrawn).to.be
-          .false
+        expect((await intentSource.intents(intentHash)).isActive).to.be.true
 
         await intentSource.connect(otherPerson).withdrawRewards(intentHash)
 
-        expect((await intentSource.intents(intentHash)).hasBeenWithdrawn).to.be
-          .true
+        expect((await intentSource.intents(intentHash)).isActive).to.be.false
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(
           Number(initialBalanceA) + rewardAmounts[0],
         )
@@ -507,7 +462,7 @@ describe('Intent Source Test', (): void => {
   describe('batch withdrawal', async () => {
     describe('fails if', () => {
       beforeEach(async (): Promise<void> => {
-        expiry = (await time.latest()) + minimumDuration + 10
+        expiry = (await time.latest()) + 123
         nonce = await encodeIdentifier(
           0,
           (await ethers.provider.getNetwork()).chainId,
@@ -529,7 +484,7 @@ describe('Intent Source Test', (): void => {
               'bytes32',
             ],
             [
-              await intentSource.CHAIN_ID(),
+              (await intentSource.runner?.provider?.getNetwork())?.chainId,
               chainId,
               targets,
               data,
@@ -583,7 +538,7 @@ describe('Intent Source Test', (): void => {
     })
     describe('single intent, complex', () => {
       beforeEach(async (): Promise<void> => {
-        expiry = (await time.latest()) + minimumDuration + 10
+        expiry = (await time.latest()) + 123
         nonce = await encodeIdentifier(
           0,
           (await ethers.provider.getNetwork()).chainId,
@@ -605,7 +560,7 @@ describe('Intent Source Test', (): void => {
               'bytes32',
             ],
             [
-              await intentSource.CHAIN_ID(),
+              (await intentSource.runner?.provider?.getNetwork())?.chainId,
               chainId,
               targets,
               data,
@@ -639,8 +594,7 @@ describe('Intent Source Test', (): void => {
         const initialBalanceNative = await ethers.provider.getBalance(
           await claimant.getAddress(),
         )
-        expect((await intentSource.intents(intentHash)).hasBeenWithdrawn).to.be
-          .false
+        expect((await intentSource.intents(intentHash)).isActive).to.be.true
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(0)
         expect(await tokenB.balanceOf(await claimant.getAddress())).to.eq(0)
         expect(await tokenA.balanceOf(await intentSource.getAddress())).to.eq(
@@ -660,8 +614,7 @@ describe('Intent Source Test', (): void => {
           .connect(otherPerson)
           .batchWithdraw([intentHash], await claimant.getAddress())
 
-        expect((await intentSource.intents(intentHash)).hasBeenWithdrawn).to.be
-          .true
+        expect((await intentSource.intents(intentHash)).isActive).to.be.false
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(
           mintAmount,
         )
@@ -684,8 +637,7 @@ describe('Intent Source Test', (): void => {
         const initialBalanceNative = await ethers.provider.getBalance(
           await creator.getAddress(),
         )
-        expect((await intentSource.intents(intentHash)).hasBeenWithdrawn).to.be
-          .false
+        expect((await intentSource.intents(intentHash)).isActive).to.be.true
         expect(await tokenA.balanceOf(await creator.getAddress())).to.eq(0)
         expect(await tokenB.balanceOf(await creator.getAddress())).to.eq(0)
 
@@ -696,8 +648,7 @@ describe('Intent Source Test', (): void => {
           .connect(otherPerson)
           .batchWithdraw([intentHash], await creator.getAddress())
 
-        expect((await intentSource.intents(intentHash)).hasBeenWithdrawn).to.be
-          .true
+        expect((await intentSource.intents(intentHash)).isActive).to.be.false
         expect(await tokenA.balanceOf(await creator.getAddress())).to.eq(
           mintAmount,
         )
@@ -711,7 +662,7 @@ describe('Intent Source Test', (): void => {
     })
     describe('multiple intents, each with a single reward token', () => {
       beforeEach(async (): Promise<void> => {
-        expiry = (await time.latest()) + minimumDuration + 20
+        expiry = (await time.latest()) + 123
         nonce = await encodeIdentifier(
           0,
           (await ethers.provider.getNetwork()).chainId,
@@ -740,7 +691,8 @@ describe('Intent Source Test', (): void => {
         const logs = await intentSource.queryFilter(
           intentSource.getEvent('IntentCreated'),
         )
-        const hashes = logs.map((log) => log.args[0])
+        const hashes = logs.map((log) => log.args._hash)
+
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(0)
 
         for (let i = 0; i < 3; i++) {
@@ -791,7 +743,7 @@ describe('Intent Source Test', (): void => {
         const logs = await intentSource.queryFilter(
           intentSource.getEvent('IntentCreated'),
         )
-        const hashes = logs.map((log) => log.args[0])
+        const hashes = logs.map((log) => log.args._hash)
 
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(0)
         expect(await tokenB.balanceOf(await claimant.getAddress())).to.eq(0)
@@ -863,10 +815,11 @@ describe('Intent Source Test', (): void => {
         const logs = await intentSource.queryFilter(
           intentSource.getEvent('IntentCreated'),
         )
-        const hashes = logs.map((log) => log.args[0])
+        const hashes = logs.map((log) => log.args._hash)
 
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(0)
         expect(await tokenB.balanceOf(await claimant.getAddress())).to.eq(0)
+
         const initialBalanceNative = await ethers.provider.getBalance(
           await claimant.getAddress(),
         )
@@ -892,7 +845,7 @@ describe('Intent Source Test', (): void => {
       })
     })
     it('works in the case of multiple intents, each with multiple reward tokens', async () => {
-      expiry = (await time.latest()) + minimumDuration + 20
+      expiry = (await time.latest()) + 123
       nonce = await encodeIdentifier(
         0,
         (await ethers.provider.getNetwork()).chainId,
@@ -935,10 +888,11 @@ describe('Intent Source Test', (): void => {
       const logs = await intentSource.queryFilter(
         intentSource.getEvent('IntentCreated'),
       )
-      const hashes = logs.map((log) => log.args[0])
+      const hashes = logs.map((log) => log.args._hash)
 
       expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(0)
       expect(await tokenB.balanceOf(await claimant.getAddress())).to.eq(0)
+
       const initialBalanceNative = await ethers.provider.getBalance(
         await claimant.getAddress(),
       )

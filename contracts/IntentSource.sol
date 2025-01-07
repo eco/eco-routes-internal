@@ -9,7 +9,7 @@ import "./interfaces/IIntentSource.sol";
 import "./interfaces/SimpleProver.sol";
 import "./types/Intent.sol";
 
-import "./IntentVault.sol";
+import "./IntentVault.sol";import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /**
  * This contract is the source chain portion of the Eco Protocol's intent system.
@@ -21,35 +21,21 @@ import "./IntentVault.sol";
 contract IntentSource is IIntentSource {
     using SafeERC20 for IERC20;
 
-    // chain ID
-    uint256 public immutable CHAIN_ID;
-
-    /**
-     * minimum duration of an intent, in seconds.
-     * Intents cannot expire less than MINIMUM_DURATION seconds after they are created.
-     */
-    uint256 public immutable MINIMUM_DURATION;
-
     // stores the intents
-    mapping(bytes32 intenthash => bool) public claimed;
+    mapping(bytes32 intentHash => bool) public claimed;
 
     address public vaultClaimant;
     address public vaultRefundToken;
 
     /**
      * @dev counterStart is required to preserve nonce uniqueness in the event IntentSource needs to be redeployed.
-     * _minimumDuration the minimum duration of an intent originating on this chain
      * _counterStart the initial value of the counter
      */
-    constructor(uint256 _minimumDuration) {
-        CHAIN_ID = block.chainid;
-        MINIMUM_DURATION = _minimumDuration;
-    }
+    constructor() {}
 
     function version() external pure returns (string memory) {
-        return "v0.0.3-beta";
+        return Semver.version();
     }
-
 
     function getVaultClaimant() external view returns (address) {
         return vaultClaimant;
@@ -93,29 +79,17 @@ contract IntentSource is IIntentSource {
      * The onus of that time management (i.e. how long it takes for data to post to L1, etc.) is on the intent solver.
      * @param intent The intent struct with all the intent params
      */
-    function publishIntent(Intent calldata intent, bool addRewards) external payable {
+
+    function publishIntent(Intent calldata intent, bool addRewards) external payable returns (bytes32 intentHash) {
         Route calldata route = intent.route;
         Reward calldata reward = intent.reward;
 
         uint256 rewardsLength = reward.tokens.length;
 
-        require(
-            route.source == CHAIN_ID,
-            "IntentSource: invalid source chain ID"
-        );
-
-        if (rewardsLength == 0 && msg.value == 0) {
-            revert NoRewards();
-        }
-
-        if (reward.expiryTime < block.timestamp + MINIMUM_DURATION) {
-            revert ExpiryTooSoon();
-        }
-
-
+        uint256 chainID = block.chainid;
         bytes32 routeHash = keccak256(abi.encode(route));
         bytes32 rewardHash = keccak256(abi.encode(reward));
-        bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
+        intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
 
         address vault = intentVaultAddress(intent);
 
@@ -227,6 +201,7 @@ contract IntentSource is IIntentSource {
      * @param routeHashes The hashes of the routes of the intents
      * @param rewards The rewards of the intents
      */
+
     function batchWithdraw(bytes32[] calldata routeHashes, Reward[] calldata rewards) external {
         uint256 length = routeHashes.length;
         require(length == rewards.length, "IntentSource: array length mismatch");
