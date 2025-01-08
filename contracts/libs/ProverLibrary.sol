@@ -307,7 +307,7 @@ library ProverLibrary {
      * @notice helper function for getting all rlp data encoded
      * @param dataList list of data elements to be encoded
      */
-    function rlpEncodeDataLibList(bytes[] memory dataList) external pure returns (bytes memory) {
+    function rlpEncodeDataLibList(bytes[] memory dataList) internal pure returns (bytes memory) {
         for (uint256 i = 0; i < dataList.length; ++i) {
             dataList[i] = RLPWriter.writeBytes(dataList[i]);
         }
