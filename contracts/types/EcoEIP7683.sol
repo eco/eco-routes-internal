@@ -3,6 +3,7 @@
 pragma solidity ^0.8.26;
 
 import {Call, Reward} from "./Intent.sol";
+import "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
 
 /// @title Eco Intent Order Data
 /// @notice subtype of orderData
