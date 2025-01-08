@@ -59,9 +59,6 @@ library ProverLibrary {
         ChainConfiguration chainConfiguration;
     }
 
-    // map the chain id to ProvingMechanism to chain configuration
-    // mapping(uint256 => mapping(ProvingMechanism => ChainConfiguration)) public chainConfigurations;
-
     struct BlockProofKey {
         uint256 chainId;
         SettlementType settlementType;
@@ -72,9 +69,6 @@ library ProverLibrary {
         bytes32 blockHash;
         bytes32 stateRoot;
     }
-
-    // Store the last BlockProof for each ChainId
-    // mapping(uint256 => mapping(SettlementType => BlockProof)) public provenStates;
 
     // The settlement type for the chain
     enum SettlementType {
@@ -250,7 +244,7 @@ library ProverLibrary {
      * @param _proof proof
      * @param _root root
      */
-    function proveStorage(bytes memory _key, bytes memory _val, bytes[] memory _proof, bytes32 _root) public pure {
+    function proveStorage(bytes memory _key, bytes memory _val, bytes[] memory _proof, bytes32 _root) internal pure {
         if (!SecureMerkleTrie.verifyInclusionProof(_key, _val, _proof, _root)) {
             revert InvalidStorageProof(_key, _val, _proof, _root);
         }
@@ -263,7 +257,7 @@ library ProverLibrary {
      * @param _proof proof
      * @param _root root
      */
-    function proveStorageBytes32(bytes memory _key, bytes32 _val, bytes[] memory _proof, bytes32 _root) public pure {
+    function proveStorageBytes32(bytes memory _key, bytes32 _val, bytes[] memory _proof, bytes32 _root) internal pure {
         // `RLPWriter.writeUint` properly encodes values by removing any leading zeros.
         bytes memory rlpEncodedValue = RLPWriter.writeUint(uint256(_val));
         if (!SecureMerkleTrie.verifyInclusionProof(_key, rlpEncodedValue, _proof, _root)) {
@@ -279,7 +273,7 @@ library ProverLibrary {
      * @param _root root
      */
     function proveAccount(bytes memory _address, bytes memory _data, bytes[] memory _proof, bytes32 _root)
-        public
+        internal
         pure
     {
         if (!SecureMerkleTrie.verifyInclusionProof(_address, _data, _proof, _root)) {
@@ -299,7 +293,7 @@ library ProverLibrary {
         bytes32 worldStateRoot,
         bytes32 messagePasserStateRoot,
         bytes32 latestBlockHash
-    ) public pure returns (bytes32) {
+    ) internal pure returns (bytes32) {
         return keccak256(abi.encode(outputRootVersion, worldStateRoot, messagePasserStateRoot, latestBlockHash));
     }
 
@@ -322,7 +316,7 @@ library ProverLibrary {
      * @param _gameProxy The game proxy address.
      * @return gameId_ The packed GameId.
      */
-    function pack(uint32 _gameType, uint64 _timestamp, address _gameProxy) public pure returns (bytes32 gameId_) {
+    function pack(uint32 _gameType, uint64 _timestamp, address _gameProxy) internal pure returns (bytes32 gameId_) {
         assembly {
             gameId_ := or(or(shl(224, _gameType), shl(160, _timestamp)), _gameProxy)
         }
@@ -335,7 +329,7 @@ library ProverLibrary {
      * @return timestamp_ The timestamp of the game's creation.
      * @return gameProxy_ The game proxy address.
      */
-    function unpack(bytes32 _gameId) public pure returns (uint32 gameType_, uint64 timestamp_, address gameProxy_) {
+    function unpack(bytes32 _gameId) internal pure returns (uint32 gameType_, uint64 timestamp_, address gameProxy_) {
         assembly {
             gameType_ := shr(224, _gameId)
             timestamp_ := and(shr(160, _gameId), 0xFFFFFFFFFFFFFFFF)
@@ -371,7 +365,7 @@ library ProverLibrary {
         uint8 gameStatus,
         bool initialized,
         bool l2BlockNumberChallenged
-    ) public pure returns (bytes32 gameStatusStorageSlotRLP) {
+    ) internal pure returns (bytes32 gameStatusStorageSlotRLP) {
         // Packed data is 64 + 64 + 8 + 8 + 8 = 152 bits / 19 bytes.
         // Need to convert to `uint152` to preserve right alignment.
         return bytes32(
