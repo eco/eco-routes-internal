@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity ^0.8.28;
 
-import '@hyperlane-xyz/core/contracts/interfaces/IMessageRecipient.sol';
+import "@hyperlane-xyz/core/contracts/interfaces/IMessageRecipient.sol";
 import "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
-import './interfaces/SimpleProver.sol';
-
+import "./libs/SimpleProver.sol";
+import {Semver} from "./libs/Semver.sol";
 
 contract HyperProver is IMessageRecipient, SimpleProver {
     using TypeCasts for bytes32;
@@ -29,10 +29,10 @@ contract HyperProver is IMessageRecipient, SimpleProver {
      * @param _sender the address that called the dispatch() method
      */
     error UnauthorizedDispatch(address _sender);
-        
+
     // local mailbox address
     address public immutable MAILBOX;
-    
+
     // address of the Inbox contract
     // assumes that all Inboxes are deployed via ERC-2470 and hence have the same address
     address public immutable INBOX;
@@ -48,7 +48,9 @@ contract HyperProver is IMessageRecipient, SimpleProver {
         INBOX = _inbox;
     }
 
-    function version() external pure returns (string memory) { return Semver.version(); }
+    function version() external pure returns (string memory) {
+        return Semver.version();
+    }
 
     /**
      * @notice implementation of the handle method required by IMessageRecipient
@@ -56,9 +58,8 @@ contract HyperProver is IMessageRecipient, SimpleProver {
      * @param _sender the address that called the dispatch() method
      * @param _messageBody the message body
      */
-    function handle(uint32, bytes32 _sender, bytes calldata _messageBody) public payable{
-
-        if(MAILBOX != msg.sender) {
+    function handle(uint32, bytes32 _sender, bytes calldata _messageBody) public payable {
+        if (MAILBOX != msg.sender) {
             revert UnauthorizedHandle(msg.sender);
         }
 

@@ -1,11 +1,35 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity ^0.8.28;
+/**
+ * _____                    _____                   _______
+ *          /\    \                  /\    \                 /::\    \
+ *         /::\    \                /::\    \               /::::\    \
+ *        /::::\    \              /::::\    \             /::::::\    \
+ *       /::::::\    \            /::::::\    \           /::::::::\    \
+ *      /:::/\:::\    \          /:::/\:::\    \         /:::/~~\:::\    \
+ *     /:::/__\:::\    \        /:::/  \:::\    \       /:::/    \:::\    \
+ *    /::::\   \:::\    \      /:::/    \:::\    \     /:::/    / \:::\    \
+ *   /::::::\   \:::\    \    /:::/    / \:::\    \   /:::/____/   \:::\____\
+ *  /:::/\:::\   \:::\    \  /:::/    /   \:::\    \ |:::|    |     |:::|    |
+ * /:::/__\:::\   \:::\____\/:::/____/     \:::\____\|:::|____|     |:::|    |
+ * \:::\   \:::\   \::/    /\:::\    \      \::/    / \:::\    \   /:::/    /
+ *  \:::\   \:::\   \/____/  \:::\    \      \/____/   \:::\    \ /:::/    /
+ *   \:::\   \:::\    \       \:::\    \                \:::\    /:::/    /
+ *    \:::\   \:::\____\       \:::\    \                \:::\__/:::/    /
+ *     \:::\   \::/    /        \:::\    \                \::::::::/    /
+ *      \:::\   \/____/          \:::\    \                \::::::/    /
+ *       \:::\    \               \:::\    \                \::::/    /
+ *        \:::\____\               \:::\____\                \::/____/
+ *         \::/    /                \::/    /                 ~~
+ *          \/____/                  \/____/
+ *
+ */
 
 import {SecureMerkleTrie} from "@eth-optimism/contracts-bedrock/src/libraries/trie/SecureMerkleTrie.sol";
 import {RLPReader} from "@eth-optimism/contracts-bedrock/src/libraries/rlp/RLPReader.sol";
 import {RLPWriter} from "@eth-optimism/contracts-bedrock/src/libraries/rlp/RLPWriter.sol";
 import {IL1Block} from "./interfaces/IL1Block.sol";
-import {SimpleProver} from "./interfaces/SimpleProver.sol";
+import {SimpleProver} from "./libs/SimpleProver.sol";
 import {Semver} from "./libs/Semver.sol";
 
 contract Prover is SimpleProver {
@@ -365,20 +389,12 @@ contract Prover is SimpleProver {
         bool initialized,
         bool l2BlockNumberChallenged
     ) public pure returns (bytes32 gameStatusStorageSlotRLP) {
-      // Packed data is 64 + 64 + 8 + 8 + 8 = 152 bits / 19 bytes.
-      // Need to convert to `uint152` to preserve right alignment.
+        // Packed data is 64 + 64 + 8 + 8 + 8 = 152 bits / 19 bytes.
+        // Need to convert to `uint152` to preserve right alignment.
         return bytes32(
             uint256(
                 uint152(
-                    bytes19(
-                        abi.encodePacked(
-                            l2BlockNumberChallenged,
-                            initialized,
-                            gameStatus,
-                            resolvedAt,
-                            createdAt
-                        )
-                    )
+                    bytes19(abi.encodePacked(l2BlockNumberChallenged, initialized, gameStatus, resolvedAt, createdAt))
                 )
             )
         );
@@ -561,7 +577,7 @@ contract Prover is SimpleProver {
             bytes32(faultDisputeGameProofData.faultDisputeGameStateRoot)
         );
 
-         bytes32 faultDisputeGameStatusStorage = assembleGameStatusStorage(
+        bytes32 faultDisputeGameStatusStorage = assembleGameStatusStorage(
             faultDisputeGameProofData.faultDisputeGameStatusSlotData.createdAt,
             faultDisputeGameProofData.faultDisputeGameStatusSlotData.resolvedAt,
             faultDisputeGameProofData.faultDisputeGameStatusSlotData.gameStatus,

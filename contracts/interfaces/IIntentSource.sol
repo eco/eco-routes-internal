@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 4 -*- */
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity ^0.8.28;
 
 import {Intent} from "../types/Intent.sol";
 import {Semver, ISemver} from "../libs/Semver.sol";
@@ -11,7 +11,8 @@ import {Semver, ISemver} from "../libs/Semver.sol";
  * Its counterpart is the inbox contract that lives on the destination chain.
  * This contract makes a call to the prover contract (on the source chain) in order to verify intent fulfillment.
  */
-interface IIntentSource is ISemver{
+
+interface IIntentSource is ISemver {
     /**
      * @notice thrown on a call to withdraw() by someone who is not entitled to the rewards for a
      * given intent.

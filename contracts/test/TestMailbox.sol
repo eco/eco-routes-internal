@@ -1,13 +1,13 @@
 /* -*- c-basic-offset: 4 -*- */
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity ^0.8.28;
+
 import "@hyperlane-xyz/core/contracts/libs/Message.sol";
 import "@hyperlane-xyz/core/contracts/interfaces/IMessageRecipient.sol";
 import "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import "@hyperlane-xyz/core/contracts/interfaces/hooks/IPostDispatchHook.sol";
 
 contract TestMailbox {
-
     using TypeCasts for bytes32;
     using TypeCasts for address;
 
@@ -16,13 +16,13 @@ contract TestMailbox {
     uint32 public destinationDomain;
 
     bytes32 public recipientAddress;
-    
+
     bytes public messageBody;
-    
+
     bytes public metadata;
-    
+
     address public relayer;
-    
+
     bool public dispatched;
 
     bool public dispatchedWithRelayer;
@@ -33,11 +33,11 @@ contract TestMailbox {
         processor = _processor;
     }
 
-    function dispatch(
-        uint32 _destinationDomain,
-        bytes32 _recipientAddress,
-        bytes calldata _messageBody
-    ) public payable returns (uint256) {
+    function dispatch(uint32 _destinationDomain, bytes32 _recipientAddress, bytes calldata _messageBody)
+        public
+        payable
+        returns (uint256)
+    {
         destinationDomain = _destinationDomain;
         recipientAddress = _recipientAddress;
         messageBody = _messageBody;
@@ -51,8 +51,7 @@ contract TestMailbox {
             revert("no");
         }
 
-        return(msg.value);
-        
+        return (msg.value);
     }
 
     function dispatch(
@@ -78,28 +77,20 @@ contract TestMailbox {
             revert("no");
         }
 
-        return(msg.value);
+        return (msg.value);
     }
 
     function process(bytes calldata _msg) public {
-        IMessageRecipient(recipientAddress.bytes32ToAddress()).handle(uint32(block.chainid), msg.sender.addressToBytes32(), _msg);
+        IMessageRecipient(recipientAddress.bytes32ToAddress()).handle(
+            uint32(block.chainid), msg.sender.addressToBytes32(), _msg
+        );
     }
 
-    function quoteDispatch(
-        uint32,
-        bytes32,
-        bytes calldata
-    ) public pure returns (bytes32) {
+    function quoteDispatch(uint32, bytes32, bytes calldata) public pure returns (bytes32) {
         return bytes32(fee);
     }
 
-    function quoteDispatch(
-        uint32,
-        bytes32,
-        bytes calldata,
-        bytes calldata,
-        address
-    ) public pure returns (bytes32) {
+    function quoteDispatch(uint32, bytes32, bytes calldata, bytes calldata, address) public pure returns (bytes32) {
         return bytes32(fee);
     }
 }

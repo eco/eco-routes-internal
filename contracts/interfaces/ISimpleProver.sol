@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {Semver, ISemver} from "../libs/Semver.sol";
+import {ISemver} from "./ISemver.sol";
 
-interface IProver is ISemver {
+interface ISimpleProver is ISemver {
     // The types of proof that provers can be
     enum ProofType {
         Storage,
