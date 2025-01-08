@@ -48,7 +48,11 @@ contract Inbox is IInbox, Ownable {
      *  _solvers the initial whitelist of solvers, only relevant if {_isSolvingPublic} is false
      * @dev privileged functions are made such that they can only make changes once
      */
-    constructor(address _owner, bool _isSolvingPublic, address[] memory _solvers) Ownable(_owner) {
+    constructor(
+        address _owner,
+        bool _isSolvingPublic,
+        address[] memory _solvers
+    ) Ownable(_owner) {
         isSolvingPublic = _isSolvingPublic;
         for (uint256 i = 0; i < _solvers.length; i++) {
             solverWhitelist[_solvers[i]] = true;
@@ -79,7 +83,15 @@ contract Inbox is IInbox, Ownable {
         address _claimant,
         bytes32 _expectedHash
     ) external payable returns (bytes[] memory) {
-        bytes[] memory result = _fulfill(_sourceChainID, _targets, _data, _expiryTime, _nonce, _claimant, _expectedHash);
+        bytes[] memory result = _fulfill(
+            _sourceChainID,
+            _targets,
+            _data,
+            _expiryTime,
+            _nonce,
+            _claimant,
+            _expectedHash
+        );
 
         emit ToBeProven(_expectedHash, _sourceChainID, _claimant);
 
@@ -109,18 +121,19 @@ contract Inbox is IInbox, Ownable {
         bytes32 _expectedHash,
         address _prover
     ) external payable returns (bytes[] memory) {
-        return fulfillHyperInstantWithRelayer(
-            _sourceChainID,
-            _targets,
-            _data,
-            _expiryTime,
-            _nonce,
-            _claimant,
-            _expectedHash,
-            _prover,
-            bytes(""),
-            address(0)
-        );
+        return
+            fulfillHyperInstantWithRelayer(
+                _sourceChainID,
+                _targets,
+                _data,
+                _expiryTime,
+                _nonce,
+                _claimant,
+                _expectedHash,
+                _prover,
+                bytes(""),
+                address(0)
+            );
     }
 
     /**
@@ -160,21 +173,42 @@ contract Inbox is IInbox, Ownable {
 
         emit HyperInstantFulfillment(_expectedHash, _sourceChainID, _claimant);
 
-        uint256 fee = fetchFee(_sourceChainID, _prover32, messageBody, _metadata, _postDispatchHook);
+        uint256 fee = fetchFee(
+            _sourceChainID,
+            _prover32,
+            messageBody,
+            _metadata,
+            _postDispatchHook
+        );
         if (msg.value < fee) {
             revert InsufficientFee(fee);
         }
-        bytes[] memory results =
-            _fulfill(_sourceChainID, _targets, _data, _expiryTime, _nonce, _claimant, _expectedHash);
+        bytes[] memory results = _fulfill(
+            _sourceChainID,
+            _targets,
+            _data,
+            _expiryTime,
+            _nonce,
+            _claimant,
+            _expectedHash
+        );
         if (msg.value > fee) {
-            (bool success,) = payable(msg.sender).call{value: msg.value - fee}("");
+            (bool success, ) = payable(msg.sender).call{value: msg.value - fee}("");
             require(success, "Native transfer failed.");
         }
         if (_postDispatchHook == address(0)) {
-            IMailbox(mailbox).dispatch{value: fee}(uint32(_sourceChainID), _prover32, messageBody);
+            IMailbox(mailbox).dispatch{value: fee}(
+                uint32(_sourceChainID),
+                _prover32,
+                messageBody
+            );
         } else {
             IMailbox(mailbox).dispatch{value: fee}(
-                uint32(_sourceChainID), _prover32, messageBody, _metadata, IPostDispatchHook(_postDispatchHook)
+                uint32(_sourceChainID),
+                _prover32,
+                messageBody,
+                _metadata,
+                IPostDispatchHook(_postDispatchHook)
             );
         }
         return results;
@@ -206,8 +240,15 @@ contract Inbox is IInbox, Ownable {
     ) external payable returns (bytes[] memory) {
         emit AddToBatch(_expectedHash, _sourceChainID, _claimant, _prover);
 
-        bytes[] memory results =
-            _fulfill(_sourceChainID, _targets, _data, _expiryTime, _nonce, _claimant, _expectedHash);
+        bytes[] memory results = _fulfill(
+            _sourceChainID,
+            _targets,
+            _data,
+            _expiryTime,
+            _nonce,
+            _claimant,
+            _expectedHash
+        );
 
         return results;
     }
@@ -220,8 +261,18 @@ contract Inbox is IInbox, Ownable {
      * @dev it is imperative that the intent hashes correspond to fulfilled intents that originated on the chain with chainID {_sourceChainID}
      * @dev a fee is required to be sent with the transaction, it pays for the use of Hyperlane's architecture
      */
-    function sendBatch(uint256 _sourceChainID, address _prover, bytes32[] calldata _intentHashes) external payable {
-        sendBatchWithRelayer(_sourceChainID, _prover, _intentHashes, bytes(""), address(0));
+    function sendBatch(
+        uint256 _sourceChainID,
+        address _prover,
+        bytes32[] calldata _intentHashes
+    ) external payable {
+        sendBatchWithRelayer(
+            _sourceChainID,
+            _prover,
+            _intentHashes,
+            bytes(""),
+            address(0)
+        );
     }
 
     /**
@@ -253,19 +304,33 @@ contract Inbox is IInbox, Ownable {
         }
         bytes memory messageBody = abi.encode(_intentHashes, claimants);
         bytes32 _prover32 = _prover.addressToBytes32();
-        uint256 fee = fetchFee(_sourceChainID, _prover32, messageBody, _metadata, _postDispatchHook);
+        uint256 fee = fetchFee(
+            _sourceChainID,
+            _prover32,
+            messageBody,
+            _metadata,
+            _postDispatchHook
+        );
         if (msg.value < fee) {
             revert InsufficientFee(fee);
         }
         if (msg.value > fee) {
-            (bool success,) = payable(msg.sender).call{value: msg.value - fee}("");
+            (bool success, ) = payable(msg.sender).call{value: msg.value - fee}("");
             require(success, "Native transfer failed.");
         }
         if (_postDispatchHook == address(0)) {
-            IMailbox(mailbox).dispatch{value: fee}(uint32(_sourceChainID), _prover32, messageBody);
+            IMailbox(mailbox).dispatch{value: fee}(
+                uint32(_sourceChainID),
+                _prover32,
+                messageBody
+            );
         } else {
             IMailbox(mailbox).dispatch{value: fee}(
-                uint32(_sourceChainID), _prover32, messageBody, _metadata, IPostDispatchHook(_postDispatchHook)
+                uint32(_sourceChainID),
+                _prover32,
+                messageBody,
+                _metadata,
+                IPostDispatchHook(_postDispatchHook)
             );
         }
     }
@@ -288,9 +353,17 @@ contract Inbox is IInbox, Ownable {
     ) public view returns (uint256 fee) {
         return (
             _postDispatchHook == address(0)
-                ? IMailbox(mailbox).quoteDispatch(uint32(_sourceChainID), _prover, _messageBody)
+                ? IMailbox(mailbox).quoteDispatch(
+                    uint32(_sourceChainID),
+                    _prover,
+                    _messageBody
+                )
                 : IMailbox(mailbox).quoteDispatch(
-                    uint32(_sourceChainID), _prover, _messageBody, _metadata, IPostDispatchHook(_postDispatchHook)
+                    uint32(_sourceChainID),
+                    _prover,
+                    _messageBody,
+                    _metadata,
+                    IPostDispatchHook(_postDispatchHook)
                 )
         );
     }
@@ -306,7 +379,7 @@ contract Inbox is IInbox, Ownable {
         if (msg.sender != address(this)) {
             revert UnauthorizedTransferNative();
         }
-        (bool success,) = _to.call{value: _amount}("");
+        (bool success, ) = _to.call{value: _amount}("");
         require(success, "Native transfer failed.");
     }
 
@@ -353,8 +426,15 @@ contract Inbox is IInbox, Ownable {
         address _claimant,
         bytes32 _expectedHash
     ) internal validated(_expiryTime, msg.sender) returns (bytes[] memory) {
-        bytes32 intentHash =
-            encodeHash(_sourceChainID, block.chainid, address(this), _targets, _data, _expiryTime, _nonce);
+        bytes32 intentHash = encodeHash(
+            _sourceChainID,
+            block.chainid,
+            address(this),
+            _targets,
+            _data,
+            _expiryTime,
+            _nonce
+        );
 
         if (intentHash != _expectedHash) {
             revert InvalidHash(_expectedHash);
@@ -407,11 +487,22 @@ contract Inbox is IInbox, Ownable {
         uint256 _expiryTime,
         bytes32 _nonce
     ) internal pure returns (bytes32) {
-        return keccak256(
-            abi.encode(
-                _inboxAddress, keccak256(abi.encode(_sourceChainID, _chainId, _targets, _data, _expiryTime, _nonce))
-            )
-        );
+        return
+            keccak256(
+                abi.encode(
+                    _inboxAddress,
+                    keccak256(
+                        abi.encode(
+                            _sourceChainID,
+                            _chainId,
+                            _targets,
+                            _data,
+                            _expiryTime,
+                            _nonce
+                        )
+                    )
+                )
+            );
     }
 
     receive() external payable {}
