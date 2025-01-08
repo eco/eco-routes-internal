@@ -33,11 +33,11 @@ contract TestMailbox {
         processor = _processor;
     }
 
-    function dispatch(uint32 _destinationDomain, bytes32 _recipientAddress, bytes calldata _messageBody)
-        public
-        payable
-        returns (uint256)
-    {
+    function dispatch(
+        uint32 _destinationDomain,
+        bytes32 _recipientAddress,
+        bytes calldata _messageBody
+    ) public payable returns (uint256) {
         destinationDomain = _destinationDomain;
         recipientAddress = _recipientAddress;
         messageBody = _messageBody;
@@ -82,15 +82,27 @@ contract TestMailbox {
 
     function process(bytes calldata _msg) public {
         IMessageRecipient(recipientAddress.bytes32ToAddress()).handle(
-            uint32(block.chainid), msg.sender.addressToBytes32(), _msg
+            uint32(block.chainid),
+            msg.sender.addressToBytes32(),
+            _msg
         );
     }
 
-    function quoteDispatch(uint32, bytes32, bytes calldata) public pure returns (bytes32) {
+    function quoteDispatch(
+        uint32,
+        bytes32,
+        bytes calldata
+    ) public pure returns (bytes32) {
         return bytes32(fee);
     }
 
-    function quoteDispatch(uint32, bytes32, bytes calldata, bytes calldata, address) public pure returns (bytes32) {
+    function quoteDispatch(
+        uint32,
+        bytes32,
+        bytes calldata,
+        bytes calldata,
+        address
+    ) public pure returns (bytes32) {
         return bytes32(fee);
     }
 }

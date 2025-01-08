@@ -72,8 +72,9 @@ contract IntentSource is IIntentSource {
 
         uint256 chainID = block.chainid;
         bytes32 _nonce = keccak256(abi.encode(counter, chainID));
-        bytes32 intermediateHash =
-            keccak256(abi.encode(chainID, _destinationChainID, _targets, _data, _expiryTime, _nonce));
+        bytes32 intermediateHash = keccak256(
+            abi.encode(chainID, _destinationChainID, _targets, _data, _expiryTime, _nonce)
+        );
         bytes32 intentHash = keccak256(abi.encode(_inbox, intermediateHash));
 
         intents[intentHash] = Intent({
@@ -94,7 +95,11 @@ contract IntentSource is IIntentSource {
         counter += 1;
 
         for (uint256 i = 0; i < len; i++) {
-            IERC20(_rewardTokens[i]).safeTransferFrom(msg.sender, address(this), _rewardAmounts[i]);
+            IERC20(_rewardTokens[i]).safeTransferFrom(
+                msg.sender,
+                address(this),
+                _rewardAmounts[i]
+            );
         }
 
         return intentHash;
@@ -139,11 +144,14 @@ contract IntentSource is IIntentSource {
             emit Withdrawal(_hash, withdrawTo);
             uint256 len = intent.rewardTokens.length;
             for (uint256 i = 0; i < len; i++) {
-                IERC20(intent.rewardTokens[i]).safeTransfer(withdrawTo, intent.rewardAmounts[i]);
+                IERC20(intent.rewardTokens[i]).safeTransfer(
+                    withdrawTo,
+                    intent.rewardAmounts[i]
+                );
             }
             uint256 nativeReward = intent.rewardNative;
             if (nativeReward > 0) {
-                (bool success,) = payable(withdrawTo).call{value: nativeReward}("");
+                (bool success, ) = payable(withdrawTo).call{value: nativeReward}("");
                 require(success, "Native transfer failed.");
             }
         } else {
@@ -198,7 +206,7 @@ contract IntentSource is IIntentSource {
         }
         safeERC20Transfer(erc20, _claimant, balance);
         if (nativeRewards > 0) {
-            (bool success,) = payable(_claimant).call{value: nativeRewards}("");
+            (bool success, ) = payable(_claimant).call{value: nativeRewards}("");
             require(success, "Native transfer failed.");
         }
     }

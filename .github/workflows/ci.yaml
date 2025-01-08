@@ -32,6 +32,20 @@ jobs:
         with:
           cmd: format # will run `yarn format` command
 
+      - name: Check for changes
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo Following files are changed...
+            git status
+
+            echo Changes:
+            git diff
+
+            exit 1;
+          else
+            exit 0;
+          fi
+
   tests:
     name: Test Suite
     runs-on: ubuntu-latest

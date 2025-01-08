@@ -58,16 +58,20 @@ contract Prover is SimpleProver {
     IL1Block public l1BlockhashOracle;
 
     // map the chain id to ProverLibrary.ProvingMechanism to chain configuration
-    mapping(uint256 => mapping(ProverLibrary.ProvingMechanism => ProverLibrary.ChainConfiguration)) public
-        chainConfigurations;
+    mapping(uint256 => mapping(ProverLibrary.ProvingMechanism => ProverLibrary.ChainConfiguration))
+        public chainConfigurations;
 
     // Store the last ProverLibrary.BlockProof for each ChainId
-    mapping(uint256 => mapping(ProverLibrary.SettlementType => ProverLibrary.BlockProof)) public provenStates;
+    mapping(uint256 => mapping(ProverLibrary.SettlementType => ProverLibrary.BlockProof))
+        public provenStates;
 
-    constructor(ProverLibrary.ChainConfigurationConstructor[] memory _chainConfigurations) {
+    constructor(
+        ProverLibrary.ChainConfigurationConstructor[] memory _chainConfigurations
+    ) {
         for (uint256 i = 0; i < _chainConfigurations.length; ++i) {
             _setChainConfiguration(
-                _chainConfigurations[i].chainConfigurationKey, _chainConfigurations[i].chainConfiguration
+                _chainConfigurations[i].chainConfigurationKey,
+                _chainConfigurations[i].chainConfiguration
             );
         }
     }
@@ -76,18 +80,30 @@ contract Prover is SimpleProver {
         return Semver.version();
     }
 
-    function proveStorageBytes32(bytes memory _key, bytes32 _val, bytes[] memory _proof, bytes32 _root) public pure {
+    function proveStorageBytes32(
+        bytes memory _key,
+        bytes32 _val,
+        bytes[] memory _proof,
+        bytes32 _root
+    ) public pure {
         ProverLibrary.proveStorageBytes32(_key, _val, _proof, _root);
     }
 
-    function proveStorage(bytes memory _key, bytes memory _val, bytes[] memory _proof, bytes32 _root) public pure {
+    function proveStorage(
+        bytes memory _key,
+        bytes memory _val,
+        bytes[] memory _proof,
+        bytes32 _root
+    ) public pure {
         ProverLibrary.proveStorage(_key, _val, _proof, _root);
     }
 
-    function proveAccount(bytes memory _address, bytes memory _data, bytes[] memory _proof, bytes32 _root)
-        public
-        pure
-    {
+    function proveAccount(
+        bytes memory _address,
+        bytes memory _data,
+        bytes[] memory _proof,
+        bytes32 _root
+    ) public pure {
         ProverLibrary.proveAccount(_address, _data, _proof, _root);
     }
 
@@ -97,7 +113,11 @@ contract Prover is SimpleProver {
     /// @param _gameProxy The game proxy address.
     /// @return gameId_ The packed GameId.
 
-    function pack(uint32 _gameType, uint64 _timestamp, address _gameProxy) public pure returns (bytes32 gameId_) {
+    function pack(
+        uint32 _gameType,
+        uint64 _timestamp,
+        address _gameProxy
+    ) public pure returns (bytes32 gameId_) {
         return ProverLibrary.pack(_gameType, _timestamp, _gameProxy);
     }
 
@@ -106,7 +126,9 @@ contract Prover is SimpleProver {
     /// @return gameType_ The game type.
     /// @return timestamp_ The timestamp of the game's creation.
     /// @return gameProxy_ The game proxy address.
-    function unpack(bytes32 _gameId) public pure returns (uint32 gameType_, uint64 timestamp_, address gameProxy_) {
+    function unpack(
+        bytes32 _gameId
+    ) public pure returns (uint32 gameType_, uint64 timestamp_, address gameProxy_) {
         return ProverLibrary.unpack(_gameId);
     }
 
@@ -117,9 +139,14 @@ contract Prover is SimpleProver {
         bool initialized,
         bool l2BlockNumberChallenged
     ) public pure returns (bytes32 gameStatusStorageSlotRLP) {
-        return ProverLibrary.assembleGameStatusStorage(
-            createdAt, resolvedAt, gameStatus, initialized, l2BlockNumberChallenged
-        );
+        return
+            ProverLibrary.assembleGameStatusStorage(
+                createdAt,
+                resolvedAt,
+                gameStatus,
+                initialized,
+                l2BlockNumberChallenged
+            );
     }
 
     function getProofType() external pure override returns (ProofType) {
@@ -130,7 +157,9 @@ contract Prover is SimpleProver {
         ProverLibrary.ChainConfigurationKey memory chainConfigurationKey,
         ProverLibrary.ChainConfiguration memory chainConfiguration
     ) internal {
-        chainConfigurations[chainConfigurationKey.chainId][chainConfigurationKey.provingMechanism] = chainConfiguration;
+        chainConfigurations[chainConfigurationKey.chainId][
+            chainConfigurationKey.provingMechanism
+        ] = chainConfiguration;
         if (chainConfigurationKey.chainId == block.chainid) {
             l1BlockhashOracle = IL1Block(chainConfiguration.blockhashOracle);
         }
@@ -138,7 +167,9 @@ contract Prover is SimpleProver {
 
     // Expose some Library Functions
     // helper function for getting all rlp data encoded
-    function rlpEncodeDataLibList(bytes[] memory dataList) public pure returns (bytes memory) {
+    function rlpEncodeDataLibList(
+        bytes[] memory dataList
+    ) public pure returns (bytes memory) {
         return ProverLibrary.rlpEncodeDataLibList(dataList);
     }
 
@@ -152,25 +183,44 @@ contract Prover is SimpleProver {
      * in that block represents a valid state.
      */
     function proveSelfState(bytes calldata rlpEncodedBlockData) public {
-        if (!chainConfigurations[block.chainid][ProverLibrary.ProvingMechanism.Self].exists) {
-            revert ProverLibrary.InvalidDestinationProvingMechanism(block.chainid, ProverLibrary.ProvingMechanism.Self);
+        if (
+            !chainConfigurations[block.chainid][ProverLibrary.ProvingMechanism.Self]
+                .exists
+        ) {
+            revert ProverLibrary.InvalidDestinationProvingMechanism(
+                block.chainid,
+                ProverLibrary.ProvingMechanism.Self
+            );
         }
         ProverLibrary.BlockProof memory blockProof = ProverLibrary.BlockProof({
-            blockNumber: ProverLibrary.bytesToUint(RLPReader.readBytes(RLPReader.readList(rlpEncodedBlockData)[8])),
+            blockNumber: ProverLibrary.bytesToUint(
+                RLPReader.readBytes(RLPReader.readList(rlpEncodedBlockData)[8])
+            ),
             blockHash: keccak256(rlpEncodedBlockData),
-            stateRoot: bytes32(RLPReader.readBytes(RLPReader.readList(rlpEncodedBlockData)[3]))
+            stateRoot: bytes32(
+                RLPReader.readBytes(RLPReader.readList(rlpEncodedBlockData)[3])
+            )
         });
         require(
             blockhash(blockProof.blockNumber) == blockProof.blockHash,
             "blockhash is not in last 256 blocks for this chain"
         );
-        ProverLibrary.BlockProof memory existingBlockProof =
-            provenStates[block.chainid][ProverLibrary.SettlementType.Confirmed];
+        ProverLibrary.BlockProof memory existingBlockProof = provenStates[block.chainid][
+            ProverLibrary.SettlementType.Confirmed
+        ];
         if (existingBlockProof.blockNumber < blockProof.blockNumber) {
-            provenStates[block.chainid][ProverLibrary.SettlementType.Confirmed] = blockProof;
-            emit ProverLibrary.SelfStateProven(blockProof.blockNumber, blockProof.stateRoot);
+            provenStates[block.chainid][
+                ProverLibrary.SettlementType.Confirmed
+            ] = blockProof;
+            emit ProverLibrary.SelfStateProven(
+                blockProof.blockNumber,
+                blockProof.stateRoot
+            );
         } else {
-            revert ProverLibrary.OutdatedBlock(blockProof.blockNumber, existingBlockProof.blockNumber);
+            revert ProverLibrary.OutdatedBlock(
+                blockProof.blockNumber,
+                existingBlockProof.blockNumber
+            );
         }
     }
 
@@ -184,31 +234,55 @@ contract Prover is SimpleProver {
      */
     function proveSettlementLayerState(bytes calldata rlpEncodedBlockData) public {
         uint256 settlementChainId = 0;
-        if (chainConfigurations[block.chainid][ProverLibrary.ProvingMechanism.Cannon].exists) {
-            settlementChainId =
-                chainConfigurations[block.chainid][ProverLibrary.ProvingMechanism.Cannon].settlementChainId;
-        } else if (chainConfigurations[block.chainid][ProverLibrary.ProvingMechanism.Bedrock].exists) {
-            settlementChainId =
-                chainConfigurations[block.chainid][ProverLibrary.ProvingMechanism.Bedrock].settlementChainId;
+        if (
+            chainConfigurations[block.chainid][ProverLibrary.ProvingMechanism.Cannon]
+                .exists
+        ) {
+            settlementChainId = chainConfigurations[block.chainid][
+                ProverLibrary.ProvingMechanism.Cannon
+            ].settlementChainId;
+        } else if (
+            chainConfigurations[block.chainid][ProverLibrary.ProvingMechanism.Bedrock]
+                .exists
+        ) {
+            settlementChainId = chainConfigurations[block.chainid][
+                ProverLibrary.ProvingMechanism.Bedrock
+            ].settlementChainId;
         } else {
             revert ProverLibrary.NoSettlementChainConfigured(block.chainid);
         }
         if (keccak256(rlpEncodedBlockData) != l1BlockhashOracle.hash()) {
-            revert ProverLibrary.InvalidRLPEncodedBlock(keccak256(rlpEncodedBlockData), l1BlockhashOracle.hash());
+            revert ProverLibrary.InvalidRLPEncodedBlock(
+                keccak256(rlpEncodedBlockData),
+                l1BlockhashOracle.hash()
+            );
         }
 
         ProverLibrary.BlockProof memory blockProof = ProverLibrary.BlockProof({
-            blockNumber: ProverLibrary.bytesToUint(RLPReader.readBytes(RLPReader.readList(rlpEncodedBlockData)[8])),
+            blockNumber: ProverLibrary.bytesToUint(
+                RLPReader.readBytes(RLPReader.readList(rlpEncodedBlockData)[8])
+            ),
             blockHash: keccak256(rlpEncodedBlockData),
-            stateRoot: bytes32(RLPReader.readBytes(RLPReader.readList(rlpEncodedBlockData)[3]))
+            stateRoot: bytes32(
+                RLPReader.readBytes(RLPReader.readList(rlpEncodedBlockData)[3])
+            )
         });
-        ProverLibrary.BlockProof memory existingBlockProof =
-            provenStates[settlementChainId][ProverLibrary.SettlementType.Confirmed];
+        ProverLibrary.BlockProof memory existingBlockProof = provenStates[
+            settlementChainId
+        ][ProverLibrary.SettlementType.Confirmed];
         if (existingBlockProof.blockNumber < blockProof.blockNumber) {
-            provenStates[settlementChainId][ProverLibrary.SettlementType.Confirmed] = blockProof;
-            emit ProverLibrary.L1WorldStateProven(blockProof.blockNumber, blockProof.stateRoot);
+            provenStates[settlementChainId][
+                ProverLibrary.SettlementType.Confirmed
+            ] = blockProof;
+            emit ProverLibrary.L1WorldStateProven(
+                blockProof.blockNumber,
+                blockProof.stateRoot
+            );
         } else {
-            revert ProverLibrary.OutdatedBlock(blockProof.blockNumber, existingBlockProof.blockNumber);
+            revert ProverLibrary.OutdatedBlock(
+                blockProof.blockNumber,
+                existingBlockProof.blockNumber
+            );
         }
     }
 
@@ -233,21 +307,32 @@ contract Prover is SimpleProver {
         bytes32 l2WorldStateRoot
     ) public {
         //TODO : Currently we only have L3 that run bedrock moving forward we should support other L3 proving mechanisms
-        uint256 l2settlementChainId =
-            chainConfigurations[block.chainid][ProverLibrary.ProvingMechanism.Bedrock].settlementChainId;
-        uint256 settlementChainId =
-            chainConfigurations[l2settlementChainId][ProverLibrary.ProvingMechanism.Settlement].settlementChainId;
-        if (!chainConfigurations[settlementChainId][ProverLibrary.ProvingMechanism.SettlementL3].exists) {
+        uint256 l2settlementChainId = chainConfigurations[block.chainid][
+            ProverLibrary.ProvingMechanism.Bedrock
+        ].settlementChainId;
+        uint256 settlementChainId = chainConfigurations[l2settlementChainId][
+            ProverLibrary.ProvingMechanism.Settlement
+        ].settlementChainId;
+        if (
+            !chainConfigurations[settlementChainId][
+                ProverLibrary.ProvingMechanism.SettlementL3
+            ].exists
+        ) {
             revert ProverLibrary.InvalidDestinationProvingMechanism(
-                settlementChainId, ProverLibrary.ProvingMechanism.SettlementL3
+                settlementChainId,
+                ProverLibrary.ProvingMechanism.SettlementL3
             );
         }
         // Check that the L2 block data hashes to the L1 block hash on L3
 
-        require(keccak256(l2RlpEncodedBlockData) == l1BlockhashOracle.hash(), "hash does not match block data");
+        require(
+            keccak256(l2RlpEncodedBlockData) == l1BlockhashOracle.hash(),
+            "hash does not match block data"
+        );
 
-        ProverLibrary.BlockProof memory existingBlockProof =
-            provenStates[settlementChainId][ProverLibrary.SettlementType.Confirmed];
+        ProverLibrary.BlockProof memory existingBlockProof = provenStates[
+            settlementChainId
+        ][ProverLibrary.SettlementType.Confirmed];
 
         // ProverLibrary.BlockProof memory l2blockProof = ProverLibrary.BlockProof({
         //     blockNumber: bytesToUint(RLPReader.readBytes(RLPReader.readList(l2RlpEncodedBlockData)[8])),
@@ -255,12 +340,18 @@ contract Prover is SimpleProver {
         //     stateRoot: bytes32(RLPReader.readBytes(RLPReader.readList(l2RlpEncodedBlockData)[3]))
         // });
         ProverLibrary.BlockProof memory l1blockProof = ProverLibrary.BlockProof({
-            blockNumber: ProverLibrary.bytesToUint(RLPReader.readBytes(RLPReader.readList(l1RlpEncodedBlockData)[8])),
+            blockNumber: ProverLibrary.bytesToUint(
+                RLPReader.readBytes(RLPReader.readList(l1RlpEncodedBlockData)[8])
+            ),
             blockHash: keccak256(l1RlpEncodedBlockData),
-            stateRoot: bytes32(RLPReader.readBytes(RLPReader.readList(l1RlpEncodedBlockData)[3]))
+            stateRoot: bytes32(
+                RLPReader.readBytes(RLPReader.readList(l1RlpEncodedBlockData)[3])
+            )
         });
         // bytes memory l2l1SlotNumber = abi.encodePacked(uint256(L1_BLOCK_ORACLE_BLOCK_HASH_SLOT_NUMBER));
-        bytes memory l2l1StorageStateRoot = RLPReader.readBytes(RLPReader.readList(rlpEncodedL2L1BlockData)[2]);
+        bytes memory l2l1StorageStateRoot = RLPReader.readBytes(
+            RLPReader.readList(rlpEncodedL2L1BlockData)[2]
+        );
         // Have valid L2 Block Hash, now prove the L1 block data
         // Need to do a storageProof of the L1BlockOracle on the L2 chain
         // showing that the L1Block passed is a valid block according to the L2 chains L1BlockOracle
@@ -279,10 +370,18 @@ contract Prover is SimpleProver {
             l2WorldStateRoot // L2WorldStateRoot
         );
         if (existingBlockProof.blockNumber < l1blockProof.blockNumber) {
-            provenStates[settlementChainId][ProverLibrary.SettlementType.Confirmed] = l1blockProof;
-            emit ProverLibrary.L1WorldStateProven(l1blockProof.blockNumber, l1blockProof.stateRoot);
+            provenStates[settlementChainId][
+                ProverLibrary.SettlementType.Confirmed
+            ] = l1blockProof;
+            emit ProverLibrary.L1WorldStateProven(
+                l1blockProof.blockNumber,
+                l1blockProof.stateRoot
+            );
         } else {
-            revert ProverLibrary.OutdatedBlock(l1blockProof.blockNumber, existingBlockProof.blockNumber);
+            revert ProverLibrary.OutdatedBlock(
+                l1blockProof.blockNumber,
+                existingBlockProof.blockNumber
+            );
         }
     }
 
@@ -309,36 +408,65 @@ contract Prover is SimpleProver {
         bytes[] calldata l1AccountProof,
         bytes32 l1WorldStateRoot
     ) public virtual {
-        if (!chainConfigurations[chainId][ProverLibrary.ProvingMechanism.Bedrock].exists) {
-            revert ProverLibrary.InvalidDestinationProvingMechanism(chainId, ProverLibrary.ProvingMechanism.Bedrock);
+        if (
+            !chainConfigurations[chainId][ProverLibrary.ProvingMechanism.Bedrock].exists
+        ) {
+            revert ProverLibrary.InvalidDestinationProvingMechanism(
+                chainId,
+                ProverLibrary.ProvingMechanism.Bedrock
+            );
         }
         ProverLibrary.BlockProofKey memory existingSettlementBlockProofKey;
         ProverLibrary.BlockProof memory existingSettlementBlockProof;
         ProverLibrary.ChainConfiguration memory chainConfiguration;
-        (chainConfiguration, existingSettlementBlockProofKey, existingSettlementBlockProof) = ProverLibrary
-            .getProvenState(chainId, ProverLibrary.ProvingMechanism.Bedrock, chainConfigurations, provenStates);
+        (
+            chainConfiguration,
+            existingSettlementBlockProofKey,
+            existingSettlementBlockProof
+        ) = ProverLibrary.getProvenState(
+            chainId,
+            ProverLibrary.ProvingMechanism.Bedrock,
+            chainConfigurations,
+            provenStates
+        );
         require(
-            existingSettlementBlockProof.stateRoot == l1WorldStateRoot, "settlement chain state root not yet proved"
+            existingSettlementBlockProof.stateRoot == l1WorldStateRoot,
+            "settlement chain state root not yet proved"
         );
         // check that the End Batch Block timestamp is greater than the current timestamp + finality delay
-        uint256 endBatchBlockTimeStamp =
-            ProverLibrary.bytesToUint(RLPReader.readBytes(RLPReader.readList(rlpEncodedBlockData)[11]));
+        uint256 endBatchBlockTimeStamp = ProverLibrary.bytesToUint(
+            RLPReader.readBytes(RLPReader.readList(rlpEncodedBlockData)[11])
+        );
 
         require(
-            block.timestamp > (endBatchBlockTimeStamp + chainConfiguration.finalityDelaySeconds),
+            block.timestamp >
+                (endBatchBlockTimeStamp + chainConfiguration.finalityDelaySeconds),
             "block before finality delay period"
         );
 
         bytes32 outputRoot = ProverLibrary.generateOutputRoot(
-            L2_OUTPUT_ROOT_VERSION_NUMBER, l2WorldStateRoot, l2MessagePasserStateRoot, keccak256(rlpEncodedBlockData)
+            L2_OUTPUT_ROOT_VERSION_NUMBER,
+            l2WorldStateRoot,
+            l2MessagePasserStateRoot,
+            keccak256(rlpEncodedBlockData)
         );
 
-        bytes32 outputRootStorageSlot =
-            bytes32(abi.encode((uint256(keccak256(abi.encode(L2_OUTPUT_SLOT_NUMBER))) + l2OutputIndex * 2)));
+        bytes32 outputRootStorageSlot = bytes32(
+            abi.encode(
+                (uint256(keccak256(abi.encode(L2_OUTPUT_SLOT_NUMBER))) +
+                    l2OutputIndex *
+                    2)
+            )
+        );
 
-        bytes memory outputOracleStateRoot = RLPReader.readBytes(RLPReader.readList(rlpEncodedOutputOracleData)[2]);
+        bytes memory outputOracleStateRoot = RLPReader.readBytes(
+            RLPReader.readList(rlpEncodedOutputOracleData)[2]
+        );
 
-        require(outputOracleStateRoot.length <= 32, "contract state root incorrectly encoded"); // ensure lossless casting to bytes32
+        require(
+            outputOracleStateRoot.length <= 32,
+            "contract state root incorrectly encoded"
+        ); // ensure lossless casting to bytes32
         ProverLibrary.proveStorage(
             abi.encodePacked(outputRootStorageSlot),
             bytes.concat(bytes1(uint8(0xa0)), abi.encodePacked(outputRoot)),
@@ -355,19 +483,29 @@ contract Prover is SimpleProver {
 
         // provenL2States[l2WorldStateRoot] = l2OutputIndex;
 
-        ProverLibrary.BlockProof memory existingBlockProof =
-            provenStates[chainId][ProverLibrary.SettlementType.Finalized];
+        ProverLibrary.BlockProof memory existingBlockProof = provenStates[chainId][
+            ProverLibrary.SettlementType.Finalized
+        ];
         ProverLibrary.BlockProof memory blockProof = ProverLibrary.BlockProof({
-            blockNumber: ProverLibrary.bytesToUint(RLPReader.readBytes(RLPReader.readList(rlpEncodedBlockData)[8])),
+            blockNumber: ProverLibrary.bytesToUint(
+                RLPReader.readBytes(RLPReader.readList(rlpEncodedBlockData)[8])
+            ),
             blockHash: keccak256(rlpEncodedBlockData),
             stateRoot: l2WorldStateRoot
         });
         if (existingBlockProof.blockNumber < blockProof.blockNumber) {
             provenStates[chainId][ProverLibrary.SettlementType.Finalized] = blockProof;
-            emit ProverLibrary.L2WorldStateProven(chainId, blockProof.blockNumber, blockProof.stateRoot);
+            emit ProverLibrary.L2WorldStateProven(
+                chainId,
+                blockProof.blockNumber,
+                blockProof.stateRoot
+            );
         } else {
             if (existingBlockProof.blockNumber > blockProof.blockNumber) {
-                revert ProverLibrary.OutdatedBlock(blockProof.blockNumber, existingBlockProof.blockNumber);
+                revert ProverLibrary.OutdatedBlock(
+                    blockProof.blockNumber,
+                    existingBlockProof.blockNumber
+                );
             }
         }
     }
@@ -403,17 +541,22 @@ contract Prover is SimpleProver {
 
         bytes32 disputeGameFactoryStorageSlot = bytes32(
             abi.encode(
-                (
-                    uint256(keccak256(abi.encode(L2_DISPUTE_GAME_FACTORY_LIST_SLOT_NUMBER)))
-                        + disputeGameFactoryProofData.gameIndex
-                )
+                (uint256(
+                    keccak256(abi.encode(L2_DISPUTE_GAME_FACTORY_LIST_SLOT_NUMBER))
+                ) + disputeGameFactoryProofData.gameIndex)
             )
         );
 
-        bytes memory disputeGameFactoryStateRoot =
-            RLPReader.readBytes(RLPReader.readList(disputeGameFactoryProofData.rlpEncodedDisputeGameFactoryData)[2]);
+        bytes memory disputeGameFactoryStateRoot = RLPReader.readBytes(
+            RLPReader.readList(
+                disputeGameFactoryProofData.rlpEncodedDisputeGameFactoryData
+            )[2]
+        );
 
-        require(disputeGameFactoryStateRoot.length <= 32, "contract state root incorrectly encoded"); // ensure lossless casting to bytes32
+        require(
+            disputeGameFactoryStateRoot.length <= 32,
+            "contract state root incorrectly encoded"
+        ); // ensure lossless casting to bytes32
 
         ProverLibrary.proveStorage(
             abi.encodePacked(disputeGameFactoryStorageSlot),
@@ -429,7 +572,9 @@ contract Prover is SimpleProver {
             l1WorldStateRoot
         );
 
-        (,, address _faultDisputeGameProxyAddress) = ProverLibrary.unpack(disputeGameFactoryProofData.gameId);
+        (, , address _faultDisputeGameProxyAddress) = ProverLibrary.unpack(
+            disputeGameFactoryProofData.gameId
+        );
 
         return (_faultDisputeGameProxyAddress, _rootClaim);
     }
@@ -453,14 +598,20 @@ contract Prover is SimpleProver {
         bytes32 l1WorldStateRoot
     ) public {
         if (!chainConfigurations[chainId][ProverLibrary.ProvingMechanism.Cannon].exists) {
-            revert ProverLibrary.InvalidDestinationProvingMechanism(chainId, ProverLibrary.ProvingMechanism.Cannon);
+            revert ProverLibrary.InvalidDestinationProvingMechanism(
+                chainId,
+                ProverLibrary.ProvingMechanism.Cannon
+            );
         }
-        ProverLibrary.ChainConfiguration memory chainConfiguration =
-            chainConfigurations[chainId][ProverLibrary.ProvingMechanism.Cannon];
-        ProverLibrary.BlockProof memory existingSettlementBlockProof =
-            provenStates[chainConfiguration.settlementChainId][ProverLibrary.SettlementType.Confirmed];
+        ProverLibrary.ChainConfiguration memory chainConfiguration = chainConfigurations[
+            chainId
+        ][ProverLibrary.ProvingMechanism.Cannon];
+        ProverLibrary.BlockProof memory existingSettlementBlockProof = provenStates[
+            chainConfiguration.settlementChainId
+        ][ProverLibrary.SettlementType.Confirmed];
         require(
-            existingSettlementBlockProof.stateRoot == l1WorldStateRoot, "settlement chain state root not yet proved"
+            existingSettlementBlockProof.stateRoot == l1WorldStateRoot,
+            "settlement chain state root not yet proved"
         );
         // prove that the FaultDisputeGame was created by the Dispute Game Factory
         // require(provenL1States[l1WorldStateRoot] > 0, "l1 state root not yet proved");
@@ -469,26 +620,42 @@ contract Prover is SimpleProver {
         address faultDisputeGameProxyAddress;
 
         (faultDisputeGameProxyAddress, rootClaim) = _faultDisputeGameFromFactory(
-            chainConfiguration.settlementContract, l2WorldStateRoot, disputeGameFactoryProofData, l1WorldStateRoot
+            chainConfiguration.settlementContract,
+            l2WorldStateRoot,
+            disputeGameFactoryProofData,
+            l1WorldStateRoot
         );
 
         ProverLibrary.faultDisputeGameIsResolved(
-            rootClaim, faultDisputeGameProxyAddress, faultDisputeGameProofData, l1WorldStateRoot
+            rootClaim,
+            faultDisputeGameProxyAddress,
+            faultDisputeGameProofData,
+            l1WorldStateRoot
         );
 
-        ProverLibrary.BlockProof memory existingBlockProof =
-            provenStates[chainId][ProverLibrary.SettlementType.Finalized];
+        ProverLibrary.BlockProof memory existingBlockProof = provenStates[chainId][
+            ProverLibrary.SettlementType.Finalized
+        ];
         ProverLibrary.BlockProof memory blockProof = ProverLibrary.BlockProof({
-            blockNumber: ProverLibrary.bytesToUint(RLPReader.readBytes(RLPReader.readList(rlpEncodedBlockData)[8])),
+            blockNumber: ProverLibrary.bytesToUint(
+                RLPReader.readBytes(RLPReader.readList(rlpEncodedBlockData)[8])
+            ),
             blockHash: keccak256(rlpEncodedBlockData),
             stateRoot: l2WorldStateRoot
         });
         if (existingBlockProof.blockNumber < blockProof.blockNumber) {
             provenStates[chainId][ProverLibrary.SettlementType.Finalized] = blockProof;
-            emit ProverLibrary.L2WorldStateProven(chainId, blockProof.blockNumber, blockProof.stateRoot);
+            emit ProverLibrary.L2WorldStateProven(
+                chainId,
+                blockProof.blockNumber,
+                blockProof.stateRoot
+            );
         } else {
             if (existingBlockProof.blockNumber > blockProof.blockNumber) {
-                revert ProverLibrary.OutdatedBlock(blockProof.blockNumber, existingBlockProof.blockNumber);
+                revert ProverLibrary.OutdatedBlock(
+                    blockProof.blockNumber,
+                    existingBlockProof.blockNumber
+                );
             }
         }
     }
@@ -515,8 +682,13 @@ contract Prover is SimpleProver {
         bytes32 l2WorldStateRoot
     ) public {
         // ProverLibrary.ChainConfiguration memory chainConfiguration = chainConfigurations[chainId];
-        ProverLibrary.BlockProof memory existingBlockProof = provenStates[chainId][settlementType];
-        require(existingBlockProof.stateRoot == l2WorldStateRoot, "destination chain state root not yet proved");
+        ProverLibrary.BlockProof memory existingBlockProof = provenStates[chainId][
+            settlementType
+        ];
+        require(
+            existingBlockProof.stateRoot == l2WorldStateRoot,
+            "destination chain state root not yet proved"
+        );
 
         bytes32 intentHash = keccak256(abi.encode(inboxContract, intermediateHash));
 
@@ -527,7 +699,9 @@ contract Prover is SimpleProver {
             )
         );
 
-        bytes memory inboxStateRoot = RLPReader.readBytes(RLPReader.readList(rlpEncodedInboxData)[2]);
+        bytes memory inboxStateRoot = RLPReader.readBytes(
+            RLPReader.readList(rlpEncodedInboxData)[2]
+        );
 
         require(inboxStateRoot.length <= 32, "contract state root incorrectly encoded"); // ensure lossless casting to bytes32
 
@@ -541,7 +715,10 @@ contract Prover is SimpleProver {
 
         // proves that the inbox data corresponds to the l2worldstate
         ProverLibrary.proveAccount(
-            abi.encodePacked(inboxContract), rlpEncodedInboxData, l2AccountProof, l2WorldStateRoot
+            abi.encodePacked(inboxContract),
+            rlpEncodedInboxData,
+            l2AccountProof,
+            l2WorldStateRoot
         );
 
         provenIntents[intentHash] = claimant;
