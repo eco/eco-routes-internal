@@ -7,6 +7,12 @@ import "../../types/EIP7683.sol";
 /// @title IOriginSettler
 /// @notice Standard interface for settlement contracts on the origin chain
 interface IOriginSettler {
+
+    /// @notice Signals that an order has been opened
+    /// @param orderId a unique order identifier within this settlement system
+    /// @param resolvedOrder resolved order that would be returned by resolve if called instead of Open
+    event Open(bytes32 indexed orderId, ResolvedCrossChainOrder resolvedOrder);
+    
 	/// @notice Opens a gasless cross-chain order on behalf of a user.
 	/// @dev To be called by the filler.
 	/// @dev This method must emit the Open event
