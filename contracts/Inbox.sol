@@ -319,6 +319,10 @@ contract Inbox is IInbox, Ownable {
         bytes32 routeHash = keccak256(abi.encode(_route));
         bytes32 intentHash = keccak256(abi.encodePacked(routeHash, _rewardHash));
 
+        if (_route.inbox != address(this)) {
+            revert InvalidInbox(_route.inbox);
+        }
+
         if (intentHash != _expectedHash) {
             revert InvalidHash(_expectedHash);
         }
