@@ -7,16 +7,33 @@ import {Route} from "../types/Intent.sol";
 
 interface IInbox is ISemver {
     // Event emitted when an intent is succesfully fulfilled
-    event Fulfillment(bytes32 indexed _hash, uint256 indexed _sourceChainID, address indexed _claimant);
+    event Fulfillment(
+        bytes32 indexed _hash,
+        uint256 indexed _sourceChainID,
+        address indexed _claimant
+    );
 
     // Event emitted when an intent is ready to be proven via a storage prover
-    event ToBeProven(bytes32 indexed _hash, uint256 indexed _sourceChainID, address indexed _claimant);
+    event ToBeProven(
+        bytes32 indexed _hash,
+        uint256 indexed _sourceChainID,
+        address indexed _claimant
+    );
 
     // Event emitted when an intent is fulfilled with the instant hyperprover path
-    event HyperInstantFulfillment(bytes32 indexed _hash, uint256 indexed _sourceChainID, address indexed _claimant);
+    event HyperInstantFulfillment(
+        bytes32 indexed _hash,
+        uint256 indexed _sourceChainID,
+        address indexed _claimant
+    );
 
     // Event emitted when an intent is added to a batch to be proven with the hyperprover
-    event AddToBatch(bytes32 indexed _hash, uint256 indexed _sourceChainID, address indexed _claimant, address _prover);
+    event AddToBatch(
+        bytes32 indexed _hash,
+        uint256 indexed _sourceChainID,
+        address indexed _claimant,
+        address _prover
+    );
 
     // Event emitted when solving is made public
     event SolvingIsPublic();
@@ -25,7 +42,10 @@ interface IInbox is ISemver {
     event MailboxSet(address indexed _mailbox);
 
     // Event emitted when a change is made to the solver whitelist
-    event SolverWhitelistChanged(address indexed _solver, bool indexed _canSolve);
+    event SolverWhitelistChanged(
+        address indexed _solver,
+        bool indexed _canSolve
+    );
 
     // Error thrown when solving intents is not public and a non-whitelisted address made a solve attempt
     error UnauthorizedSolveAttempt(address _solver);
@@ -46,7 +66,12 @@ interface IInbox is ISemver {
     error ZeroClaimant();
 
     // Error thrown when the intent call failed while itertating through the callAddresses
-    error IntentCallFailed(address _addr, bytes _data, uint256 value, bytes _returnData);
+    error IntentCallFailed(
+        address _addr,
+        bytes _data,
+        uint256 value,
+        bytes _returnData
+    );
 
     // Error thrown when a solver attempts to make a call to the hyperlane mailbox
     error CallToMailbox();
@@ -123,5 +148,9 @@ interface IInbox is ISemver {
      * @param _prover The prover against which these intents will be proven. Should be the same for all intents in a given batch
      * @param _intentHashes The array of intent hashes to be proven
      */
-    function sendBatch(uint256 _sourceChainID, address _prover, bytes32[] calldata _intentHashes) external payable;
+    function sendBatch(
+        uint256 _sourceChainID,
+        address _prover,
+        bytes32[] calldata _intentHashes
+    ) external payable;
 }

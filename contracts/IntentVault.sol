@@ -41,11 +41,17 @@ contract IntentVault {
                     IERC20(token).safeTransfer(claimant, balance);
                 }
             } else {
-                require(amount >= balance, "IntentVault: insufficient token balance");
+                require(
+                    amount >= balance,
+                    "IntentVault: insufficient token balance"
+                );
 
                 IERC20(token).safeTransfer(claimant, amount);
                 if (balance > amount) {
-                    IERC20(token).safeTransfer(reward.creator, balance - amount);
+                    IERC20(token).safeTransfer(
+                        reward.creator,
+                        balance - amount
+                    );
                 }
             }
         }
@@ -56,7 +62,9 @@ contract IntentVault {
                 "IntentVault: insufficient native balance"
             );
 
-            (bool success, ) = payable(claimant).call{value: reward.nativeValue}("");
+            (bool success, ) = payable(claimant).call{
+                value: reward.nativeValue
+            }("");
 
             require(success, "IntentVault: native reward transfer failed");
         }

@@ -90,7 +90,10 @@ interface IIntentSource is ISemver {
 
     function getIntentHash(
         Intent calldata intent
-    ) external pure returns (bytes32 intentHash, bytes32 routeHash, bytes32 rewardHash);
+    )
+        external
+        pure
+        returns (bytes32 intentHash, bytes32 routeHash, bytes32 rewardHash);
 
     function intentVaultAddress(
         Intent calldata intent
@@ -104,7 +107,10 @@ interface IIntentSource is ISemver {
      * @param fundReward whether to fund the reward or not
      * @return intentHash the hash of the intent
      */
-    function publishIntent(Intent calldata intent, bool fundReward) external payable returns (bytes32 intentHash);
+    function publishIntent(
+        Intent calldata intent,
+        bool fundReward
+    ) external payable returns (bytes32 intentHash);
 
     /**
      * @notice Validates an intent by checking that the intent's rewards are  valid.
@@ -117,16 +123,22 @@ interface IIntentSource is ISemver {
     /**
      * @notice allows withdrawal of reward funds locked up for a given intent
      * @param routeHash the hash of the route of the intent
-        * @param reward the reward struct of the intent
+     * @param reward the reward struct of the intent
      */
-    function withdrawRewards(bytes32 routeHash, Reward calldata reward) external;
+    function withdrawRewards(
+        bytes32 routeHash,
+        Reward calldata reward
+    ) external;
 
     /**
      * @notice allows withdrawal of reward funds locked up for a given intent
      * @param routeHashes the hashes of the routes of the intents
      * @param rewards the rewards struct of the intents
      */
-    function batchWithdraw(bytes32[] calldata routeHashes, Reward[] calldata rewards) external;
+    function batchWithdraw(
+        bytes32[] calldata routeHashes,
+        Reward[] calldata rewards
+    ) external;
 
     /**
      * @notice Refunds the rewards associated with an intent to its creator
@@ -134,5 +146,9 @@ interface IIntentSource is ISemver {
      * @param reward The reward of the intent
      * @param token Any specific token that could be wrongly sent to the vault
      */
-    function refundIntent(bytes32 routeHash, Reward calldata reward, address token) external;
+    function refundIntent(
+        bytes32 routeHash,
+        Reward calldata reward,
+        address token
+    ) external;
 }
