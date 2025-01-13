@@ -14,7 +14,7 @@ import {Semver} from "./libs/Semver.sol";
  * It validates that the hash is the hash of the other parameters, and then executes the calldata.
  * A prover can then claim the reward on the src chain by looking at the fulfilled mapping.
  */
-contract Inbox is IInbox, Ownable {
+contract Inbox is IInbox, Ownable, Semver {
     using TypeCasts for address;
 
     uint256 public constant MAX_BATCH_SIZE = 10;
@@ -48,10 +48,6 @@ contract Inbox is IInbox, Ownable {
             solverWhitelist[_solvers[i]] = true;
             emit SolverWhitelistChanged(_solvers[i], true);
         }
-    }
-
-    function version() external pure returns (string memory) {
-        return Semver.version();
     }
 
     /**

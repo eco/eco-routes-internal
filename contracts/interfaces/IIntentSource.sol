@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {ISemver} from "../libs/Semver.sol";
+import {ISemver} from "./ISemver.sol";
 
 import {Call, TokenAmount, Reward, Intent} from "../types/Intent.sol";
 

@@ -6,7 +6,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {IIntentSource} from "./interfaces/IIntentSource.sol";
-import {SimpleProver} from "./interfaces/SimpleProver.sol";
+import {BaseProver} from "./prover/BaseProver.sol";
 import {Intent, Reward, Route} from "./types/Intent.sol";
 import {Semver} from "./libs/Semver.sol";
 
@@ -19,7 +19,7 @@ import {IntentVault} from "./IntentVault.sol";
  * Its counterpart is the inbox contract that lives on the destination chain.
  * This contract makes a call to the prover contract (on the sourcez chain) in order to verify intent fulfillment.
  */
-contract IntentSource is IIntentSource {
+contract IntentSource is IIntentSource, Semver {
     using SafeERC20 for IERC20;
 
     // stores the intents
@@ -32,10 +32,6 @@ contract IntentSource is IIntentSource {
      * _counterStart the initial value of the counter
      */
     constructor() {}
-
-    function version() external pure returns (string memory) {
-        return Semver.version();
-    }
 
     function getClaimed(bytes32 intentHash) external view returns (address) {
         return claimed[intentHash];
@@ -155,7 +151,7 @@ contract IntentSource is IIntentSource {
         bytes32 rewardHash = keccak256(abi.encode(reward));
         bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
 
-        address claimant = SimpleProver(reward.prover).provenIntents(
+        address claimant = BaseProver(reward.prover).provenIntents(
             intentHash
         );
 

@@ -3,10 +3,10 @@ pragma solidity ^0.8.26;
 
 import {IMessageRecipient} from "@hyperlane-xyz/core/contracts/interfaces/IMessageRecipient.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
-import {SimpleProver} from "./interfaces/SimpleProver.sol";
-import {Semver} from "./libs/Semver.sol";
+import {BaseProver} from "./BaseProver.sol";
+import {Semver} from "../libs/Semver.sol";
 
-contract HyperProver is IMessageRecipient, SimpleProver {
+contract HyperProver is IMessageRecipient, BaseProver, Semver {
     using TypeCasts for bytes32;
 
     ProofType public constant PROOF_TYPE = ProofType.Hyperlane;
@@ -46,10 +46,6 @@ contract HyperProver is IMessageRecipient, SimpleProver {
     constructor(address _mailbox, address _inbox) {
         MAILBOX = _mailbox;
         INBOX = _inbox;
-    }
-
-    function version() external pure returns (string memory) {
-        return Semver.version();
     }
 
     /**

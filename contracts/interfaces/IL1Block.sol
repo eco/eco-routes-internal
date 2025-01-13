@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
-import {ISemver} from "../libs/Semver.sol";
+
+import {ISemver} from "./ISemver.sol";
 
 interface IL1Block is ISemver {
     /// @notice The latest L1 block number known by the L2 system.

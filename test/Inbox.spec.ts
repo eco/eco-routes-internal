@@ -34,7 +34,7 @@ describe('Inbox Test', (): void => {
   let otherHash: string
   let calls: Call[]
   let otherCalls: Call[]
-  let dummyHyperProver: TestProver
+  let mockHyperProver: TestProver
   const nonce = ethers.encodeBytes32String('0x987')
   let erc20Address: string
   const timeDelta = 1000
@@ -441,7 +441,7 @@ describe('Inbox Test', (): void => {
   })
   describe('hyper proving', () => {
     beforeEach(async () => {
-      dummyHyperProver = await (
+      mockHyperProver = await (
         await ethers.getContractFactory('TestProver')
       ).deploy()
       await inbox.connect(owner).setMailbox(await mailbox.getAddress())
@@ -453,7 +453,7 @@ describe('Inbox Test', (): void => {
       expect(
         await inbox.fetchFee(
           sourceChainID,
-          ethers.zeroPadBytes(await dummyHyperProver.getAddress(), 32),
+          ethers.zeroPadBytes(await mockHyperProver.getAddress(), 32),
           calls[0].data,
           calls[0].data,
           ethers.ZeroAddress,
@@ -470,14 +470,14 @@ describe('Inbox Test', (): void => {
             rewardHash,
             dstAddr.address,
             intentHash,
-            await dummyHyperProver.getAddress(),
+            await mockHyperProver.getAddress(),
             {
               value:
                 Number(
                   await inbox.fetchFee(
                     sourceChainID,
                     ethers.zeroPadBytes(
-                      await dummyHyperProver.getAddress(),
+                      await mockHyperProver.getAddress(),
                       32,
                     ),
                     calls[0].data,
@@ -499,12 +499,12 @@ describe('Inbox Test', (): void => {
             rewardHash,
             dstAddr.address,
             intentHash,
-            await dummyHyperProver.getAddress(),
+            await mockHyperProver.getAddress(),
             {
               value: Number(
                 await inbox.fetchFee(
                   sourceChainID,
-                  ethers.zeroPadBytes(await dummyHyperProver.getAddress(), 32),
+                  ethers.zeroPadBytes(await mockHyperProver.getAddress(), 32),
                   calls[0].data,
                   calls[0].data,
                   ethers.ZeroAddress,
@@ -520,7 +520,7 @@ describe('Inbox Test', (): void => {
 
       expect(await mailbox.destinationDomain()).to.eq(sourceChainID)
       expect(await mailbox.recipientAddress()).to.eq(
-        ethers.zeroPadValue(await dummyHyperProver.getAddress(), 32),
+        ethers.zeroPadValue(await mockHyperProver.getAddress(), 32),
       )
       expect(await mailbox.messageBody()).to.eq(
         ethers.AbiCoder.defaultAbiCoder().encode(
@@ -540,14 +540,14 @@ describe('Inbox Test', (): void => {
             rewardHash,
             dstAddr.address,
             intentHash,
-            await dummyHyperProver.getAddress(),
+            await mockHyperProver.getAddress(),
             calls[0].data,
             relayerAddress,
             {
               value: Number(
                 await inbox.fetchFee(
                   sourceChainID,
-                  ethers.zeroPadBytes(await dummyHyperProver.getAddress(), 32),
+                  ethers.zeroPadBytes(await mockHyperProver.getAddress(), 32),
                   calls[0].data,
                   calls[0].data,
                   relayerAddress,
@@ -563,7 +563,7 @@ describe('Inbox Test', (): void => {
 
       expect(await mailbox.destinationDomain()).to.eq(sourceChainID)
       expect(await mailbox.recipientAddress()).to.eq(
-        ethers.zeroPadValue(await dummyHyperProver.getAddress(), 32),
+        ethers.zeroPadValue(await mockHyperProver.getAddress(), 32),
       )
       expect(await mailbox.messageBody()).to.eq(
         ethers.AbiCoder.defaultAbiCoder().encode(
@@ -585,7 +585,7 @@ describe('Inbox Test', (): void => {
             rewardHash,
             dstAddr.address,
             intentHash,
-            await dummyHyperProver.getAddress(),
+            await mockHyperProver.getAddress(),
           ),
       )
         .to.emit(inbox, 'Fulfillment')
@@ -595,7 +595,7 @@ describe('Inbox Test', (): void => {
           intentHash,
           sourceChainID,
           dstAddr.address,
-          await dummyHyperProver.getAddress(),
+          await mockHyperProver.getAddress(),
         )
 
       expect(await mailbox.dispatched()).to.be.false
@@ -603,7 +603,7 @@ describe('Inbox Test', (): void => {
     it('refunds solver when too much fee is sent', async () => {
       const fee = await inbox.fetchFee(
         sourceChainID,
-        ethers.zeroPadBytes(await dummyHyperProver.getAddress(), 32),
+        ethers.zeroPadBytes(await mockHyperProver.getAddress(), 32),
         calls[0].data,
         calls[0].data,
         ethers.ZeroAddress,
@@ -619,7 +619,7 @@ describe('Inbox Test', (): void => {
           rewardHash,
           dstAddr.address,
           intentHash,
-          await dummyHyperProver.getAddress(),
+          await mockHyperProver.getAddress(),
           {
             value: fee + excess,
           },
@@ -644,7 +644,7 @@ describe('Inbox Test', (): void => {
             .connect(solver)
             .sendBatch(
               sourceChainID,
-              await dummyHyperProver.getAddress(),
+              await mockHyperProver.getAddress(),
               hashes,
             ),
         ).to.be.revertedWithCustomError(inbox, 'BatchTooLarge')
@@ -660,7 +660,7 @@ describe('Inbox Test', (): void => {
             .connect(solver)
             .sendBatch(
               sourceChainID,
-              await dummyHyperProver.getAddress(),
+              await mockHyperProver.getAddress(),
               hashes,
             ),
         )
@@ -677,7 +677,7 @@ describe('Inbox Test', (): void => {
             rewardHash,
             dstAddr.address,
             intentHash,
-            await dummyHyperProver.getAddress(),
+            await mockHyperProver.getAddress(),
           )
         expect(await mailbox.dispatched()).to.be.false
         await expect(
@@ -685,7 +685,7 @@ describe('Inbox Test', (): void => {
             .connect(solver)
             .sendBatch(
               sourceChainID,
-              await dummyHyperProver.getAddress(),
+              await mockHyperProver.getAddress(),
               [intentHash],
               {
                 value:
@@ -693,7 +693,7 @@ describe('Inbox Test', (): void => {
                     await inbox.fetchFee(
                       sourceChainID,
                       ethers.zeroPadBytes(
-                        await dummyHyperProver.getAddress(),
+                        await mockHyperProver.getAddress(),
                         32,
                       ),
                       calls[0].data,
@@ -714,7 +714,7 @@ describe('Inbox Test', (): void => {
             .connect(solver)
             .sendBatch(
               sourceChainID,
-              await dummyHyperProver.getAddress(),
+              await mockHyperProver.getAddress(),
               [intentHash],
               {
                 value:
@@ -722,7 +722,7 @@ describe('Inbox Test', (): void => {
                     await inbox.fetchFee(
                       sourceChainID,
                       ethers.zeroPadBytes(
-                        await dummyHyperProver.getAddress(),
+                        await mockHyperProver.getAddress(),
                         32,
                       ),
                       calls[0].data,
@@ -750,7 +750,7 @@ describe('Inbox Test', (): void => {
             rewardHash,
             dstAddr.address,
             intentHash,
-            await dummyHyperProver.getAddress(),
+            await mockHyperProver.getAddress(),
           )
         expect(await mailbox.dispatched()).to.be.false
         await expect(
@@ -758,14 +758,14 @@ describe('Inbox Test', (): void => {
             .connect(solver)
             .sendBatch(
               sourceChainID,
-              await dummyHyperProver.getAddress(),
+              await mockHyperProver.getAddress(),
               [intentHash],
               {
                 value: Number(
                   await inbox.fetchFee(
                     sourceChainID,
                     ethers.zeroPadBytes(
-                      await dummyHyperProver.getAddress(),
+                      await mockHyperProver.getAddress(),
                       32,
                     ),
                     calls[0].data,
@@ -778,7 +778,7 @@ describe('Inbox Test', (): void => {
         ).to.not.be.reverted
         expect(await mailbox.destinationDomain()).to.eq(sourceChainID)
         expect(await mailbox.recipientAddress()).to.eq(
-          ethers.zeroPadValue(await dummyHyperProver.getAddress(), 32),
+          ethers.zeroPadValue(await mockHyperProver.getAddress(), 32),
         )
         expect(await mailbox.messageBody()).to.eq(
           ethers.AbiCoder.defaultAbiCoder().encode(
@@ -798,7 +798,7 @@ describe('Inbox Test', (): void => {
             rewardHash,
             dstAddr.address,
             intentHash,
-            await dummyHyperProver.getAddress(),
+            await mockHyperProver.getAddress(),
           )
         expect(await mailbox.dispatched()).to.be.false
         await expect(
@@ -806,7 +806,7 @@ describe('Inbox Test', (): void => {
             .connect(solver)
             .sendBatchWithRelayer(
               sourceChainID,
-              await dummyHyperProver.getAddress(),
+              await mockHyperProver.getAddress(),
               [intentHash],
               calls[0].data,
               relayerAddress,
@@ -815,7 +815,7 @@ describe('Inbox Test', (): void => {
                   await inbox.fetchFee(
                     sourceChainID,
                     ethers.zeroPadBytes(
-                      await dummyHyperProver.getAddress(),
+                      await mockHyperProver.getAddress(),
                       32,
                     ),
                     calls[0].data,
@@ -828,7 +828,7 @@ describe('Inbox Test', (): void => {
         ).to.not.be.reverted
         expect(await mailbox.destinationDomain()).to.eq(sourceChainID)
         expect(await mailbox.recipientAddress()).to.eq(
-          ethers.zeroPadValue(await dummyHyperProver.getAddress(), 32),
+          ethers.zeroPadValue(await mockHyperProver.getAddress(), 32),
         )
         expect(await mailbox.messageBody()).to.eq(
           ethers.AbiCoder.defaultAbiCoder().encode(
@@ -849,7 +849,7 @@ describe('Inbox Test', (): void => {
             rewardHash,
             dstAddr.address,
             intentHash,
-            await dummyHyperProver.getAddress(),
+            await mockHyperProver.getAddress(),
           )
         const newTokenAmount = 12345
         const newTimeDelta = 1123
@@ -875,7 +875,7 @@ describe('Inbox Test', (): void => {
             rewardHash,
             dstAddr.address,
             otherHash,
-            await dummyHyperProver.getAddress(),
+            await mockHyperProver.getAddress(),
           )
         expect(await mailbox.dispatched()).to.be.false
 
@@ -884,14 +884,14 @@ describe('Inbox Test', (): void => {
             .connect(solver)
             .sendBatch(
               sourceChainID,
-              await dummyHyperProver.getAddress(),
+              await mockHyperProver.getAddress(),
               [intentHash, otherHash],
               {
                 value: Number(
                   await inbox.fetchFee(
                     sourceChainID,
                     ethers.zeroPadBytes(
-                      await dummyHyperProver.getAddress(),
+                      await mockHyperProver.getAddress(),
                       32,
                     ),
                     otherCalls[0].data,
@@ -904,7 +904,7 @@ describe('Inbox Test', (): void => {
         ).to.not.be.reverted
         expect(await mailbox.destinationDomain()).to.eq(sourceChainID)
         expect(await mailbox.recipientAddress()).to.eq(
-          ethers.zeroPadValue(await dummyHyperProver.getAddress(), 32),
+          ethers.zeroPadValue(await mockHyperProver.getAddress(), 32),
         )
         expect(await mailbox.messageBody()).to.eq(
           ethers.AbiCoder.defaultAbiCoder().encode(

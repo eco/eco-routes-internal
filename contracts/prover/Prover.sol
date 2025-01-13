@@ -4,11 +4,11 @@ pragma solidity ^0.8.26;
 import {SecureMerkleTrie} from "@eth-optimism/contracts-bedrock/src/libraries/trie/SecureMerkleTrie.sol";
 import {RLPReader} from "@eth-optimism/contracts-bedrock/src/libraries/rlp/RLPReader.sol";
 import {RLPWriter} from "@eth-optimism/contracts-bedrock/src/libraries/rlp/RLPWriter.sol";
-import {IL1Block} from "./interfaces/IL1Block.sol";
-import {SimpleProver} from "./interfaces/SimpleProver.sol";
-import {Semver} from "./libs/Semver.sol";
+import {IL1Block} from "../interfaces/IL1Block.sol";
+import {BaseProver} from "./BaseProver.sol";
+import {Semver} from "../libs/Semver.sol";
 
-contract Prover is SimpleProver {
+contract Prover is BaseProver, Semver {
     ProofType public constant PROOF_TYPE = ProofType.Storage;
 
     // Output slot for Bedrock L2_OUTPUT_ORACLE where Settled Batches are stored
@@ -256,10 +256,6 @@ contract Prover is SimpleProver {
                 _chainConfigurations[i].chainConfiguration
             );
         }
-    }
-
-    function version() external pure returns (string memory) {
-        return Semver.version();
     }
 
     function getProofType() external pure override returns (ProofType) {
