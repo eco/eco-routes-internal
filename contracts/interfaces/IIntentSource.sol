@@ -53,29 +53,40 @@ interface IIntentSource is ISemver {
 
     /**
      * @notice emitted on a successful call to createIntent
-     * @param hash the hash of the intent, also the key to the intents mapping
-     * @param nonce the nonce provided by the creator
-     * @param destination the destination chain
-     * @param inbox the inbox contract on the destination chain
-     * @param calls the instructions
-     * @param creator the address that created the intent
-     * @param prover the prover contract address for the intent
-     * @param expiryTime the time by which the storage proof must have been created in order for the solver to redeem rewards.
-     * @param nativeValue the amount of native tokens offered as reward
-     * @param tokens the reward tokens and amounts
+     * @param hash The hash of the intent, also the key to the intents mapping
+     * @param salt The nonce provided by the creator
+     * @param destination The destination chain
+     * @param inbox The inbox contract on the destination chain
+     * @param calls The instructions
+     * @param creator The address that created the intent
+     * @param prover The prover contract address for the intent
+     * @param deadline The time by which the intent must be fulfilled in order to claim the reward
+     * @param nativeValue The amount of native tokens offered as reward
+     * @param tokens The reward tokens and amounts
      */
     event IntentCreated(
         bytes32 indexed hash,
-        bytes32 nonce,
+        bytes32 salt,
+        uint256 source,
         uint256 destination,
         address inbox,
         Call[] calls,
         address indexed creator,
         address indexed prover,
-        uint256 expiryTime,
+        uint256 deadline,
         uint256 nativeValue,
         TokenAmount[] tokens
     );
+
+    enum ClaimStatus {
+        NotClaimed,
+        Claimed
+    }
+
+    struct ClaimState {
+        address claimant;
+        uint8 status;
+    }
 
     /**
      * @notice emitted on successful call to withdraw
@@ -84,7 +95,9 @@ interface IIntentSource is ISemver {
      */
     event Withdrawal(bytes32 _hash, address indexed _recipient);
 
-    function getClaimed(bytes32 intentHash) external view returns (address);
+    function getClaim(
+        bytes32 intentHash
+    ) external view returns (ClaimState memory);
 
     function getVaultRefundToken() external view returns (address);
 

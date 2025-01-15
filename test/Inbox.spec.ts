@@ -16,7 +16,7 @@ import {
   Route,
   Reward,
   Intent,
-} from './utils'
+} from '../utils/intent'
 
 describe('Inbox Test', (): void => {
   let inbox: Inbox
@@ -35,7 +35,7 @@ describe('Inbox Test', (): void => {
   let calls: Call[]
   let otherCalls: Call[]
   let mockHyperProver: TestProver
-  const nonce = ethers.encodeBytes32String('0x987')
+  const salt = ethers.encodeBytes32String('0x987')
   let erc20Address: string
   const timeDelta = 1000
   const mintAmount = 1000
@@ -96,7 +96,7 @@ describe('Inbox Test', (): void => {
       },
     ]
     const _route = {
-      nonce,
+      salt,
       source: sourceChainID,
       destination: Number((await owner.provider.getNetwork()).chainId),
       inbox: await inbox.getAddress(),
@@ -107,7 +107,7 @@ describe('Inbox Test', (): void => {
     const _reward = {
       creator: solver.address,
       prover: solver.address,
-      expiryTime: _timestamp,
+      deadline: _timestamp,
       nativeValue: 0n,
       tokens: [
         {
@@ -161,7 +161,7 @@ describe('Inbox Test', (): void => {
     const _timestamp = (await time.latest()) + timeDelta
 
     const _route: Route = {
-      nonce,
+      salt,
       source: sourceChainID,
       destination: Number((await owner.provider.getNetwork()).chainId),
       inbox: await inbox.getAddress(),
@@ -170,7 +170,7 @@ describe('Inbox Test', (): void => {
     const _reward: Reward = {
       creator: solver.address,
       prover: solver.address,
-      expiryTime: _timestamp,
+      deadline: _timestamp,
       nativeValue: BigInt(amount),
       tokens: [],
     }
@@ -476,10 +476,7 @@ describe('Inbox Test', (): void => {
                 Number(
                   await inbox.fetchFee(
                     sourceChainID,
-                    ethers.zeroPadBytes(
-                      await mockHyperProver.getAddress(),
-                      32,
-                    ),
+                    ethers.zeroPadBytes(await mockHyperProver.getAddress(), 32),
                     calls[0].data,
                     calls[0].data,
                     ethers.ZeroAddress,
@@ -764,10 +761,7 @@ describe('Inbox Test', (): void => {
                 value: Number(
                   await inbox.fetchFee(
                     sourceChainID,
-                    ethers.zeroPadBytes(
-                      await mockHyperProver.getAddress(),
-                      32,
-                    ),
+                    ethers.zeroPadBytes(await mockHyperProver.getAddress(), 32),
                     calls[0].data,
                     calls[0].data,
                     ethers.ZeroAddress,
@@ -814,10 +808,7 @@ describe('Inbox Test', (): void => {
                 value: Number(
                   await inbox.fetchFee(
                     sourceChainID,
-                    ethers.zeroPadBytes(
-                      await mockHyperProver.getAddress(),
-                      32,
-                    ),
+                    ethers.zeroPadBytes(await mockHyperProver.getAddress(), 32),
                     calls[0].data,
                     calls[0].data,
                     ethers.ZeroAddress,
@@ -890,10 +881,7 @@ describe('Inbox Test', (): void => {
                 value: Number(
                   await inbox.fetchFee(
                     sourceChainID,
-                    ethers.zeroPadBytes(
-                      await mockHyperProver.getAddress(),
-                      32,
-                    ),
+                    ethers.zeroPadBytes(await mockHyperProver.getAddress(), 32),
                     otherCalls[0].data,
                     otherCalls[0].data,
                     ethers.ZeroAddress,

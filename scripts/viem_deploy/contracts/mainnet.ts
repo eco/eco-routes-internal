@@ -1,7 +1,7 @@
-import Prover from '../../../artifacts/contracts/Prover.sol/Prover.json'
+import Prover from '../../../artifacts/contracts/prover/Prover.sol/Prover.json'
 import IntentSource from '../../../artifacts/contracts/IntentSource.sol/IntentSource.json'
 import Inbox from '../../../artifacts/contracts/Inbox.sol/Inbox.json'
-import HyperProver from '../../../artifacts/contracts/HyperProver.sol/HyperProver.json'
+import HyperProver from '../../../artifacts/contracts/prover/HyperProver.sol/HyperProver.json'
 import { MainnetChainConfigs } from '../../configs/chain.config'
 import { Hex } from 'viem'
 

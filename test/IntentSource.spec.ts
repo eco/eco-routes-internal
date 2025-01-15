@@ -3,18 +3,19 @@ import { expect } from 'chai'
 import { ethers } from 'hardhat'
 import { TestERC20, IntentSource, TestProver, Inbox } from '../typechain-types'
 import { time, loadFixture } from '@nomicfoundation/hardhat-network-helpers'
-import { keccak256, BytesLike } from 'ethers'
+import { keccak256, BytesLike, ZeroAddress } from 'ethers'
 import { encodeIdentifier, encodeTransfer } from '../utils/encode'
 import {
   encodeReward,
   encodeRoute,
   hashIntent,
+  intentVaultAddress,
   Call,
   TokenAmount,
   Route,
   Reward,
   Intent,
-} from './utils'
+} from '../utils/intent'
 
 describe('Intent Source Test', (): void => {
   let intentSource: IntentSource
@@ -27,7 +28,7 @@ describe('Intent Source Test', (): void => {
   let otherPerson: SignerWithAddress
   const mintAmount: number = 1000
 
-  let nonce: BytesLike
+  let salt: BytesLike
   let chainId: number
   let calls: Call[]
   let expiry: number
@@ -106,12 +107,12 @@ describe('Intent Source Test', (): void => {
         { token: await tokenA.getAddress(), amount: mintAmount },
         { token: await tokenB.getAddress(), amount: mintAmount * 2 },
       ]
-      nonce = await encodeIdentifier(
+      salt = await encodeIdentifier(
         0,
         (await ethers.provider.getNetwork()).chainId,
       )
       route = {
-        nonce: nonce,
+        salt: salt,
         source: Number(
           (await intentSource.runner?.provider?.getNetwork())?.chainId,
         ),
@@ -122,7 +123,7 @@ describe('Intent Source Test', (): void => {
       reward = {
         creator: creator.address,
         prover: await prover.getAddress(),
-        expiryTime: expiry,
+        deadline: expiry,
         nativeValue: 0n,
         tokens: rewardTokens,
       }
@@ -131,6 +132,19 @@ describe('Intent Source Test', (): void => {
       intentHash = keccak256(
         ethers.solidityPacked(['bytes32', 'bytes32'], [routeHash, rewardHash]),
       )
+    })
+    it('computes valid intent vailt address', async () => {
+      const predictedVaultAddress = await intentVaultAddress(
+        await intentSource.getAddress(),
+        { route, reward },
+      )
+
+      const contractVaultAddress = await intentSource.intentVaultAddress({
+        route,
+        reward,
+      })
+
+      expect(contractVaultAddress).to.eq(predictedVaultAddress)
     })
     it('creates properly with erc20 rewards', async () => {
       await intentSource.connect(creator).publishIntent({ route, reward }, true)
@@ -199,7 +213,8 @@ describe('Intent Source Test', (): void => {
         .to.emit(intentSource, 'IntentCreated')
         .withArgs(
           intentHash,
-          nonce,
+          salt,
+          Number((await intentSource.runner?.provider?.getNetwork())?.chainId),
           chainId,
           await inbox.getAddress(),
           calls.map(Object.values),
@@ -214,7 +229,7 @@ describe('Intent Source Test', (): void => {
   describe('claiming rewards', async () => {
     beforeEach(async (): Promise<void> => {
       expiry = (await time.latest()) + 123
-      nonce = await encodeIdentifier(
+      salt = await encodeIdentifier(
         0,
         (await ethers.provider.getNetwork()).chainId,
       )
@@ -232,7 +247,7 @@ describe('Intent Source Test', (): void => {
       ]
 
       route = {
-        nonce: nonce,
+        salt: salt,
         source: Number(
           (await intentSource.runner?.provider?.getNetwork())?.chainId,
         ),
@@ -244,7 +259,7 @@ describe('Intent Source Test', (): void => {
       reward = {
         creator: creator.address,
         prover: await prover.getAddress(),
-        expiryTime: expiry,
+        deadline: expiry,
         nativeValue: rewardNativeEth,
         tokens: rewardTokens,
       }
@@ -318,6 +333,21 @@ describe('Intent Source Test', (): void => {
           intentSource.connect(otherPerson).withdrawRewards(routeHash, reward),
         ).to.be.revertedWithCustomError(intentSource, 'NothingToWithdraw')
       })
+      it('allows refund if already claimed', async () => {
+        expect(
+          intentSource.connect(otherPerson).withdrawRewards(routeHash, reward),
+        )
+          .to.emit(intentSource, 'Withdrawal')
+          .withArgs(intentHash, reward.creator)
+
+        await expect(
+          intentSource
+            .connect(otherPerson)
+            .refundIntent(routeHash, reward, ZeroAddress),
+        )
+          .to.emit(intentSource, 'Withdrawal')
+          .withArgs(intentHash, reward.creator)
+      })
     })
     context('after expiry, no proof', () => {
       beforeEach(async (): Promise<void> => {
@@ -379,7 +409,7 @@ describe('Intent Source Test', (): void => {
     describe('fails if', () => {
       beforeEach(async (): Promise<void> => {
         expiry = (await time.latest()) + 123
-        nonce = await encodeIdentifier(
+        salt = await encodeIdentifier(
           0,
           (await ethers.provider.getNetwork()).chainId,
         )
@@ -396,7 +426,7 @@ describe('Intent Source Test', (): void => {
           { token: await tokenB.getAddress(), amount: mintAmount * 2 },
         ]
         route = {
-          nonce: nonce,
+          salt: salt,
           source: Number(
             (await intentSource.runner?.provider?.getNetwork())?.chainId,
           ),
@@ -407,7 +437,7 @@ describe('Intent Source Test', (): void => {
         reward = {
           creator: creator.address,
           prover: await prover.getAddress(),
-          expiryTime: expiry,
+          deadline: expiry,
           nativeValue: rewardNativeEth,
           tokens: rewardTokens,
         }
@@ -429,7 +459,7 @@ describe('Intent Source Test', (): void => {
     describe('single intent, complex', () => {
       beforeEach(async (): Promise<void> => {
         expiry = (await time.latest()) + 123
-        nonce = await encodeIdentifier(
+        salt = await encodeIdentifier(
           0,
           (await ethers.provider.getNetwork()).chainId,
         )
@@ -446,7 +476,7 @@ describe('Intent Source Test', (): void => {
           { token: await tokenB.getAddress(), amount: mintAmount * 2 },
         ]
         route = {
-          nonce: nonce,
+          salt: salt,
           source: Number(
             (await intentSource.runner?.provider?.getNetwork())?.chainId,
           ),
@@ -457,7 +487,7 @@ describe('Intent Source Test', (): void => {
         reward = {
           creator: creator.address,
           prover: await prover.getAddress(),
-          expiryTime: expiry,
+          deadline: expiry,
           nativeValue: rewardNativeEth,
           tokens: rewardTokens,
         }
@@ -543,7 +573,7 @@ describe('Intent Source Test', (): void => {
     describe('multiple intents, each with a single reward token', () => {
       beforeEach(async (): Promise<void> => {
         expiry = (await time.latest()) + 123
-        nonce = await encodeIdentifier(
+        salt = await encodeIdentifier(
           0,
           (await ethers.provider.getNetwork()).chainId,
         )
@@ -558,13 +588,13 @@ describe('Intent Source Test', (): void => {
       })
       it('same token', async () => {
         let tx
-        let nonce = route.nonce
+        let salt = route.salt
         const routeHashes: BytesLike[] = []
         const rewards: Reward[] = []
         for (let i = 0; i < 3; i++) {
           route = {
             ...route,
-            nonce: (nonce = keccak256(nonce)),
+            salt: (salt = keccak256(salt)),
           }
           rewards.push({
             ...reward,
@@ -604,13 +634,13 @@ describe('Intent Source Test', (): void => {
       })
       it('multiple tokens', async () => {
         let tx
-        let nonce = route.nonce
+        let salt = route.salt
         const routeHashes: BytesLike[] = []
         const rewards: Reward[] = []
         for (let i = 0; i < 3; i++) {
           route = {
             ...route,
-            nonce: (nonce = keccak256(nonce)),
+            salt: (salt = keccak256(salt)),
           }
           rewards.push({
             ...reward,
@@ -631,7 +661,7 @@ describe('Intent Source Test', (): void => {
         for (let i = 0; i < 3; i++) {
           route = {
             ...route,
-            nonce: (nonce = keccak256(nonce)),
+            salt: (salt = keccak256(salt)),
           }
           rewards.push({
             ...reward,
@@ -678,13 +708,13 @@ describe('Intent Source Test', (): void => {
       })
       it('multiple tokens plus native', async () => {
         let tx
-        let nonce = route.nonce
+        let salt = route.salt
         const routeHashes: BytesLike[] = []
         const rewards: Reward[] = []
         for (let i = 0; i < 3; i++) {
           route = {
             ...route,
-            nonce: (nonce = keccak256(nonce)),
+            salt: (salt = keccak256(salt)),
           }
           rewards.push({
             ...reward,
@@ -709,7 +739,7 @@ describe('Intent Source Test', (): void => {
         for (let i = 0; i < 3; i++) {
           route = {
             ...route,
-            nonce: (nonce = keccak256(nonce)),
+            salt: (salt = keccak256(salt)),
           }
           rewards.push({
             ...reward,
@@ -737,7 +767,7 @@ describe('Intent Source Test', (): void => {
         for (let i = 0; i < 3; i++) {
           route = {
             ...route,
-            nonce: (nonce = keccak256(nonce)),
+            salt: (salt = keccak256(salt)),
           }
           rewards.push({
             ...reward,
@@ -790,7 +820,7 @@ describe('Intent Source Test', (): void => {
     })
     it('works in the case of multiple intents, each with multiple reward tokens', async () => {
       expiry = (await time.latest()) + 123
-      nonce = await encodeIdentifier(
+      salt = await encodeIdentifier(
         0,
         (await ethers.provider.getNetwork()).chainId,
       )
@@ -803,7 +833,7 @@ describe('Intent Source Test', (): void => {
         },
       ]
       route = {
-        nonce: nonce,
+        salt: salt,
         source: Number(
           (await intentSource.runner?.provider?.getNetwork())?.chainId,
         ),
@@ -817,7 +847,7 @@ describe('Intent Source Test', (): void => {
       for (let i = 0; i < 5; i++) {
         route = {
           ...route,
-          nonce: (nonce = keccak256(nonce)),
+          salt: (salt = keccak256(salt)),
         }
         rewards.push({
           ...reward,
@@ -845,7 +875,7 @@ describe('Intent Source Test', (): void => {
       for (let i = 0; i < 5; i++) {
         route = {
           ...route,
-          nonce: (nonce = keccak256(nonce)),
+          salt: (salt = keccak256(salt)),
         }
         rewards.push({
           ...reward,

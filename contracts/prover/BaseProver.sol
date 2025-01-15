@@ -4,12 +4,11 @@ pragma solidity ^0.8.13;
 import {IProver} from "../interfaces/IProver.sol";
 
 abstract contract BaseProver is IProver {
-    /**
-     * @notice emitted when an intent has been successfully proven
-     * @param _hash  the hash of the intent
-     * @param _claimant the address that can claim this intent's rewards
-     */
-    event IntentProven(bytes32 indexed _hash, address indexed _claimant);
-
     mapping(bytes32 => address) public provenIntents;
+
+    function getIntentClaimant(
+        bytes32 intentHash
+    ) external view override returns (address) {
+        return provenIntents[intentHash];
+    }
 }

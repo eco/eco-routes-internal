@@ -23,7 +23,7 @@ contract IntentSource is IIntentSource, Semver {
     using SafeERC20 for IERC20;
 
     // stores the intents
-    mapping(bytes32 intentHash => address) public claimed;
+    mapping(bytes32 intentHash => ClaimState) public claims;
 
     address public vaultRefundToken;
 
@@ -33,8 +33,10 @@ contract IntentSource is IIntentSource, Semver {
      */
     constructor() {}
 
-    function getClaimed(bytes32 intentHash) external view returns (address) {
-        return claimed[intentHash];
+    function getClaim(
+        bytes32 intentHash
+    ) external view returns (ClaimState memory) {
+        return claims[intentHash];
     }
 
     function getVaultRefundToken() external view returns (address) {
@@ -80,6 +82,10 @@ contract IntentSource is IIntentSource, Semver {
 
         (intentHash, routeHash, ) = getIntentHash(intent);
 
+        if (claims[intentHash].status != uint8(ClaimStatus.NotClaimed)) {
+            revert("IntentSource: intent already exists");
+        }
+
         address vault = _getIntentVaultAddress(intentHash, routeHash, reward);
 
         if (fundReward) {
@@ -117,13 +123,14 @@ contract IntentSource is IIntentSource, Semver {
 
         emit IntentCreated(
             intentHash,
-            route.nonce,
+            route.salt,
+            route.source,
             route.destination,
             route.inbox,
             route.calls,
             reward.creator,
             reward.prover,
-            reward.expiryTime,
+            reward.deadline,
             reward.nativeValue,
             reward.tokens
         );
@@ -151,17 +158,19 @@ contract IntentSource is IIntentSource, Semver {
         bytes32 rewardHash = keccak256(abi.encode(reward));
         bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
 
-        address claimant = BaseProver(reward.prover).provenIntents(
-            intentHash
-        );
+        address claimant = BaseProver(reward.prover).provenIntents(intentHash);
 
         // Claim the rewards if the intent has not been claimed
-        if (claimant != address(0) && claimed[intentHash] == address(0)) {
-            claimed[intentHash] = claimant;
+        if (
+            claimant != address(0) && claims[intentHash].claimant == address(0)
+        ) {
+            claims[intentHash].claimant = claimant;
 
             emit Withdrawal(intentHash, claimant);
 
             new IntentVault{salt: routeHash}(intentHash, reward);
+
+            claims[intentHash].status = uint8(ClaimStatus.Claimed);
 
             return;
         }
@@ -170,13 +179,14 @@ contract IntentSource is IIntentSource, Semver {
             revert NothingToWithdraw(intentHash);
         }
 
-        // Refund the rewards if the intent has expired
-        if (claimant == address(0) && block.timestamp < reward.expiryTime) {
+        // Check if the intent has expired
+        if (claimant == address(0) && block.timestamp < reward.deadline) {
             revert UnauthorizedWithdrawal(intentHash);
         }
 
         emit Withdrawal(intentHash, reward.creator);
 
+        // Refund the rewards for expired intent
         new IntentVault{salt: routeHash}(intentHash, reward);
     }
 
@@ -215,20 +225,23 @@ contract IntentSource is IIntentSource, Semver {
         bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
 
         if (
-            claimed[intentHash] == address(0) &&
-            block.timestamp < reward.expiryTime
+            claims[intentHash].status == uint8(ClaimStatus.NotClaimed) &&
+            block.timestamp < reward.deadline
         ) {
             revert UnauthorizedWithdrawal(intentHash);
         }
 
-        if (token == address(0)) {
-            token = address(1);
+        if (token != address(0)) {
+            vaultRefundToken = token;
         }
 
-        vaultRefundToken = token;
+        emit Withdrawal(intentHash, reward.creator);
+
         new IntentVault{salt: routeHash}(intentHash, reward);
 
-        vaultRefundToken = address(0);
+        if (token != address(0)) {
+            vaultRefundToken = address(0);
+        }
     }
 
     function _validateIntent(

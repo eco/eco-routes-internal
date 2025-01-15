@@ -15,15 +15,21 @@ contract IntentVault {
         IIntentSource intentSource = IIntentSource(msg.sender);
         uint256 rewardsLength = reward.tokens.length;
 
-        address claimant = intentSource.getClaimed(intentHash);
+        IIntentSource.ClaimState memory state = intentSource.getClaim(
+            intentHash
+        );
+        address claimant = state.claimant;
         address refundToken = intentSource.getVaultRefundToken();
 
-        if (claimant == address(0) || refundToken != address(0)) {
-            if (block.timestamp >= reward.expiryTime) {
-                claimant = reward.creator;
-            } else {
-                revert("IntentVault: intent is not expired");
-            }
+        if (claimant == address(0) && block.timestamp < reward.deadline) {
+            revert("IntentVault: intent has not expired yet");
+        }
+
+        if (
+            (claimant == address(0) && block.timestamp >= reward.deadline) ||
+            state.status == uint8(IIntentSource.ClaimStatus.Claimed)
+        ) {
+            claimant = reward.creator;
         }
 
         for (uint256 i; i < rewardsLength; ++i) {

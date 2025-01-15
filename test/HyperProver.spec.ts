@@ -7,7 +7,7 @@ import { expect } from 'chai'
 import { ethers } from 'hardhat'
 import { HyperProver, Inbox, TestERC20, TestMailbox } from '../typechain-types'
 import { encodeTransfer } from '../utils/encode'
-import { hashIntent, TokenAmount } from './utils'
+import { hashIntent, TokenAmount } from '../utils/intent'
 
 describe('HyperProver Test', (): void => {
   let inbox: Inbox
@@ -121,10 +121,10 @@ describe('HyperProver Test', (): void => {
       const sourceChainID = 12345
       const calldata = await encodeTransfer(await claimant.getAddress(), amount)
       const timeStamp = (await time.latest()) + 1000
-      const nonce = ethers.encodeBytes32String('0x987')
+      const salt = ethers.encodeBytes32String('0x987')
 
       const route = {
-        nonce: nonce,
+        salt: salt,
         source: sourceChainID,
         destination: Number(
           (await hyperProver.runner?.provider?.getNetwork())?.chainId,
@@ -141,7 +141,7 @@ describe('HyperProver Test', (): void => {
       const reward = {
         creator: await owner.getAddress(),
         prover: await hyperProver.getAddress(),
-        expiryTime: timeStamp + 1000,
+        deadline: timeStamp + 1000,
         nativeValue: 1n,
         tokens: [] as TokenAmount[],
       }
@@ -259,9 +259,9 @@ describe('HyperProver Test', (): void => {
       const sourceChainID = 12345
       const calldata = await encodeTransfer(await claimant.getAddress(), amount)
       const timeStamp = (await time.latest()) + 1000
-      let nonce = ethers.encodeBytes32String('0x987')
+      let salt = ethers.encodeBytes32String('0x987')
       const route = {
-        nonce: nonce,
+        salt: salt,
         source: sourceChainID,
         destination: Number(
           (await hyperProver.runner?.provider?.getNetwork())?.chainId,
@@ -278,7 +278,7 @@ describe('HyperProver Test', (): void => {
       const reward = {
         creator: await owner.getAddress(),
         prover: await hyperProver.getAddress(),
-        expiryTime: timeStamp + 1000,
+        deadline: timeStamp + 1000,
         nativeValue: 1n,
         tokens: [],
       }
@@ -310,9 +310,9 @@ describe('HyperProver Test', (): void => {
           await hyperProver.getAddress(),
         )
 
-      nonce = ethers.encodeBytes32String('0x1234')
+      salt = ethers.encodeBytes32String('0x1234')
       const route1 = {
-        nonce: nonce,
+        salt: salt,
         source: sourceChainID,
         destination: Number(
           (await hyperProver.runner?.provider?.getNetwork())?.chainId,
@@ -329,7 +329,7 @@ describe('HyperProver Test', (): void => {
       const reward1 = {
         creator: await owner.getAddress(),
         prover: await hyperProver.getAddress(),
-        expiryTime: timeStamp + 1000,
+        deadline: timeStamp + 1000,
         nativeValue: 1n,
         tokens: [],
       }
