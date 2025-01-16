@@ -98,21 +98,20 @@ contract IntentSource is IIntentSource, Semver {
         (intentHash, routeHash, ) = getIntentHash(intent);
 
         if (claims[intentHash].status != uint8(ClaimStatus.NotClaimed)) {
-            revert("IntentSource: intent already exists");
+            revert IntentAlreadyExists(intentHash);
         }
 
         address vault = _getIntentVaultAddress(intentHash, routeHash, reward);
 
         if (fundReward) {
             if (_validateIntent(intent, vault)) {
-                revert("IntentSource: intent is already funded");
+                revert IntentAlreadyFunded();
             }
 
             if (reward.nativeValue > 0) {
-                require(
-                    msg.value >= reward.nativeValue,
-                    "IntentSource: insufficient native reward"
-                );
+                if (msg.value < reward.nativeValue) {
+                    revert InsufficientNativeReward();
+                }
 
                 payable(vault).transfer(reward.nativeValue);
 
@@ -130,10 +129,9 @@ contract IntentSource is IIntentSource, Semver {
                 IERC20(token).safeTransferFrom(msg.sender, vault, amount);
             }
         } else if (block.chainid == intent.route.source) {
-            require(
-                _validateIntent(intent, vault),
-                "IntentSource: invalid intent"
-            );
+            if (!_validateIntent(intent, vault)) {
+                revert InvalidIntent();
+            }
         }
 
         emit IntentCreated(
@@ -220,10 +218,10 @@ contract IntentSource is IIntentSource, Semver {
         Reward[] calldata rewards
     ) external {
         uint256 length = routeHashes.length;
-        require(
-            length == rewards.length,
-            "IntentSource: array length mismatch"
-        );
+
+        if (length != rewards.length) {
+            revert ArrayLengthMismatch();
+        }
 
         for (uint256 i = 0; i < length; i++) {
             withdrawRewards(routeHashes[i], rewards[i]);

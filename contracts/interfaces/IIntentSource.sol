@@ -50,6 +50,34 @@ interface IIntentSource is ISemver {
     error TransferFailed(address _token, address _to, uint256 _amount);
 
     /**
+     * @notice Thrown when attempting to publish an intent that already exists
+     * @param intentHash Hash of the intent that already exists in the system
+     */
+    error IntentAlreadyExists(bytes32 intentHash);
+
+    /**
+     * @notice Thrown when attempting to fund an intent that has already been funded
+     */
+    error IntentAlreadyFunded();
+
+    /**
+     * @notice Thrown when the sent native token amount is less than the required reward amount
+     */
+    error InsufficientNativeReward();
+
+    /**
+     * @notice Thrown when attempting to validate an intent that fails basic validation checks
+     * @dev This includes cases where the vault doesn't have sufficient balance or other validation failures
+     */
+    error InvalidIntent();
+
+    /**
+     * @notice Thrown when array lengths don't match in batch operations
+     * @dev Used specifically in batch withdraw operations when routeHashes and rewards arrays have different lengths
+     */
+    error ArrayLengthMismatch();
+
+    /**
      * @notice Status of an intent's reward claim
      */
     enum ClaimStatus {

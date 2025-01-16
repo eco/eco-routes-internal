@@ -156,7 +156,9 @@ contract Inbox is IInbox, Ownable, Semver {
             (bool success, ) = payable(msg.sender).call{value: msg.value - fee}(
                 ""
             );
-            require(success, "Native transfer failed.");
+            if (!success) {
+                revert NativeTransferFailed();
+            }
         }
         if (_postDispatchHook == address(0)) {
             IMailbox(mailbox).dispatch{value: fee}(
@@ -271,7 +273,9 @@ contract Inbox is IInbox, Ownable, Semver {
             (bool success, ) = payable(msg.sender).call{value: msg.value - fee}(
                 ""
             );
-            require(success, "Native transfer failed.");
+            if (!success) {
+                revert NativeTransferFailed();
+            }
         }
         if (_postDispatchHook == address(0)) {
             IMailbox(mailbox).dispatch{value: fee}(
@@ -335,7 +339,9 @@ contract Inbox is IInbox, Ownable, Semver {
             revert UnauthorizedTransferNative();
         }
         (bool success, ) = _to.call{value: _amount}("");
-        require(success, "Native transfer failed.");
+        if (!success) {
+            revert NativeTransferFailed();
+        }
     }
 
     /**

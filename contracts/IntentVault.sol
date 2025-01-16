@@ -5,8 +5,9 @@ pragma solidity ^0.8.26;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import "./interfaces/IIntentSource.sol";
-import "./types/Intent.sol";
+import {IIntentSource} from "./interfaces/IIntentSource.sol";
+import {IIntentVault} from "./interfaces/IIntentVault.sol";
+import {Reward} from "./types/Intent.sol";
 
 /**
  * @title IntentVault
@@ -14,7 +15,7 @@ import "./types/Intent.sol";
  * @dev Created by IntentSource for each intent, handles token and native currency transfers,
  * then self-destructs after distributing rewards
  */
-contract IntentVault {
+contract IntentVault is IIntentVault {
     using SafeERC20 for IERC20;
 
     /**
@@ -37,7 +38,7 @@ contract IntentVault {
 
         // Ensure intent has expired if there's no claimant
         if (claimant == address(0) && block.timestamp < reward.deadline) {
-            revert("IntentVault: intent has not expired yet");
+            revert IntentNotExpired();
         }
 
         // Default to creator as claimant if expired or already claimed
@@ -55,10 +56,9 @@ contract IntentVault {
             uint256 balance = IERC20(token).balanceOf(address(this));
 
             // Prevent reward tokens from being used as refund tokens
-            require(
-                token != refundToken,
-                "IntentVault: refund token cannot be a reward token"
-            );
+            if (token == refundToken) {
+                revert RefundTokenCannotBeRewardToken();
+            }
 
             // If creator is claiming, send full balance
             if (claimant == reward.creator) {
@@ -67,10 +67,9 @@ contract IntentVault {
                 }
             } else {
                 // For solver claims, verify sufficient balance and send reward amount
-                require(
-                    amount >= balance,
-                    "IntentVault: insufficient token balance"
-                );
+                if (amount < balance) {
+                    revert InsufficientTokenBalance();
+                }
 
                 IERC20(token).safeTransfer(claimant, amount);
                 // Return excess balance to creator
@@ -85,16 +84,17 @@ contract IntentVault {
 
         // Handle native token rewards for solver claims
         if (claimant != reward.creator && reward.nativeValue > 0) {
-            require(
-                address(this).balance >= reward.nativeValue,
-                "IntentVault: insufficient native balance"
-            );
+            if (address(this).balance < reward.nativeValue) {
+                revert InsufficientNativeBalance();
+            }
 
             (bool success, ) = payable(claimant).call{
                 value: reward.nativeValue
             }("");
 
-            require(success, "IntentVault: native reward transfer failed");
+            if (!success) {
+                revert NativeRewardTransferFailed();
+            }
         }
 
         // Process any refund token if specified
