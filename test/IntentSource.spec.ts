@@ -936,4 +936,304 @@ describe('Intent Source Test', (): void => {
       ).to.eq(initialBalanceNative + BigInt(5) * rewardNativeEth)
     })
   })
+
+  describe('funding intents', async () => {
+    beforeEach(async (): Promise<void> => {
+      // Mint tokens to funding source
+      await tokenA.connect(creator).mint(creator.address, mintAmount * 2)
+      await tokenB.connect(creator).mint(creator.address, mintAmount * 4)
+      await tokenA
+        .connect(creator)
+        .mint(await intentSource.getAddress(), mintAmount)
+
+      rewardTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
+
+      reward = {
+        creator: creator.address,
+        prover: otherPerson.address,
+        deadline: expiry,
+        nativeValue: 0n,
+        tokens: rewardTokens,
+      }
+      intent = { route, reward }
+      ;({ intentHash, routeHash, rewardHash } = hashIntent(intent))
+    })
+
+    it('should fund intent with single token', async () => {
+      rewardTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
+
+      reward = {
+        creator: creator.address,
+        prover: otherPerson.address,
+        deadline: expiry,
+        nativeValue: 0n,
+        tokens: rewardTokens,
+      }
+
+      const intentFunder = await intentSource.intentFunderAddress({
+        route,
+        reward,
+      })
+
+      // Approve tokens
+      await tokenA.connect(creator).approve(intentFunder, mintAmount)
+
+      // Get vault address
+      const vaultAddress = await intentSource.intentVaultAddress({
+        route,
+        reward,
+      })
+
+      // Fund the intent
+      await intentSource
+        .connect(creator)
+        .fundIntent(routeHash, reward, creator.address, [])
+
+      expect(await intentSource.validateIntent({ route, reward })).to.be.true
+
+      // Check vault balance
+      expect(await tokenA.balanceOf(vaultAddress)).to.equal(mintAmount)
+    })
+
+    it('should fund intent with multiple tokens', async () => {
+      rewardTokens = [
+        { token: await tokenA.getAddress(), amount: mintAmount },
+        { token: await tokenB.getAddress(), amount: mintAmount * 2 },
+      ]
+
+      reward = {
+        creator: creator.address,
+        prover: otherPerson.address,
+        deadline: expiry,
+        nativeValue: 0n,
+        tokens: rewardTokens,
+      }
+
+      const intentFunder = await intentSource.intentFunderAddress({
+        route,
+        reward,
+      })
+
+      // Approve tokens
+      await tokenA.connect(creator).approve(intentFunder, mintAmount)
+      await tokenB.connect(creator).approve(intentFunder, mintAmount * 2)
+
+      // Get vault address
+      const vaultAddress = await intentSource.intentVaultAddress({
+        route,
+        reward,
+      })
+
+      // Fund the intent
+      await intentSource
+        .connect(creator)
+        .fundIntent(routeHash, reward, creator.address, [])
+
+      expect(await intentSource.validateIntent({ route, reward })).to.be.true
+
+      // Check vault balances
+      expect(await tokenA.balanceOf(vaultAddress)).to.equal(mintAmount)
+      expect(await tokenB.balanceOf(vaultAddress)).to.equal(mintAmount * 2)
+    })
+
+    it('should handle partial funding based on allowance', async () => {
+      rewardTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
+
+      reward = {
+        creator: creator.address,
+        prover: otherPerson.address,
+        deadline: expiry,
+        nativeValue: 0n,
+        tokens: rewardTokens,
+      }
+
+      const intentFunder = await intentSource.intentFunderAddress({
+        route,
+        reward,
+      })
+
+      // Approve partial amount
+      await tokenA.connect(creator).approve(intentFunder, mintAmount / 2)
+
+      // Get vault address
+      const vaultAddress = await intentSource.intentVaultAddress({
+        route,
+        reward,
+      })
+
+      // Fund the intent
+      await intentSource
+        .connect(creator)
+        .fundIntent(routeHash, reward, creator.address, [])
+
+      expect(await intentSource.validateIntent({ route, reward })).to.be.false
+
+      // Check vault balance reflects partial funding
+      expect(await tokenA.balanceOf(vaultAddress)).to.equal(mintAmount / 2)
+    })
+
+    it('should fund native value correctly', async () => {
+      const nativeAmount = ethers.parseEther('1.0')
+
+      reward = {
+        creator: creator.address,
+        prover: otherPerson.address,
+        deadline: expiry,
+        nativeValue: nativeAmount,
+        tokens: [],
+      }
+
+      // Get vault address
+      const vaultAddress = await intentSource.intentVaultAddress({
+        route,
+        reward,
+      })
+
+      // Fund the intent with native value
+      await intentSource
+        .connect(creator)
+        .fundIntent(routeHash, reward, creator.address, [], {
+          value: nativeAmount,
+        })
+
+      expect(await intentSource.validateIntent({ route, reward })).to.be.true
+
+      // Check vault native balance
+      expect(await ethers.provider.getBalance(vaultAddress)).to.equal(
+        nativeAmount,
+      )
+    })
+
+    it('should emit IntentFunded event', async () => {
+      const intentFunder = await intentSource.intentFunderAddress({
+        route,
+        reward,
+      })
+
+      // Approve tokens
+      await tokenA.connect(creator).approve(intentFunder, mintAmount)
+
+      // Fund the intent and check event
+      await expect(
+        intentSource
+          .connect(creator)
+          .fundIntent(routeHash, reward, creator.address, []),
+      )
+        .to.emit(intentSource, 'IntentFunded')
+        .withArgs(intentHash, creator.address)
+
+      expect(await intentSource.validateIntent({ route, reward })).to.be.true
+    })
+
+    it('should handle permit calls correctly', async () => {
+      rewardTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
+
+      reward = {
+        creator: creator.address,
+        prover: otherPerson.address,
+        deadline: expiry,
+        nativeValue: 0n,
+        tokens: rewardTokens,
+      }
+
+      const intentFunder = await intentSource.intentFunderAddress({
+        route,
+        reward,
+      })
+
+      // Create permit call data (mock example)
+      const permitCall: Call = {
+        target: await tokenA.getAddress(),
+        data: tokenA.interface.encodeFunctionData('approve', [
+          intentFunder,
+          mintAmount,
+        ]),
+        value: 0,
+      }
+
+      // Fund the intent with permit call
+      await intentSource
+        .connect(creator)
+        .fundIntent(routeHash, reward, await intentSource.getAddress(), [
+          permitCall,
+        ])
+
+      expect(await intentSource.validateIntent({ route, reward })).to.be.true
+
+      await expect(
+        intentSource.connect(creator).publishIntent({ route, reward }, false),
+      ).to.emit(intentSource, 'IntentCreated')
+
+      // Get vault address
+      const vaultAddress = await intentSource.intentVaultAddress({
+        route,
+        reward,
+      })
+
+      // Check vault balance
+      expect(await tokenA.balanceOf(vaultAddress)).to.equal(mintAmount)
+    })
+  })
+
+  describe('edge cases and validations', async () => {
+    it('should handle zero token amounts', async () => {
+      rewardTokens = [{ token: await tokenA.getAddress(), amount: 0 }]
+
+      reward = {
+        creator: creator.address,
+        prover: otherPerson.address,
+        deadline: expiry,
+        nativeValue: 0n,
+        tokens: rewardTokens,
+      }
+
+      // Create and fund intent with zero amounts
+      await intentSource
+        .connect(creator)
+        .publishIntent({ route, reward }, false)
+
+      await intentSource
+        .connect(creator)
+        .fundIntent(routeHash, reward, creator.address, [])
+
+      expect(await intentSource.validateIntent({ route, reward })).to.be.true
+
+      const vaultAddress = await intentSource.intentVaultAddress({
+        route,
+        reward,
+      })
+      expect(await tokenA.balanceOf(vaultAddress)).to.equal(0)
+    })
+
+    it('should handle already funded vaults', async () => {
+      rewardTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
+
+      reward = {
+        creator: creator.address,
+        prover: otherPerson.address,
+        deadline: expiry,
+        nativeValue: 0n,
+        tokens: rewardTokens,
+      }
+
+      // Create and fund intent initially
+      await intentSource.connect(creator).publishIntent({ route, reward }, true)
+
+      // Try to fund again
+      await tokenA.connect(creator).approve(intentSource, mintAmount)
+
+      // Should not transfer additional tokens since vault is already funded
+      await intentSource
+        .connect(creator)
+        .fundIntent(routeHash, reward, creator.address, [])
+
+      expect(await intentSource.validateIntent({ route, reward })).to.be.true
+
+      const vaultAddress = await intentSource.intentVaultAddress({
+        route,
+        reward,
+      })
+      expect(await tokenA.balanceOf(vaultAddress)).to.equal(mintAmount)
+    })
+  })
 })
