@@ -6,42 +6,52 @@ import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {BaseProver} from "./BaseProver.sol";
 import {Semver} from "../libs/Semver.sol";
 
+/**
+ * @title HyperProver
+ * @notice Prover implementation using Hyperlane's cross-chain messaging system
+ * @dev Processes proof messages from Hyperlane mailbox and records proven intents
+ */
 contract HyperProver is IMessageRecipient, BaseProver, Semver {
     using TypeCasts for bytes32;
 
+    /**
+     * @notice Constant indicating this contract uses Hyperlane for proving
+     */
     ProofType public constant PROOF_TYPE = ProofType.Hyperlane;
 
     /**
-     * emitted on an attempt to register a claimant on an intent that has already been proven and has a claimant
-     * @dev this is an event rather than an error because the expected behavior is to ignore one intent but continue with the rest
-     * @param _intentHash the hash of the intent
+     * @notice Emitted when attempting to prove an already-proven intent
+     * @dev Event instead of error to allow batch processing to continue
+     * @param _intentHash Hash of the already proven intent
      */
     event IntentAlreadyProven(bytes32 _intentHash);
 
     /**
-     * emitted on an unauthorized call to the handle() method
-     * @param _sender the address that called the handle() method
+     * @notice Unauthorized call to handle() detected
+     * @param _sender Address that attempted the call
      */
     error UnauthorizedHandle(address _sender);
 
     /**
-     * emitted when the handle() call is a result of an unauthorized dispatch() call on another chain's Mailbox
-     * @param _sender the address that called the dispatch() method
+     * @notice Unauthorized dispatch detected from source chain
+     * @param _sender Address that initiated the invalid dispatch
      */
     error UnauthorizedDispatch(address _sender);
 
-    // local mailbox address
+    /**
+     * @notice Address of local Hyperlane mailbox
+     */
     address public immutable MAILBOX;
 
-    // address of the Inbox contract
-    // assumes that all Inboxes are deployed via ERC-2470 and hence have the same address
+    /**
+     * @notice Address of Inbox contract (same across all chains via ERC-2470)
+     */
     address public immutable INBOX;
 
     /**
-     * @notice constructor
-     * @dev the constructor sets the addresses of the local mailbox and the Inbox contract
-     * _mailbox the address of the local mailbox
-     * _inbox the address of the Inbox contract
+     * @notice Initializes the HyperProver contract
+     * @param _mailbox Address of local Hyperlane mailbox
+     * @param _inbox Address of Inbox contract
      */
     constructor(address _mailbox, address _inbox) {
         MAILBOX = _mailbox;
@@ -49,29 +59,36 @@ contract HyperProver is IMessageRecipient, BaseProver, Semver {
     }
 
     /**
-     * @notice implementation of the handle method required by IMessageRecipient
-     * @dev the uint32 value is not used in this implementation, but it is required by the interface. It is the chain ID of the intent's origin chain.
-     * @param _sender the address that called the dispatch() method
-     * @param _messageBody the message body
+     * @notice Handles incoming Hyperlane messages containing proof data
+     * @dev Processes batch updates to proven intents from valid sources
+     * param _origin Origin chain ID (unused but required by interface)
+     * @param _sender Address that dispatched the message on source chain
+     * @param _messageBody Encoded array of intent hashes and claimants
      */
     function handle(
         uint32,
         bytes32 _sender,
         bytes calldata _messageBody
     ) public payable {
+        // Verify message is from authorized mailbox
         if (MAILBOX != msg.sender) {
             revert UnauthorizedHandle(msg.sender);
         }
 
+        // Verify dispatch originated from valid Inbox
         address sender = _sender.bytes32ToAddress();
 
         if (INBOX != sender) {
             revert UnauthorizedDispatch(sender);
         }
+
+        // Decode message containing intent hashes and claimants
         (bytes32[] memory hashes, address[] memory claimants) = abi.decode(
             _messageBody,
             (bytes32[], address[])
         );
+
+        // Process each intent proof
         for (uint256 i = 0; i < hashes.length; i++) {
             (bytes32 intentHash, address claimant) = (hashes[i], claimants[i]);
             if (provenIntents[intentHash] != address(0)) {
@@ -83,6 +100,10 @@ contract HyperProver is IMessageRecipient, BaseProver, Semver {
         }
     }
 
+    /**
+     * @notice Returns the proof type used by this prover
+     * @return ProofType indicating Hyperlane proving mechanism
+     */
     function getProofType() external pure override returns (ProofType) {
         return PROOF_TYPE;
     }

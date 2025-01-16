@@ -10,9 +10,9 @@ import {Semver} from "./libs/Semver.sol";
 
 /**
  * @title Inbox
- * @dev The Inbox contract is the main entry point for fulfilling an intent.
- * It validates that the hash is the hash of the other parameters, and then executes the calldata.
- * A prover can then claim the reward on the src chain by looking at the fulfilled mapping.
+ * @notice Main entry point for fulfilling intents
+ * @dev Validates intent hash authenticity and executes calldata. Enables provers
+ * to claim rewards on the source chain by checking the fulfilled mapping
  */
 contract Inbox is IInbox, Ownable, Semver {
     using TypeCasts for address;
@@ -32,11 +32,11 @@ contract Inbox is IInbox, Ownable, Semver {
     bool public isSolvingPublic;
 
     /**
-     * constructor
-     *  _owner the owner of the contract that gets access to privileged functions
-     *  _isSolvingPublic whether or not solving is public at start
-     *  _solvers the initial whitelist of solvers, only relevant if {_isSolvingPublic} is false
-     * @dev privileged functions are made such that they can only make changes once
+     * @notice Initializes the Inbox contract
+     * @dev Privileged functions are designed to only allow one-time changes
+     * @param _owner Address with access to privileged functions
+     * @param _isSolvingPublic Whether solving is public at start
+     * @param _solvers Initial whitelist of solvers (only relevant if solving is not public)
      */
     constructor(
         address _owner,
@@ -51,11 +51,12 @@ contract Inbox is IInbox, Ownable, Semver {
     }
 
     /**
-     * @notice fulfills an intent to be proven via storage proofs
+     * @notice Fulfills an intent to be proven via storage proofs
      * @param _route The route of the intent
      * @param _rewardHash The hash of the reward
      * @param _claimant The address that will receive the reward on the source chain
      * @param _expectedHash The hash of the intent as created on the source chain
+     * @return Array of execution results from each call
      */
     function fulfillStorage(
         Route calldata _route,
@@ -76,14 +77,14 @@ contract Inbox is IInbox, Ownable, Semver {
     }
 
     /**
-     * @notice fulfills an intent to be proven immediately via Hyperlane's mailbox
+     * @notice Fulfills an intent to be proven immediately via Hyperlane's mailbox
+     * @dev More expensive but faster than hyperbatched. Requires fee for Hyperlane infrastructure
      * @param _route The route of the intent
      * @param _rewardHash The hash of the reward
      * @param _claimant The address that will receive the reward on the source chain
      * @param _expectedHash The hash of the intent as created on the source chain
      * @param _prover The address of the hyperprover on the source chain
-     * @dev solvers can expect this proof to be more expensive than hyperbatched, but it will be faster.
-     * @dev a fee is required to be sent with the transaction, it pays for the use of Hyperlane's architecture
+     * @return Array of execution results from each call
      */
     function fulfillHyperInstant(
         Route calldata _route,
@@ -105,16 +106,16 @@ contract Inbox is IInbox, Ownable, Semver {
     }
 
     /**
-     * @notice fulfills an intent to be proven immediately via Hyperlane's mailbox
+     * @notice Fulfills an intent to be proven immediately via Hyperlane's mailbox with relayer support
+     * @dev More expensive but faster than hyperbatched. Requires fee for Hyperlane infrastructure
      * @param _route The route of the intent
      * @param _rewardHash The hash of the reward
      * @param _claimant The address that will receive the reward on the source chain
      * @param _expectedHash The hash of the intent as created on the source chain
      * @param _prover The address of the hyperprover on the source chain
-     * @param _metadata the metadata required for the postDispatchHook on the source chain, set to empty bytes if not applicable
-     * @param _postDispatchHook the address of the postDispatchHook on the source chain, set to zero address if not applicable
-     * @dev solvers can expect this proof to be more expensive than hyperbatched, but it will be faster.
-     * @dev a fee is required to be sent with the transaction, it pays for the use of Hyperlane's architecture
+     * @param _metadata Metadata for postDispatchHook (empty bytes if not applicable)
+     * @param _postDispatchHook Address of postDispatchHook (zero address if not applicable)
+     * @return Array of execution results from each call
      */
     function fulfillHyperInstantWithRelayer(
         Route calldata _route,
@@ -176,14 +177,15 @@ contract Inbox is IInbox, Ownable, Semver {
     }
 
     /**
-     * @notice fulfills an intent to be proven in a batch via Hyperlane's mailbox
-
+     * @notice Fulfills an intent to be proven in a batch via Hyperlane's mailbox
+     * @dev Less expensive but slower than hyperinstant. Batch dispatched when sendBatch is called.
+     * Not currently supported by Eco's solver services
+     * @param _route The route of the intent
+     * @param _rewardHash The hash of the reward
      * @param _claimant The address that will receive the reward on the source chain
      * @param _expectedHash The hash of the intent as created on the source chain
      * @param _prover The address of the hyperprover on the source chain
-     * @dev solvers can expect this proof to be considerably less expensive than hyperinstant, but it will take longer.
-     * @dev the batch will only be dispatched when sendBatch is called
-     * @dev this method is not currently supported by Eco's solver services, but is included for completeness.
+     * @return Array of execution results from each call
      */
     function fulfillHyperBatched(
         Route calldata _route,
@@ -205,12 +207,11 @@ contract Inbox is IInbox, Ownable, Semver {
     }
 
     /**
-     * @notice sends a batch of fulfilled intents to the mailbox
-     * @param _sourceChainID the chainID of the source chain
-     * @param _prover the address of the hyperprover on the source chain
-     * @param _intentHashes the hashes of the intents to be proven
-     * @dev it is imperative that the intent hashes correspond to fulfilled intents that originated on the chain with chainID {_sourceChainID}
-     * @dev a fee is required to be sent with the transaction, it pays for the use of Hyperlane's architecture
+     * @notice Sends a batch of fulfilled intents to the mailbox
+     * @dev Intent hashes must correspond to fulfilled intents from specified source chain
+     * @param _sourceChainID Chain ID of the source chain
+     * @param _prover Address of the hyperprover on the source chain
+     * @param _intentHashes Hashes of the intents to be proven
      */
     function sendBatch(
         uint256 _sourceChainID,
@@ -227,12 +228,13 @@ contract Inbox is IInbox, Ownable, Semver {
     }
 
     /**
-     * @notice sends a batch of fulfilled intents to the mailbox
-     * @param _sourceChainID the chainID of the source chain
-     * @param _prover the address of the hyperprover on the source chain
-     * @param _intentHashes the hashes of the intents to be proven
-     * @dev it is imperative that the intent hashes correspond to fulfilled intents that originated on the chain with chainID {_sourceChainID}
-     * @dev a fee is required to be sent with the transaction, it pays for the use of Hyperlane's architecture
+     * @notice Sends a batch of fulfilled intents to the mailbox with relayer support
+     * @dev Intent hashes must correspond to fulfilled intents from specified source chain
+     * @param _sourceChainID Chain ID of the source chain
+     * @param _prover Address of the hyperprover on the source chain
+     * @param _intentHashes Hashes of the intents to be proven
+     * @param _metadata Metadata for postDispatchHook
+     * @param _postDispatchHook Address of postDispatchHook
      */
     function sendBatchWithRelayer(
         uint256 _sourceChainID,
@@ -289,13 +291,14 @@ contract Inbox is IInbox, Ownable, Semver {
     }
 
     /**
-     * @notice wrapper method for the mailbox's quoteDispatch method
-     * @param _sourceChainID the chainID of the source chain
-     * @param _prover the address of the hyperprover on the source chain
-     * @param _messageBody the message body being sent over the bridge
-     * @param _metadata the metadata required for the postDispatchHook on the source chain, set to empty bytes if not applicable
-     * @param _postDispatchHook the address of the postDispatchHook on the source chain, set to zero address if not applicable
-     * @dev this method is used to determine the fee required for fulfillHyperInstant or sendBatch
+     * @notice Quotes the fee required for message dispatch
+     * @dev Used to determine fees for fulfillHyperInstant or sendBatch
+     * @param _sourceChainID Chain ID of the source chain
+     * @param _prover Address of the hyperprover on the source chain
+     * @param _messageBody Message being sent over the bridge
+     * @param _metadata Metadata for postDispatchHook
+     * @param _postDispatchHook Address of postDispatchHook
+     * @return fee The required fee amount
      */
     function fetchFee(
         uint256 _sourceChainID,
@@ -322,11 +325,10 @@ contract Inbox is IInbox, Ownable, Semver {
     }
 
     /**
-     * @notice allows for native token transfers on the destination chain
-     * @param _to the address to which the native tokens will be sent
-     * @param _amount the amount of native tokens to be sent
-     * @dev cannot be internal since invoked by low-level call
-     * @dev can only be invoked from the contract itself
+     * @notice Enables native token transfers on the destination chain
+     * @dev Can only be called by the contract itself
+     * @param _to Recipient address
+     * @param _amount Amount of native tokens to send
      */
     function transferNative(address payable _to, uint256 _amount) public {
         if (msg.sender != address(this)) {
@@ -337,9 +339,9 @@ contract Inbox is IInbox, Ownable, Semver {
     }
 
     /**
-     * @notice allows the owner to set the mailbox
-     * @param _mailbox the address of the mailbox
-     * @dev this can only be called once, to initialize the mailbox, and should be called at time of deployment
+     * @notice Sets the mailbox address
+     * @dev Can only be called once during deployment
+     * @param _mailbox Address of the Hyperlane mailbox
      */
     function setMailbox(address _mailbox) public onlyOwner {
         if (mailbox == address(0)) {
@@ -349,8 +351,8 @@ contract Inbox is IInbox, Ownable, Semver {
     }
 
     /**
-     * @notice makes solving public if it is restricted
-     * @dev solving cannot be made private once it is made public
+     * @notice Makes solving public if currently restricted
+     * @dev Cannot be reversed once made public
      */
     function makeSolvingPublic() public onlyOwner {
         if (!isSolvingPublic) {
@@ -360,10 +362,10 @@ contract Inbox is IInbox, Ownable, Semver {
     }
 
     /**
-     * @notice allows the owner to make changes to the solver whitelist
-     * @param _solver the address of the solver whose permissions are being changed
-     * @param _canSolve whether or not the solver will be on the whitelist afterward
-     * @dev the solver whitelist has no meaning if isSolvingPublic is true
+     * @notice Updates the solver whitelist
+     * @dev Whitelist is ignored if solving is public
+     * @param _solver Address of the solver
+     * @param _canSolve Whether solver should be whitelisted
      */
     function changeSolverWhitelist(
         address _solver,
@@ -373,6 +375,15 @@ contract Inbox is IInbox, Ownable, Semver {
         emit SolverWhitelistChanged(_solver, _canSolve);
     }
 
+    /**
+     * @notice Internal function to fulfill intents
+     * @dev Validates intent and executes calls
+     * @param _route The route of the intent
+     * @param _rewardHash The hash of the reward
+     * @param _claimant The reward recipient address
+     * @param _expectedHash The expected intent hash
+     * @return Array of execution results
+     */
     function _fulfill(
         Route calldata _route,
         bytes32 _rewardHash,

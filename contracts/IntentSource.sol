@@ -13,36 +13,46 @@ import {Semver} from "./libs/Semver.sol";
 import {IntentVault} from "./IntentVault.sol";
 
 /**
- * This contract is the source chain portion of the Eco Protocol's intent system.
- *
- * It can be used to create intents as well as withdraw the associated rewards.
- * Its counterpart is the inbox contract that lives on the destination chain.
- * This contract makes a call to the prover contract (on the sourcez chain) in order to verify intent fulfillment.
+ * @notice Source chain contract for the Eco Protocol's intent system
+ * @dev Used to create intents and withdraw associated rewards. Works in conjunction with
+ * an inbox contract on the destination chain. Verifies intent fulfillment through
+ * a prover contract on the source chain
  */
 contract IntentSource is IIntentSource, Semver {
     using SafeERC20 for IERC20;
 
-    // stores the intents
     mapping(bytes32 intentHash => ClaimState) public claims;
 
     address public vaultRefundToken;
 
-    /**
-     * @dev counterStart is required to preserve nonce uniqueness in the event IntentSource needs to be redeployed.
-     * _counterStart the initial value of the counter
-     */
     constructor() {}
 
+    /**
+     * @notice Retrieves claim state for a given intent hash
+     * @param intentHash Hash of the intent to query
+     * @return ClaimState struct containing claim information
+     */
     function getClaim(
         bytes32 intentHash
     ) external view returns (ClaimState memory) {
         return claims[intentHash];
     }
 
+    /**
+     * @notice Gets the token used for vault refunds
+     * @return Address of the vault refund token
+     */
     function getVaultRefundToken() external view returns (address) {
         return vaultRefundToken;
     }
 
+    /**
+     * @notice Calculates the hash of an intent and its components
+     * @param intent The intent to hash
+     * @return intentHash Combined hash of route and reward
+     * @return routeHash Hash of the route component
+     * @return rewardHash Hash of the reward component
+     */
     function getIntentHash(
         Intent calldata intent
     )
@@ -55,6 +65,11 @@ contract IntentSource is IIntentSource, Semver {
         intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
     }
 
+    /**
+     * @notice Calculates the deterministic address of the intent vault
+     * @param intent Intent to calculate vault address for
+     * @return Address of the intent vault
+     */
     function intentVaultAddress(
         Intent calldata intent
     ) public view returns (address) {
@@ -63,12 +78,12 @@ contract IntentSource is IIntentSource, Semver {
     }
 
     /**
-     * @notice Creates an intent to execute instructions on a contract on a supported chain in exchange for a bundle of assets.
-     * @dev If a proof ON THE SOURCE CHAIN is not completed by the expiry time, the reward funds will not be redeemable by the solver, REGARDLESS OF WHETHER THE INSTRUCTIONS WERE EXECUTED.
-     * The onus of that time management (i.e. how long it takes for data to post to L1, etc.) is on the intent solver.
-     * @param intent The intent struct with all the intent params
-     * @param fundReward whether to fund the reward or not
-     * @return intentHash the hash of the intent
+     * @notice Creates an intent to execute instructions on a supported chain in exchange for assets
+     * @dev If source chain proof isn't completed by expiry, rewards aren't redeemable regardless of execution.
+     * Solver must manage timing considerations (e.g., L1 data posting delays)
+     * @param intent The intent struct containing all parameters
+     * @param fundReward Whether to fund the reward or not
+     * @return intentHash The hash of the created intent
      */
     function publishIntent(
         Intent calldata intent,
@@ -136,6 +151,11 @@ contract IntentSource is IIntentSource, Semver {
         );
     }
 
+    /**
+     * @notice Checks if an intent is properly funded
+     * @param intent Intent to validate
+     * @return True if intent is properly funded, false otherwise
+     */
     function validateIntent(
         Intent calldata intent
     ) external view returns (bool) {
@@ -150,9 +170,9 @@ contract IntentSource is IIntentSource, Semver {
     }
 
     /**
-     * @notice Withdraws the rewards associated with an intent to its claimant
-     * @param routeHash The hash of the route of the intent
-     * @param reward The reward of the intent
+     * @notice Withdraws rewards associated with an intent to its claimant
+     * @param routeHash Hash of the intent's route
+     * @param reward Reward structure of the intent
      */
     function withdrawRewards(bytes32 routeHash, Reward calldata reward) public {
         bytes32 rewardHash = keccak256(abi.encode(reward));
@@ -191,9 +211,9 @@ contract IntentSource is IIntentSource, Semver {
     }
 
     /**
-     * @notice Withdraws a batch of intents that all have the same claimant
-     * @param routeHashes The hashes of the routes of the intents
-     * @param rewards The rewards of the intents
+     * @notice Batch withdraws multiple intents with the same claimant
+     * @param routeHashes Array of route hashes for the intents
+     * @param rewards Array of reward structures for the intents
      */
     function batchWithdraw(
         bytes32[] calldata routeHashes,
@@ -211,10 +231,10 @@ contract IntentSource is IIntentSource, Semver {
     }
 
     /**
-     * @notice Refunds the rewards associated with an intent to its creator
-     * @param routeHash The hash of the route of the intent
-     * @param reward The reward of the intent
-     * @param token Any specific token that could be wrongly sent to the vault
+     * @notice Refunds rewards to the intent creator
+     * @param routeHash Hash of the intent's route
+     * @param reward Reward structure of the intent
+     * @param token Optional token address for handling incorrect vault transfers
      */
     function refundIntent(
         bytes32 routeHash,
@@ -244,6 +264,13 @@ contract IntentSource is IIntentSource, Semver {
         }
     }
 
+    /**
+     * @notice Validates that an intent's vault holds sufficient rewards
+     * @dev Checks both native token and ERC20 token balances
+     * @param intent Intent to validate
+     * @param vault Address of the intent's vault
+     * @return True if vault has sufficient funds, false otherwise
+     */
     function _validateIntent(
         Intent calldata intent,
         address vault
@@ -264,6 +291,14 @@ contract IntentSource is IIntentSource, Semver {
         return true;
     }
 
+    /**
+     * @notice Calculates the deterministic address of an intent vault using CREATE2
+     * @dev Follows EIP-1014 for address calculation
+     * @param intentHash Hash of the full intent
+     * @param routeHash Hash of the route component
+     * @param reward Reward structure
+     * @return The calculated vault address
+     */
     function _getIntentVaultAddress(
         bytes32 intentHash,
         bytes32 routeHash,
