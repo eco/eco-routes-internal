@@ -28,7 +28,7 @@ contract Eco7683OriginSettler is IOriginSettler {
             .publishIntent(
                 Intent(
                     Route(
-                        order.nonce,
+                        bytes32(order.nonce),
                         order.originChainId,
                         gaslessCrosschainOrderData.destination,
                         gaslessCrosschainOrderData.inbox,
@@ -44,6 +44,7 @@ contract Eco7683OriginSettler is IOriginSettler {
                 ),
                 gaslessCrosschainOrderData.addRewards
             );
+        emit Open(orderId, resolveFor(order, originFillerData));
     }
 
     function open(OnchainCrossChainOrder calldata order) external override {
@@ -75,7 +76,7 @@ contract Eco7683OriginSettler is IOriginSettler {
     function resolveFor(
         GaslessCrossChainOrder calldata order,
         bytes calldata originFillerData
-    ) external view override returns (ResolvedCrossChainOrder memory) {
+    ) public view override returns (ResolvedCrossChainOrder memory) {
         // OnchainCrosschainOrderData memory crosschainOrderData = abi.decode(
         //     order.orderData,
         //     (OnchainCrosschainOrderData)
