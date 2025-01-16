@@ -4,8 +4,18 @@ import { ethers } from 'hardhat'
 import { TestERC20, IntentSource, TestProver, Inbox } from '../typechain-types'
 import { time, loadFixture } from '@nomicfoundation/hardhat-network-helpers'
 import { keccak256, BytesLike, ZeroAddress } from 'ethers'
-import { DataHexString } from 'ethers/lib/utils'
 import { encodeIdentifier, encodeTransfer } from '../utils/encode'
+import {
+  encodeReward,
+  encodeRoute,
+  hashIntent,
+  intentVaultAddress,
+  Call,
+  TokenAmount,
+  Route,
+  Reward,
+  Intent,
+} from '../utils/intent'
 
 describe('Intent Source Test', (): void => {
   let intentSource: IntentSource
@@ -18,16 +28,18 @@ describe('Intent Source Test', (): void => {
   let otherPerson: SignerWithAddress
   const mintAmount: number = 1000
 
-  let expiry: number
-  let intentHash: BytesLike
+  let salt: BytesLike
   let chainId: number
-  let targets: string[]
-  let data: BytesLike[]
-  let rewardTokens: string[]
-  let rewardAmounts: number[]
+  let calls: Call[]
+  let expiry: number
   const rewardNativeEth: bigint = ethers.parseEther('2')
-  let nonce: BytesLike
-  const abiCoder = ethers.AbiCoder.defaultAbiCoder()
+  let rewardTokens: TokenAmount[]
+  let route: Route
+  let reward: Reward
+  let intent: Intent
+  let routeHash: BytesLike
+  let rewardHash: BytesLike
+  let intentHash: BytesLike
 
   async function deploySourceFixture(): Promise<{
     intentSource: IntentSource
@@ -43,7 +55,7 @@ describe('Intent Source Test', (): void => {
     prover = await (await ethers.getContractFactory('TestProver')).deploy()
 
     const intentSourceFactory = await ethers.getContractFactory('IntentSource')
-    const intentSource = await intentSourceFactory.deploy(0)
+    const intentSource = await intentSourceFactory.deploy()
     inbox = await (
       await ethers.getContractFactory('Inbox')
     ).deploy(owner.address, false, [owner.address])
@@ -80,166 +92,81 @@ describe('Intent Source Test', (): void => {
     await mintAndApprove()
   })
 
-  describe('constructor', () => {
-    it('is initialized correctly', async () => {
-      expect(await intentSource.counter()).to.eq(0)
-    })
-  })
   describe('intent creation', async () => {
     beforeEach(async (): Promise<void> => {
       expiry = (await time.latest()) + 123
       chainId = 1
-      targets = [await tokenA.getAddress()]
-      data = [await encodeTransfer(creator.address, mintAmount)]
-      rewardTokens = [await tokenA.getAddress(), await tokenB.getAddress()]
-      rewardAmounts = [mintAmount, mintAmount * 2]
-      nonce = await encodeIdentifier(
+      calls = [
+        {
+          target: await tokenA.getAddress(),
+          data: await encodeTransfer(creator.address, mintAmount),
+          value: 0,
+        },
+      ]
+      rewardTokens = [
+        { token: await tokenA.getAddress(), amount: mintAmount },
+        { token: await tokenB.getAddress(), amount: mintAmount * 2 },
+      ]
+      salt = await encodeIdentifier(
         0,
         (await ethers.provider.getNetwork()).chainId,
       )
-      const abiCoder = ethers.AbiCoder.defaultAbiCoder()
-      const intermediateHash = keccak256(
-        abiCoder.encode(
-          ['uint256', 'uint256', 'address[]', 'bytes[]', 'uint256', 'bytes32'],
-          [
-            (await intentSource.runner?.provider?.getNetwork())?.chainId,
-            chainId,
-            targets,
-            data,
-            expiry,
-            nonce,
-          ],
+      route = {
+        salt: salt,
+        source: Number(
+          (await intentSource.runner?.provider?.getNetwork())?.chainId,
         ),
-      )
+        destination: chainId,
+        inbox: await inbox.getAddress(),
+        calls: calls,
+      }
+      reward = {
+        creator: creator.address,
+        prover: await prover.getAddress(),
+        deadline: expiry,
+        nativeValue: 0n,
+        tokens: rewardTokens,
+      }
+      routeHash = keccak256(encodeRoute(route))
+      rewardHash = keccak256(encodeReward(reward))
       intentHash = keccak256(
-        abiCoder.encode(
-          ['address', 'bytes32'],
-          [await inbox.getAddress(), intermediateHash],
-        ),
+        ethers.solidityPacked(['bytes32', 'bytes32'], [routeHash, rewardHash]),
       )
     })
-    context('fails if', () => {
-      it('targets or data length is 0, or if they are mismatched', async () => {
-        // mismatch
-        await expect(
-          intentSource
-            .connect(creator)
-            .createIntent(
-              1,
-              await inbox.getAddress(),
-              [await tokenA.getAddress(), await tokenB.getAddress()],
-              [await encodeTransfer(creator.address, mintAmount)],
-              [await tokenA.getAddress()],
-              [mintAmount],
-              await time.latest(),
-              await prover.getAddress(),
-            ),
-        ).to.be.revertedWithCustomError(intentSource, 'CalldataMismatch')
-        // length 0
-        await expect(
-          intentSource
-            .connect(creator)
-            .createIntent(
-              1,
-              await inbox.getAddress(),
-              [],
-              [],
-              [await tokenA.getAddress()],
-              [mintAmount],
-              await time.latest(),
-              await prover.getAddress(),
-            ),
-        ).to.be.revertedWithCustomError(intentSource, 'CalldataMismatch')
+    it('computes valid intent vailt address', async () => {
+      const predictedVaultAddress = await intentVaultAddress(
+        await intentSource.getAddress(),
+        { route, reward },
+      )
+
+      const contractVaultAddress = await intentSource.intentVaultAddress({
+        route,
+        reward,
       })
-      it('rewardTokens and rewardAmounts are mismatched', async () => {
-        // mismatch
-        await expect(
-          intentSource
-            .connect(creator)
-            .createIntent(
-              1,
-              await inbox.getAddress(),
-              [await tokenA.getAddress()],
-              [await encodeTransfer(creator.address, mintAmount)],
-              [await tokenA.getAddress(), await tokenB.getAddress()],
-              [mintAmount],
-              await time.latest(),
-              await prover.getAddress(),
-            ),
-        ).to.be.revertedWithCustomError(intentSource, 'RewardsMismatch')
-      })
+
+      expect(contractVaultAddress).to.eq(predictedVaultAddress)
     })
     it('creates properly with erc20 rewards', async () => {
-      await intentSource
-        .connect(creator)
-        .createIntent(
-          chainId,
-          await inbox.getAddress(),
-          targets,
-          data,
-          rewardTokens,
-          rewardAmounts,
-          expiry,
-          await prover.getAddress(),
-        )
-      const intent = await intentSource.intents(intentHash)
-      // value types
-      expect(intent.creator).to.eq(creator.address)
-      expect(intent.destinationChainID).to.eq(chainId)
-      expect(intent.expiryTime).to.eq(expiry)
-      expect(intent.isActive).to.eq(true)
-      expect(intent.nonce).to.eq(nonce)
-      // getIntent complete call
-      const intentDetail = await intentSource.getIntent(intentHash)
-      expect(intentDetail.creator).to.eq(creator.address)
-      expect(intentDetail.destinationChainID).to.eq(chainId)
-      expect(intentDetail.targets).to.deep.eq(targets)
-      expect(intentDetail.data).to.deep.eq(data)
-      expect(intentDetail.rewardTokens).to.deep.eq(rewardTokens)
-      expect(intentDetail.rewardAmounts).to.deep.eq(rewardAmounts)
-      expect(intentDetail.expiryTime).to.eq(expiry)
-      expect(intentDetail.isActive).to.eq(true)
-      expect(intentDetail.nonce).to.eq(nonce)
-      expect(intentDetail.prover).to.eq(await prover.getAddress())
-      expect(intentDetail.rewardNative).to.eq(0)
+      await intentSource.connect(creator).publishIntent({ route, reward }, true)
+
+      expect(await intentSource.validateIntent({ route, reward })).to.be.true
     })
     it('creates properly with native token rewards', async () => {
       await intentSource
         .connect(creator)
-        .createIntent(
-          chainId,
-          await inbox.getAddress(),
-          targets,
-          data,
-          [],
-          [],
-          expiry,
-          await prover.getAddress(),
+        .publishIntent(
+          { route, reward: { ...reward, nativeValue: rewardNativeEth } },
+          true,
           { value: rewardNativeEth },
         )
-      const intent = await intentSource.intents(intentHash)
-      // value types
-      expect(intent.creator).to.eq(creator.address)
-      expect(intent.destinationChainID).to.eq(chainId)
-      expect(intent.expiryTime).to.eq(expiry)
-      expect(intent.isActive).to.eq(true)
-      expect(intent.nonce).to.eq(nonce)
-      // getIntent complete call
-      const intentDetail = await intentSource.getIntent(intentHash)
-      expect(intentDetail.creator).to.eq(creator.address)
-      expect(intentDetail.destinationChainID).to.eq(chainId)
-      expect(intentDetail.targets).to.deep.eq(targets)
-      expect(intentDetail.data).to.deep.eq(data)
-      expect(intentDetail.rewardTokens).to.deep.eq([])
-      expect(intentDetail.rewardAmounts).to.deep.eq([])
-      expect(intentDetail.expiryTime).to.eq(expiry)
-      expect(intentDetail.isActive).to.eq(true)
-      expect(intentDetail.nonce).to.eq(nonce)
-      expect(intentDetail.prover).to.eq(await prover.getAddress())
-      expect(intentDetail.rewardNative).to.eq(rewardNativeEth)
+      expect(
+        await intentSource.validateIntent({
+          route,
+          reward: { ...reward, nativeValue: rewardNativeEth },
+        }),
+      ).to.be.true
     })
     it('increments counter and locks up tokens', async () => {
-      const counter = await intentSource.counter()
       const initialBalanceA = await tokenA.balanceOf(
         await intentSource.getAddress(),
       )
@@ -250,113 +177,109 @@ describe('Intent Source Test', (): void => {
         await intentSource.getAddress(),
       )
 
+      const intent = {
+        route,
+        reward: { ...reward, nativeValue: rewardNativeEth },
+      }
+
       await intentSource
         .connect(creator)
-        .createIntent(
-          chainId,
-          await inbox.getAddress(),
-          targets,
-          data,
-          rewardTokens,
-          rewardAmounts,
-          expiry,
-          await prover.getAddress(),
-          { value: rewardNativeEth },
-        )
-      expect(await intentSource.counter()).to.eq(Number(counter) + 1)
-      expect(await tokenA.balanceOf(await intentSource.getAddress())).to.eq(
-        Number(initialBalanceA) + rewardAmounts[0],
-      )
-      expect(await tokenB.balanceOf(await intentSource.getAddress())).to.eq(
-        Number(initialBalanceB) + rewardAmounts[1],
-      )
+        .publishIntent(intent, true, { value: rewardNativeEth })
+
       expect(
-        await ethers.provider.getBalance(await intentSource.getAddress()),
+        await tokenA.balanceOf(await intentSource.intentVaultAddress(intent)),
+      ).to.eq(Number(initialBalanceA) + rewardTokens[0].amount)
+      expect(
+        await tokenB.balanceOf(await intentSource.intentVaultAddress(intent)),
+      ).to.eq(Number(initialBalanceB) + rewardTokens[1].amount)
+      expect(
+        await ethers.provider.getBalance(
+          await intentSource.intentVaultAddress(intent),
+        ),
       ).to.eq(initialBalanceNative + rewardNativeEth)
     })
     it('emits events', async () => {
+      const intent = {
+        route,
+        reward: { ...reward, nativeValue: rewardNativeEth },
+      }
+      const { intentHash } = hashIntent(intent)
+
       await expect(
         intentSource
           .connect(creator)
-          .createIntent(
-            chainId,
-            await inbox.getAddress(),
-            targets,
-            data,
-            rewardTokens,
-            rewardAmounts,
-            expiry,
-            await prover.getAddress(),
-            { value: rewardNativeEth },
-          ),
+          .publishIntent(intent, true, { value: rewardNativeEth }),
       )
         .to.emit(intentSource, 'IntentCreated')
         .withArgs(
           intentHash,
-          await creator.getAddress(),
+          salt,
+          Number((await intentSource.runner?.provider?.getNetwork())?.chainId),
           chainId,
-          targets,
-          data,
-          rewardTokens,
-          rewardAmounts,
-          expiry,
-          nonce,
+          await inbox.getAddress(),
+          calls.map(Object.values),
+          await creator.getAddress(),
           await prover.getAddress(),
+          expiry,
           rewardNativeEth,
+          rewardTokens.map(Object.values),
         )
     })
   })
   describe('claiming rewards', async () => {
     beforeEach(async (): Promise<void> => {
       expiry = (await time.latest()) + 123
-      nonce = await encodeIdentifier(
+      salt = await encodeIdentifier(
         0,
         (await ethers.provider.getNetwork()).chainId,
       )
       chainId = 1
-      targets = [await tokenA.getAddress()]
-      data = [await encodeTransfer(creator.address, mintAmount)]
-      rewardTokens = [await tokenA.getAddress(), await tokenB.getAddress()]
-      rewardAmounts = [mintAmount, mintAmount * 2]
-      const abiCoder = ethers.AbiCoder.defaultAbiCoder()
-      const intermediateHash = keccak256(
-        abiCoder.encode(
-          ['uint256', 'uint256', 'address[]', 'bytes[]', 'uint256', 'bytes32'],
-          [
-            (await intentSource.runner?.provider?.getNetwork())?.chainId,
-            chainId,
-            targets,
-            data,
-            expiry,
-            nonce,
-          ],
+      calls = [
+        {
+          target: await tokenA.getAddress(),
+          data: await encodeTransfer(creator.address, mintAmount),
+          value: 0,
+        },
+      ]
+      rewardTokens = [
+        { token: await tokenA.getAddress(), amount: mintAmount },
+        { token: await tokenB.getAddress(), amount: mintAmount * 2 },
+      ]
+
+      route = {
+        salt: salt,
+        source: Number(
+          (await intentSource.runner?.provider?.getNetwork())?.chainId,
         ),
-      )
+        destination: chainId,
+        inbox: await inbox.getAddress(),
+        calls: calls,
+      }
+
+      reward = {
+        creator: creator.address,
+        prover: await prover.getAddress(),
+        deadline: expiry,
+        nativeValue: rewardNativeEth,
+        tokens: rewardTokens,
+      }
+
+      routeHash = keccak256(encodeRoute(route))
+      rewardHash = keccak256(encodeReward(reward))
       intentHash = keccak256(
-        abiCoder.encode(
-          ['address', 'bytes32'],
-          [await inbox.getAddress(), intermediateHash],
-        ),
+        ethers.solidityPacked(['bytes32', 'bytes32'], [routeHash, rewardHash]),
       )
+
+      intent = { route, reward }
 
       await intentSource
         .connect(creator)
-        .createIntent(
-          chainId,
-          await inbox.getAddress(),
-          targets,
-          data,
-          rewardTokens,
-          rewardAmounts,
-          expiry,
-          await prover.getAddress(),
-          { value: rewardNativeEth },
-        )
+        .publishIntent(intent, true, { value: rewardNativeEth })
     })
     context('before expiry, no proof', () => {
       it('cant be withdrawn', async () => {
         await expect(
-          intentSource.connect(otherPerson).withdrawRewards(intentHash),
+          intentSource.connect(otherPerson).withdrawRewards(routeHash, reward),
         ).to.be.revertedWithCustomError(intentSource, `UnauthorizedWithdrawal`)
       })
     })
@@ -378,16 +301,18 @@ describe('Intent Source Test', (): void => {
           await claimant.getAddress(),
         )
 
-        expect((await intentSource.intents(intentHash)).isActive).to.be.true
+        expect(await intentSource.validateIntent(intent)).to.be.true
 
-        await intentSource.connect(otherPerson).withdrawRewards(intentHash)
+        await intentSource
+          .connect(otherPerson)
+          .withdrawRewards(routeHash, reward)
 
-        expect((await intentSource.intents(intentHash)).isActive).to.be.false
+        expect(await intentSource.validateIntent(intent)).to.be.false
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(
-          Number(initialBalanceA) + rewardAmounts[0],
+          Number(initialBalanceA) + reward.tokens[0].amount,
         )
         expect(await tokenB.balanceOf(await claimant.getAddress())).to.eq(
-          Number(initialBalanceB) + rewardAmounts[1],
+          Number(initialBalanceB) + reward.tokens[1].amount,
         )
         expect(
           await ethers.provider.getBalance(await claimant.getAddress()),
@@ -395,16 +320,33 @@ describe('Intent Source Test', (): void => {
       })
       it('emits event', async () => {
         await expect(
-          intentSource.connect(otherPerson).withdrawRewards(intentHash),
+          intentSource.connect(otherPerson).withdrawRewards(routeHash, reward),
         )
           .to.emit(intentSource, 'Withdrawal')
           .withArgs(intentHash, await claimant.getAddress())
       })
       it('does not allow repeat withdrawal', async () => {
-        await intentSource.connect(otherPerson).withdrawRewards(intentHash)
+        await intentSource
+          .connect(otherPerson)
+          .withdrawRewards(routeHash, reward)
         await expect(
-          intentSource.connect(otherPerson).withdrawRewards(intentHash),
+          intentSource.connect(otherPerson).withdrawRewards(routeHash, reward),
         ).to.be.revertedWithCustomError(intentSource, 'NothingToWithdraw')
+      })
+      it('allows refund if already claimed', async () => {
+        expect(
+          intentSource.connect(otherPerson).withdrawRewards(routeHash, reward),
+        )
+          .to.emit(intentSource, 'Withdrawal')
+          .withArgs(intentHash, reward.creator)
+
+        await expect(
+          intentSource
+            .connect(otherPerson)
+            .refundIntent(routeHash, reward, ZeroAddress),
+        )
+          .to.emit(intentSource, 'Withdrawal')
+          .withArgs(intentHash, reward.creator)
       })
     })
     context('after expiry, no proof', () => {
@@ -418,16 +360,18 @@ describe('Intent Source Test', (): void => {
         const initialBalanceB = await tokenB.balanceOf(
           await creator.getAddress(),
         )
-        expect((await intentSource.intents(intentHash)).isActive).to.be.true
+        expect(await intentSource.validateIntent(intent)).to.be.true
 
-        await intentSource.connect(otherPerson).withdrawRewards(intentHash)
+        await intentSource
+          .connect(otherPerson)
+          .withdrawRewards(routeHash, reward)
 
-        expect((await intentSource.intents(intentHash)).isActive).to.be.false
+        expect(await intentSource.validateIntent(intent)).to.be.false
         expect(await tokenA.balanceOf(await creator.getAddress())).to.eq(
-          Number(initialBalanceA) + rewardAmounts[0],
+          Number(initialBalanceA) + reward.tokens[0].amount,
         )
         expect(await tokenB.balanceOf(await creator.getAddress())).to.eq(
-          Number(initialBalanceB) + rewardAmounts[1],
+          Number(initialBalanceB) + reward.tokens[1].amount,
         )
       })
     })
@@ -445,16 +389,18 @@ describe('Intent Source Test', (): void => {
         const initialBalanceB = await tokenB.balanceOf(
           await claimant.getAddress(),
         )
-        expect((await intentSource.intents(intentHash)).isActive).to.be.true
+        expect(await intentSource.validateIntent(intent)).to.be.true
 
-        await intentSource.connect(otherPerson).withdrawRewards(intentHash)
+        await intentSource
+          .connect(otherPerson)
+          .withdrawRewards(routeHash, reward)
 
-        expect((await intentSource.intents(intentHash)).isActive).to.be.false
+        expect(await intentSource.validateIntent(intent)).to.be.false
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(
-          Number(initialBalanceA) + rewardAmounts[0],
+          Number(initialBalanceA) + reward.tokens[0].amount,
         )
         expect(await tokenB.balanceOf(await claimant.getAddress())).to.eq(
-          Number(initialBalanceB) + rewardAmounts[1],
+          Number(initialBalanceB) + reward.tokens[1].amount,
         )
       })
     })
@@ -463,148 +409,112 @@ describe('Intent Source Test', (): void => {
     describe('fails if', () => {
       beforeEach(async (): Promise<void> => {
         expiry = (await time.latest()) + 123
-        nonce = await encodeIdentifier(
+        salt = await encodeIdentifier(
           0,
           (await ethers.provider.getNetwork()).chainId,
         )
         chainId = 1
-        targets = [await tokenA.getAddress()]
-        data = [await encodeTransfer(creator.address, mintAmount)]
-        rewardTokens = [await tokenA.getAddress(), await tokenB.getAddress()]
-        rewardAmounts = [mintAmount, mintAmount * 2]
-        const abiCoder = ethers.AbiCoder.defaultAbiCoder()
-        const intermediateHash = keccak256(
-          abiCoder.encode(
-            [
-              'uint256',
-              'uint256',
-              'address[]',
-              'bytes[]',
-              'uint256',
-              'bytes32',
-            ],
-            [
-              (await intentSource.runner?.provider?.getNetwork())?.chainId,
-              chainId,
-              targets,
-              data,
-              expiry,
-              nonce,
-            ],
+        calls = [
+          {
+            target: await tokenA.getAddress(),
+            data: await encodeTransfer(creator.address, mintAmount),
+            value: 0,
+          },
+        ]
+        rewardTokens = [
+          { token: await tokenA.getAddress(), amount: mintAmount },
+          { token: await tokenB.getAddress(), amount: mintAmount * 2 },
+        ]
+        route = {
+          salt: salt,
+          source: Number(
+            (await intentSource.runner?.provider?.getNetwork())?.chainId,
           ),
-        )
-        intentHash = keccak256(
-          abiCoder.encode(
-            ['address', 'bytes32'],
-            [await inbox.getAddress(), intermediateHash],
-          ),
-        )
+          destination: chainId,
+          inbox: await inbox.getAddress(),
+          calls: calls,
+        }
+        reward = {
+          creator: creator.address,
+          prover: await prover.getAddress(),
+          deadline: expiry,
+          nativeValue: rewardNativeEth,
+          tokens: rewardTokens,
+        }
+        ;({ intentHash, routeHash, rewardHash } = hashIntent({ route, reward }))
+        intent = { route, reward }
 
         await intentSource
           .connect(creator)
-          .createIntent(
-            chainId,
-            await inbox.getAddress(),
-            targets,
-            data,
-            rewardTokens,
-            rewardAmounts,
-            expiry,
-            await prover.getAddress(),
-            { value: rewardNativeEth },
-          )
-      })
-      it('bricks if called with the zero address as the claimant param', async () => {
-        await expect(
-          intentSource
-            .connect(otherPerson)
-            .batchWithdraw([intentHash], ZeroAddress),
-        ).to.be.revertedWithCustomError(intentSource, 'BadClaimant')
-      })
-      it('bricks if called with an intent whose claimant differs from the claimant param', async () => {
-        await expect(
-          intentSource
-            .connect(otherPerson)
-            .batchWithdraw([intentHash], await claimant.getAddress()),
-        ).to.be.revertedWithCustomError(intentSource, 'BadClaimant')
+          .publishIntent(intent, true, { value: rewardNativeEth })
       })
       it('bricks if called before expiry by IntentCreator', async () => {
         await expect(
           intentSource
             .connect(otherPerson)
-            .batchWithdraw([intentHash], await creator.getAddress()),
+            .batchWithdraw([routeHash], [reward]),
         ).to.be.revertedWithCustomError(intentSource, 'UnauthorizedWithdrawal')
       })
     })
     describe('single intent, complex', () => {
       beforeEach(async (): Promise<void> => {
         expiry = (await time.latest()) + 123
-        nonce = await encodeIdentifier(
+        salt = await encodeIdentifier(
           0,
           (await ethers.provider.getNetwork()).chainId,
         )
         chainId = 1
-        targets = [await tokenA.getAddress()]
-        data = [await encodeTransfer(creator.address, mintAmount)]
-        rewardTokens = [await tokenA.getAddress(), await tokenB.getAddress()]
-        rewardAmounts = [mintAmount, mintAmount * 2]
-        const abiCoder = ethers.AbiCoder.defaultAbiCoder()
-        const intermediateHash = keccak256(
-          abiCoder.encode(
-            [
-              'uint256',
-              'uint256',
-              'address[]',
-              'bytes[]',
-              'uint256',
-              'bytes32',
-            ],
-            [
-              (await intentSource.runner?.provider?.getNetwork())?.chainId,
-              chainId,
-              targets,
-              data,
-              expiry,
-              nonce,
-            ],
+        calls = [
+          {
+            target: await tokenA.getAddress(),
+            data: await encodeTransfer(creator.address, mintAmount),
+            value: 0,
+          },
+        ]
+        rewardTokens = [
+          { token: await tokenA.getAddress(), amount: mintAmount },
+          { token: await tokenB.getAddress(), amount: mintAmount * 2 },
+        ]
+        route = {
+          salt: salt,
+          source: Number(
+            (await intentSource.runner?.provider?.getNetwork())?.chainId,
           ),
-        )
-        intentHash = keccak256(
-          abiCoder.encode(
-            ['address', 'bytes32'],
-            [await inbox.getAddress(), intermediateHash],
-          ),
-        )
+          destination: chainId,
+          inbox: await inbox.getAddress(),
+          calls: calls,
+        }
+        reward = {
+          creator: creator.address,
+          prover: await prover.getAddress(),
+          deadline: expiry,
+          nativeValue: rewardNativeEth,
+          tokens: rewardTokens,
+        }
+        intent = { route, reward }
+        ;({ intentHash, routeHash, rewardHash } = hashIntent(intent))
 
         await intentSource
           .connect(creator)
-          .createIntent(
-            chainId,
-            await inbox.getAddress(),
-            targets,
-            data,
-            rewardTokens,
-            rewardAmounts,
-            expiry,
-            await prover.getAddress(),
-            { value: rewardNativeEth },
-          )
+          .publishIntent(intent, true, { value: rewardNativeEth })
       })
       it('before expiry to claimant', async () => {
         const initialBalanceNative = await ethers.provider.getBalance(
           await claimant.getAddress(),
         )
-        expect((await intentSource.intents(intentHash)).isActive).to.be.true
+        expect(await intentSource.validateIntent(intent)).to.be.true
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(0)
         expect(await tokenB.balanceOf(await claimant.getAddress())).to.eq(0)
-        expect(await tokenA.balanceOf(await intentSource.getAddress())).to.eq(
-          mintAmount,
-        )
-        expect(await tokenB.balanceOf(await intentSource.getAddress())).to.eq(
-          mintAmount * 2,
-        )
         expect(
-          await ethers.provider.getBalance(await intentSource.getAddress()),
+          await tokenA.balanceOf(await intentSource.intentVaultAddress(intent)),
+        ).to.eq(mintAmount)
+        expect(
+          await tokenB.balanceOf(await intentSource.intentVaultAddress(intent)),
+        ).to.eq(mintAmount * 2)
+        expect(
+          await ethers.provider.getBalance(
+            await intentSource.intentVaultAddress(intent),
+          ),
         ).to.eq(rewardNativeEth)
 
         await prover
@@ -612,9 +522,9 @@ describe('Intent Source Test', (): void => {
           .addProvenIntent(intentHash, await claimant.getAddress())
         await intentSource
           .connect(otherPerson)
-          .batchWithdraw([intentHash], await claimant.getAddress())
+          .batchWithdraw([routeHash], [reward])
 
-        expect((await intentSource.intents(intentHash)).isActive).to.be.false
+        expect(await intentSource.validateIntent(intent)).to.be.false
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(
           mintAmount,
         )
@@ -637,7 +547,7 @@ describe('Intent Source Test', (): void => {
         const initialBalanceNative = await ethers.provider.getBalance(
           await creator.getAddress(),
         )
-        expect((await intentSource.intents(intentHash)).isActive).to.be.true
+        expect(await intentSource.validateIntent(intent)).to.be.true
         expect(await tokenA.balanceOf(await creator.getAddress())).to.eq(0)
         expect(await tokenB.balanceOf(await creator.getAddress())).to.eq(0)
 
@@ -646,9 +556,9 @@ describe('Intent Source Test', (): void => {
           .addProvenIntent(intentHash, await creator.getAddress())
         await intentSource
           .connect(otherPerson)
-          .batchWithdraw([intentHash], await creator.getAddress())
+          .batchWithdraw([routeHash], [reward])
 
-        expect((await intentSource.intents(intentHash)).isActive).to.be.false
+        expect(await intentSource.validateIntent(intent)).to.be.false
         expect(await tokenA.balanceOf(await creator.getAddress())).to.eq(
           mintAmount,
         )
@@ -663,35 +573,49 @@ describe('Intent Source Test', (): void => {
     describe('multiple intents, each with a single reward token', () => {
       beforeEach(async (): Promise<void> => {
         expiry = (await time.latest()) + 123
-        nonce = await encodeIdentifier(
+        salt = await encodeIdentifier(
           0,
           (await ethers.provider.getNetwork()).chainId,
         )
         chainId = 1
-        targets = [await tokenA.getAddress()]
-        data = [await encodeTransfer(creator.address, mintAmount)]
+        calls = [
+          {
+            target: await tokenA.getAddress(),
+            data: await encodeTransfer(creator.address, mintAmount),
+            value: 0,
+          },
+        ]
       })
       it('same token', async () => {
         let tx
+        let salt = route.salt
+        const routeHashes: BytesLike[] = []
+        const rewards: Reward[] = []
         for (let i = 0; i < 3; i++) {
+          route = {
+            ...route,
+            salt: (salt = keccak256(salt)),
+          }
+          rewards.push({
+            ...reward,
+            nativeValue: 0n,
+            tokens: [
+              { token: await tokenA.getAddress(), amount: mintAmount / 10 },
+            ],
+          })
+          routeHashes.push(
+            hashIntent({ route, reward: rewards.at(-1)! }).routeHash,
+          )
+
           tx = await intentSource
             .connect(creator)
-            .createIntent(
-              chainId,
-              await inbox.getAddress(),
-              targets,
-              data,
-              [await tokenA.getAddress()],
-              [mintAmount / 10],
-              expiry,
-              await prover.getAddress(),
-            )
+            .publishIntent({ route, reward: rewards.at(-1)! }, true)
           tx = await tx.wait()
         }
         const logs = await intentSource.queryFilter(
           intentSource.getEvent('IntentCreated'),
         )
-        const hashes = logs.map((log) => log.args._hash)
+        const hashes = logs.map((log) => log.args.hash)
 
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(0)
 
@@ -702,7 +626,7 @@ describe('Intent Source Test', (): void => {
         }
         await intentSource
           .connect(otherPerson)
-          .batchWithdraw(hashes, await claimant.getAddress())
+          .batchWithdraw(routeHashes, rewards)
 
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(
           (mintAmount / 10) * 3,
@@ -710,40 +634,58 @@ describe('Intent Source Test', (): void => {
       })
       it('multiple tokens', async () => {
         let tx
+        let salt = route.salt
+        const routeHashes: BytesLike[] = []
+        const rewards: Reward[] = []
         for (let i = 0; i < 3; i++) {
+          route = {
+            ...route,
+            salt: (salt = keccak256(salt)),
+          }
+          rewards.push({
+            ...reward,
+            nativeValue: 0n,
+            tokens: [
+              { token: await tokenA.getAddress(), amount: mintAmount / 10 },
+            ],
+          })
+          routeHashes.push(
+            hashIntent({ route, reward: rewards.at(-1)! }).routeHash,
+          )
+
           tx = await intentSource
             .connect(creator)
-            .createIntent(
-              chainId,
-              await inbox.getAddress(),
-              targets,
-              data,
-              [await tokenA.getAddress()],
-              [mintAmount / 10],
-              expiry,
-              await prover.getAddress(),
-            )
+            .publishIntent({ route, reward: rewards.at(-1)! }, true)
           tx = await tx.wait()
         }
         for (let i = 0; i < 3; i++) {
+          route = {
+            ...route,
+            salt: (salt = keccak256(salt)),
+          }
+          rewards.push({
+            ...reward,
+            nativeValue: 0n,
+            tokens: [
+              {
+                token: await tokenB.getAddress(),
+                amount: (mintAmount * 2) / 10,
+              },
+            ],
+          })
+          routeHashes.push(
+            hashIntent({ route, reward: rewards.at(-1)! }).routeHash,
+          )
+
           tx = await intentSource
             .connect(creator)
-            .createIntent(
-              chainId,
-              await inbox.getAddress(),
-              targets,
-              data,
-              [await tokenB.getAddress()],
-              [(mintAmount * 2) / 10],
-              expiry,
-              await prover.getAddress(),
-            )
+            .publishIntent({ route, reward: rewards.at(-1)! }, true)
           tx = await tx.wait()
         }
         const logs = await intentSource.queryFilter(
           intentSource.getEvent('IntentCreated'),
         )
-        const hashes = logs.map((log) => log.args._hash)
+        const hashes = logs.map((log) => log.args.hash)
 
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(0)
         expect(await tokenB.balanceOf(await claimant.getAddress())).to.eq(0)
@@ -755,7 +697,7 @@ describe('Intent Source Test', (): void => {
         }
         await intentSource
           .connect(otherPerson)
-          .batchWithdraw(hashes, await claimant.getAddress())
+          .batchWithdraw(routeHashes, rewards)
 
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(
           (mintAmount / 10) * 3,
@@ -766,56 +708,87 @@ describe('Intent Source Test', (): void => {
       })
       it('multiple tokens plus native', async () => {
         let tx
+        let salt = route.salt
+        const routeHashes: BytesLike[] = []
+        const rewards: Reward[] = []
         for (let i = 0; i < 3; i++) {
-          tx = await intentSource
-            .connect(creator)
-            .createIntent(
-              chainId,
-              await inbox.getAddress(),
-              targets,
-              data,
-              [await tokenA.getAddress()],
-              [mintAmount / 10],
-              expiry,
-              await prover.getAddress(),
-            )
+          route = {
+            ...route,
+            salt: (salt = keccak256(salt)),
+          }
+          rewards.push({
+            ...reward,
+            nativeValue: 0n,
+            tokens: [
+              { token: await tokenA.getAddress(), amount: mintAmount / 10 },
+            ],
+          })
+          routeHashes.push(
+            hashIntent({ route, reward: rewards.at(-1)! }).routeHash,
+          )
+
+          tx = await intentSource.connect(creator).publishIntent(
+            {
+              route,
+              reward: rewards.at(-1)!,
+            },
+            true,
+          )
           tx = await tx.wait()
         }
         for (let i = 0; i < 3; i++) {
-          tx = await intentSource
-            .connect(creator)
-            .createIntent(
-              chainId,
-              await inbox.getAddress(),
-              targets,
-              data,
-              [await tokenB.getAddress()],
-              [(mintAmount * 2) / 10],
-              expiry,
-              await prover.getAddress(),
-            )
+          route = {
+            ...route,
+            salt: (salt = keccak256(salt)),
+          }
+          rewards.push({
+            ...reward,
+            nativeValue: 0n,
+            tokens: [
+              {
+                token: await tokenB.getAddress(),
+                amount: (mintAmount * 2) / 10,
+              },
+            ],
+          })
+          routeHashes.push(
+            hashIntent({ route, reward: rewards.at(-1)! }).routeHash,
+          )
+
+          tx = await intentSource.connect(creator).publishIntent(
+            {
+              route,
+              reward: rewards.at(-1)!,
+            },
+            true,
+          )
           tx = await tx.wait()
         }
         for (let i = 0; i < 3; i++) {
+          route = {
+            ...route,
+            salt: (salt = keccak256(salt)),
+          }
+          rewards.push({
+            ...reward,
+            nativeValue: rewardNativeEth,
+            tokens: [],
+          })
+          routeHashes.push(
+            hashIntent({ route, reward: rewards.at(-1)! }).routeHash,
+          )
+
           tx = await intentSource
             .connect(creator)
-            .createIntent(
-              chainId,
-              await inbox.getAddress(),
-              targets,
-              data,
-              [],
-              [],
-              expiry,
-              await prover.getAddress(),
-              { value: rewardNativeEth },
-            )
+            .publishIntent({ route, reward: rewards.at(-1)! }, true, {
+              value: rewardNativeEth,
+            })
           tx = await tx.wait()
         }
         const logs = await intentSource.queryFilter(
           intentSource.getEvent('IntentCreated'),
         )
-        const hashes = logs.map((log) => log.args._hash)
+        const hashes = logs.map((log) => log.args.hash)
 
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(0)
         expect(await tokenB.balanceOf(await claimant.getAddress())).to.eq(0)
@@ -829,9 +802,10 @@ describe('Intent Source Test', (): void => {
             .connect(creator)
             .addProvenIntent(hashes[i], await claimant.getAddress())
         }
+
         await intentSource
           .connect(otherPerson)
-          .batchWithdraw(hashes, await claimant.getAddress())
+          .batchWithdraw(routeHashes, rewards)
 
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(
           (mintAmount / 10) * 3,
@@ -846,49 +820,94 @@ describe('Intent Source Test', (): void => {
     })
     it('works in the case of multiple intents, each with multiple reward tokens', async () => {
       expiry = (await time.latest()) + 123
-      nonce = await encodeIdentifier(
+      salt = await encodeIdentifier(
         0,
         (await ethers.provider.getNetwork()).chainId,
       )
       chainId = 1
-      targets = [await tokenA.getAddress()]
-      data = [await encodeTransfer(creator.address, mintAmount)]
+      calls = [
+        {
+          target: await tokenA.getAddress(),
+          data: await encodeTransfer(creator.address, mintAmount),
+          value: 0,
+        },
+      ]
+      route = {
+        salt: salt,
+        source: Number(
+          (await intentSource.runner?.provider?.getNetwork())?.chainId,
+        ),
+        destination: chainId,
+        inbox: await inbox.getAddress(),
+        calls: calls,
+      }
       let tx
+      let routeHashes: BytesLike[] = []
+      let rewards: Reward[] = []
       for (let i = 0; i < 5; i++) {
-        tx = await intentSource
-          .connect(creator)
-          .createIntent(
-            chainId,
-            await inbox.getAddress(),
-            targets,
-            data,
-            [await tokenA.getAddress()],
-            [mintAmount / 10],
-            expiry,
-            await prover.getAddress(),
-          )
+        route = {
+          ...route,
+          salt: (salt = keccak256(salt)),
+        }
+        rewards.push({
+          ...reward,
+          nativeValue: 0n,
+          tokens: [
+            {
+              token: await tokenA.getAddress(),
+              amount: mintAmount / 10,
+            },
+          ],
+        })
+        routeHashes.push(
+          hashIntent({ route, reward: rewards.at(-1)! }).routeHash,
+        )
+
+        tx = await intentSource.connect(creator).publishIntent(
+          {
+            route,
+            reward: rewards.at(-1)!,
+          },
+          true,
+        )
         tx = await tx.wait()
       }
       for (let i = 0; i < 5; i++) {
-        tx = await intentSource
-          .connect(creator)
-          .createIntent(
-            chainId,
-            await inbox.getAddress(),
-            targets,
-            data,
-            [await tokenB.getAddress(), await tokenA.getAddress()],
-            [(mintAmount * 2) / 10, mintAmount / 10],
-            expiry,
-            await prover.getAddress(),
-            { value: rewardNativeEth },
-          )
-        tx = await tx.wait()
+        route = {
+          ...route,
+          salt: (salt = keccak256(salt)),
+        }
+        rewards.push({
+          ...reward,
+          tokens: [
+            {
+              token: await tokenA.getAddress(),
+              amount: mintAmount / 10,
+            },
+            {
+              token: await tokenB.getAddress(),
+              amount: (mintAmount * 2) / 10,
+            },
+          ],
+        })
+        routeHashes.push(
+          hashIntent({ route, reward: rewards.at(-1)! }).routeHash,
+        )
+
+        tx = await intentSource.connect(creator).publishIntent(
+          {
+            route,
+            reward: rewards.at(-1)!,
+          },
+          true,
+          { value: rewardNativeEth },
+        )
+        await tx.wait()
       }
       const logs = await intentSource.queryFilter(
         intentSource.getEvent('IntentCreated'),
       )
-      const hashes = logs.map((log) => log.args._hash)
+      const hashes = logs.map((log) => log.args.hash)
 
       expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(0)
       expect(await tokenB.balanceOf(await claimant.getAddress())).to.eq(0)
@@ -897,14 +916,14 @@ describe('Intent Source Test', (): void => {
         await claimant.getAddress(),
       )
 
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < hashes.length; i++) {
         await prover
           .connect(creator)
           .addProvenIntent(hashes[i], await claimant.getAddress())
       }
       await intentSource
         .connect(otherPerson)
-        .batchWithdraw(hashes, await claimant.getAddress())
+        .batchWithdraw(routeHashes, rewards)
 
       expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(
         mintAmount,

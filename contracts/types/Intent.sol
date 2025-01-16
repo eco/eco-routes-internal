@@ -14,13 +14,13 @@ struct TokenAmount {
 }
 
 struct Route {
-    // nonce provided by the creator
-    bytes32 nonce;
+    // salt provided by the creator
+    bytes32 salt;
     // ID of chain where the intent was created
     uint256 source;
     // ID of chain where we want instructions executed
     uint256 destination;
-    // The inbox contract on the destination chain will be the msg.sender
+    // The inbox contract on the destination chain
     address inbox;
     // instructions
     Call[] calls;
@@ -32,7 +32,7 @@ struct Reward {
     // address of the prover this intent will be checked against
     address prover;
     // intent expiry timestamp
-    uint256 expiryTime;
+    uint256 deadline;
     // native tokens offered as reward
     uint256 nativeValue;
     // addresses and amounts of reward tokens

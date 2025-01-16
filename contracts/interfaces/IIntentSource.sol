@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {ISemver} from "../libs/Semver.sol";
+import {ISemver} from "./ISemver.sol";
 
 import {Call, TokenAmount, Reward, Intent} from "../types/Intent.sol";
 
@@ -53,29 +53,40 @@ interface IIntentSource is ISemver {
 
     /**
      * @notice emitted on a successful call to createIntent
-     * @param hash the hash of the intent, also the key to the intents mapping
-     * @param nonce the nonce provided by the creator
-     * @param destination the destination chain
-     * @param inbox the inbox contract on the destination chain
-     * @param calls the instructions
-     * @param creator the address that created the intent
-     * @param prover the prover contract address for the intent
-     * @param expiryTime the time by which the storage proof must have been created in order for the solver to redeem rewards.
-     * @param nativeValue the amount of native tokens offered as reward
-     * @param tokens the reward tokens and amounts
+     * @param hash The hash of the intent, also the key to the intents mapping
+     * @param salt The nonce provided by the creator
+     * @param destination The destination chain
+     * @param inbox The inbox contract on the destination chain
+     * @param calls The instructions
+     * @param creator The address that created the intent
+     * @param prover The prover contract address for the intent
+     * @param deadline The time by which the intent must be fulfilled in order to claim the reward
+     * @param nativeValue The amount of native tokens offered as reward
+     * @param tokens The reward tokens and amounts
      */
     event IntentCreated(
         bytes32 indexed hash,
-        bytes32 nonce,
+        bytes32 salt,
+        uint256 source,
         uint256 destination,
         address inbox,
         Call[] calls,
         address indexed creator,
         address indexed prover,
-        uint256 expiryTime,
+        uint256 deadline,
         uint256 nativeValue,
         TokenAmount[] tokens
     );
+
+    enum ClaimStatus {
+        NotClaimed,
+        Claimed
+    }
+
+    struct ClaimState {
+        address claimant;
+        uint8 status;
+    }
 
     /**
      * @notice emitted on successful call to withdraw
@@ -84,17 +95,35 @@ interface IIntentSource is ISemver {
      */
     event Withdrawal(bytes32 _hash, address indexed _recipient);
 
-    function getClaimed(bytes32 intentHash) external view returns (address);
+    function getClaim(
+        bytes32 intentHash
+    ) external view returns (ClaimState memory);
 
     function getVaultRefundToken() external view returns (address);
+
+    function getIntentHash(
+        Intent calldata intent
+    )
+        external
+        pure
+        returns (bytes32 intentHash, bytes32 routeHash, bytes32 rewardHash);
+
+    function intentVaultAddress(
+        Intent calldata intent
+    ) external view returns (address);
 
     /**
      * @notice Creates an intent to execute instructions on a contract on a supported chain in exchange for a bundle of assets.
      * @dev If a proof ON THE SOURCE CHAIN is not completed by the expiry time, the reward funds will not be redeemable by the solver, REGARDLESS OF WHETHER THE INSTRUCTIONS WERE EXECUTED.
      * The onus of that time management (i.e. how long it takes for data to post to L1, etc.) is on the intent solver.
      * @param intent The intent struct with all the intent params
+     * @param fundReward whether to fund the reward or not
+     * @return intentHash the hash of the intent
      */
-    function publishIntent(Intent calldata intent, bool addRewards) external payable returns (bytes32 intentHash);
+    function publishIntent(
+        Intent calldata intent,
+        bool fundReward
+    ) external payable returns (bytes32 intentHash);
 
     /**
      * @notice Validates an intent by checking that the intent's rewards are  valid.
@@ -107,14 +136,32 @@ interface IIntentSource is ISemver {
     /**
      * @notice allows withdrawal of reward funds locked up for a given intent
      * @param routeHash the hash of the route of the intent
-        * @param reward the reward struct of the intent
+     * @param reward the reward struct of the intent
      */
-    function withdrawRewards(bytes32 routeHash, Reward calldata reward) external;
+    function withdrawRewards(
+        bytes32 routeHash,
+        Reward calldata reward
+    ) external;
 
     /**
      * @notice allows withdrawal of reward funds locked up for a given intent
      * @param routeHashes the hashes of the routes of the intents
      * @param rewards the rewards struct of the intents
      */
-    function batchWithdraw(bytes32[] calldata routeHashes, Reward[] calldata rewards) external;
+    function batchWithdraw(
+        bytes32[] calldata routeHashes,
+        Reward[] calldata rewards
+    ) external;
+
+    /**
+     * @notice Refunds the rewards associated with an intent to its creator
+     * @param routeHash The hash of the route of the intent
+     * @param reward The reward of the intent
+     * @param token Any specific token that could be wrongly sent to the vault
+     */
+    function refundIntent(
+        bytes32 routeHash,
+        Reward calldata reward,
+        address token
+    ) external;
 }

@@ -12,12 +12,23 @@ contract IntentVault {
     using SafeERC20 for IERC20;
 
     constructor(bytes32 intentHash, Reward memory reward) payable {
+        IIntentSource intentSource = IIntentSource(msg.sender);
         uint256 rewardsLength = reward.tokens.length;
 
-        address claimant = IIntentSource(msg.sender).getClaimed(intentHash);
-        address refundToken = IIntentSource(msg.sender).getVaultRefundToken();
+        IIntentSource.ClaimState memory state = intentSource.getClaim(
+            intentHash
+        );
+        address claimant = state.claimant;
+        address refundToken = intentSource.getVaultRefundToken();
 
-        if (claimant == address(0)) {
+        if (claimant == address(0) && block.timestamp < reward.deadline) {
+            revert("IntentVault: intent has not expired yet");
+        }
+
+        if (
+            (claimant == address(0) && block.timestamp >= reward.deadline) ||
+            state.status == uint8(IIntentSource.ClaimStatus.Claimed)
+        ) {
             claimant = reward.creator;
         }
 
@@ -36,11 +47,17 @@ contract IntentVault {
                     IERC20(token).safeTransfer(claimant, balance);
                 }
             } else {
-                require(amount >= balance, "IntentVault: insufficient balance");
+                require(
+                    amount >= balance,
+                    "IntentVault: insufficient token balance"
+                );
 
                 IERC20(token).safeTransfer(claimant, amount);
                 if (balance > amount) {
-                    IERC20(token).safeTransfer(reward.creator, balance - amount);
+                    IERC20(token).safeTransfer(
+                        reward.creator,
+                        balance - amount
+                    );
                 }
             }
         }
@@ -48,10 +65,12 @@ contract IntentVault {
         if (claimant != reward.creator && reward.nativeValue > 0) {
             require(
                 address(this).balance >= reward.nativeValue,
-                "IntentVault: insufficient balance"
+                "IntentVault: insufficient native balance"
             );
 
-            (bool success, ) = payable(claimant).call{value: reward.nativeValue}("");
+            (bool success, ) = payable(claimant).call{
+                value: reward.nativeValue
+            }("");
 
             require(success, "IntentVault: native reward transfer failed");
         }

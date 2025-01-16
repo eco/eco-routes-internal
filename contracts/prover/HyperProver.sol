@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {IMessageRecipient} from '@hyperlane-xyz/core/contracts/interfaces/IMessageRecipient.sol';
+import {IMessageRecipient} from "@hyperlane-xyz/core/contracts/interfaces/IMessageRecipient.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
-import {SimpleProver} from './interfaces/SimpleProver.sol';
-import {Semver} from "./libs/Semver.sol";
+import {BaseProver} from "./BaseProver.sol";
+import {Semver} from "../libs/Semver.sol";
 
-
-contract HyperProver is IMessageRecipient, SimpleProver {
+contract HyperProver is IMessageRecipient, BaseProver, Semver {
     using TypeCasts for bytes32;
 
     ProofType public constant PROOF_TYPE = ProofType.Hyperlane;
@@ -30,10 +29,10 @@ contract HyperProver is IMessageRecipient, SimpleProver {
      * @param _sender the address that called the dispatch() method
      */
     error UnauthorizedDispatch(address _sender);
-        
+
     // local mailbox address
     address public immutable MAILBOX;
-    
+
     // address of the Inbox contract
     // assumes that all Inboxes are deployed via ERC-2470 and hence have the same address
     address public immutable INBOX;
@@ -49,17 +48,18 @@ contract HyperProver is IMessageRecipient, SimpleProver {
         INBOX = _inbox;
     }
 
-    function version() external pure returns (string memory) { return Semver.version(); }
-
     /**
      * @notice implementation of the handle method required by IMessageRecipient
      * @dev the uint32 value is not used in this implementation, but it is required by the interface. It is the chain ID of the intent's origin chain.
      * @param _sender the address that called the dispatch() method
      * @param _messageBody the message body
      */
-    function handle(uint32, bytes32 _sender, bytes calldata _messageBody) public payable{
-
-        if(MAILBOX != msg.sender) {
+    function handle(
+        uint32,
+        bytes32 _sender,
+        bytes calldata _messageBody
+    ) public payable {
+        if (MAILBOX != msg.sender) {
             revert UnauthorizedHandle(msg.sender);
         }
 
@@ -68,7 +68,10 @@ contract HyperProver is IMessageRecipient, SimpleProver {
         if (INBOX != sender) {
             revert UnauthorizedDispatch(sender);
         }
-        (bytes32[] memory hashes, address[] memory claimants) = abi.decode(_messageBody, (bytes32[], address[]));
+        (bytes32[] memory hashes, address[] memory claimants) = abi.decode(
+            _messageBody,
+            (bytes32[], address[])
+        );
         for (uint256 i = 0; i < hashes.length; i++) {
             (bytes32 intentHash, address claimant) = (hashes[i], claimants[i]);
             if (provenIntents[intentHash] != address(0)) {

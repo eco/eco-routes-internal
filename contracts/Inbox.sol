@@ -14,7 +14,7 @@ import {Semver} from "./libs/Semver.sol";
  * It validates that the hash is the hash of the other parameters, and then executes the calldata.
  * A prover can then claim the reward on the src chain by looking at the fulfilled mapping.
  */
-contract Inbox is IInbox, Ownable {
+contract Inbox is IInbox, Ownable, Semver {
     using TypeCasts for address;
 
     uint256 public constant MAX_BATCH_SIZE = 10;
@@ -38,16 +38,16 @@ contract Inbox is IInbox, Ownable {
      *  _solvers the initial whitelist of solvers, only relevant if {_isSolvingPublic} is false
      * @dev privileged functions are made such that they can only make changes once
      */
-    constructor(address _owner, bool _isSolvingPublic, address[] memory _solvers) Ownable(_owner) {
+    constructor(
+        address _owner,
+        bool _isSolvingPublic,
+        address[] memory _solvers
+    ) Ownable(_owner) {
         isSolvingPublic = _isSolvingPublic;
         for (uint256 i = 0; i < _solvers.length; i++) {
             solverWhitelist[_solvers[i]] = true;
             emit SolverWhitelistChanged(_solvers[i], true);
         }
-    }
-
-    function version() external pure returns (string memory) {
-        return Semver.version();
     }
 
     /**
@@ -63,7 +63,12 @@ contract Inbox is IInbox, Ownable {
         address _claimant,
         bytes32 _expectedHash
     ) external payable returns (bytes[] memory) {
-        bytes[] memory result = _fulfill(_route, _rewardHash, _claimant, _expectedHash);
+        bytes[] memory result = _fulfill(
+            _route,
+            _rewardHash,
+            _claimant,
+            _expectedHash
+        );
 
         emit ToBeProven(_expectedHash, _route.source, _claimant);
 
@@ -87,14 +92,16 @@ contract Inbox is IInbox, Ownable {
         bytes32 _expectedHash,
         address _prover
     ) external payable returns (bytes[] memory) {
-        return fulfillHyperInstantWithRelayer(
-            _route, _rewardHash,
-            _claimant,
-            _expectedHash,
-            _prover,
-            bytes(""),
-            address(0)
-        );
+        return
+            fulfillHyperInstantWithRelayer(
+                _route,
+                _rewardHash,
+                _claimant,
+                _expectedHash,
+                _prover,
+                bytes(""),
+                address(0)
+            );
     }
 
     /**
@@ -128,23 +135,41 @@ contract Inbox is IInbox, Ownable {
 
         emit HyperInstantFulfillment(_expectedHash, _route.source, _claimant);
 
-        uint256 fee = fetchFee(_route.source, _prover32, messageBody, _metadata, _postDispatchHook);
+        uint256 fee = fetchFee(
+            _route.source,
+            _prover32,
+            messageBody,
+            _metadata,
+            _postDispatchHook
+        );
         if (msg.value < fee) {
             revert InsufficientFee(fee);
         }
-        bytes[] memory results =  _fulfill(_route, _rewardHash, _claimant, _expectedHash);
+        bytes[] memory results = _fulfill(
+            _route,
+            _rewardHash,
+            _claimant,
+            _expectedHash
+        );
         if (msg.value > fee) {
-            (bool success,) = payable(msg.sender).call{value: msg.value - fee}("");
+            (bool success, ) = payable(msg.sender).call{value: msg.value - fee}(
+                ""
+            );
             require(success, "Native transfer failed.");
         }
         if (_postDispatchHook == address(0)) {
-            IMailbox(mailbox).dispatch{value: fee}(uint32(_route.source),
+            IMailbox(mailbox).dispatch{value: fee}(
+                uint32(_route.source),
                 _prover32,
                 messageBody
             );
-        } else { 
+        } else {
             IMailbox(mailbox).dispatch{value: fee}(
-                uint32(_route.source), _prover32, messageBody, _metadata, IPostDispatchHook(_postDispatchHook)
+                uint32(_route.source),
+                _prover32,
+                messageBody,
+                _metadata,
+                IPostDispatchHook(_postDispatchHook)
             );
         }
         return results;
@@ -166,10 +191,15 @@ contract Inbox is IInbox, Ownable {
         address _claimant,
         bytes32 _expectedHash,
         address _prover
-    ) external payable returns (bytes[] memory){
+    ) external payable returns (bytes[] memory) {
         emit AddToBatch(_expectedHash, _route.source, _claimant, _prover);
 
-        bytes[] memory results =  _fulfill( _route, _rewardHash, _claimant, _expectedHash);
+        bytes[] memory results = _fulfill(
+            _route,
+            _rewardHash,
+            _claimant,
+            _expectedHash
+        );
 
         return results;
     }
@@ -182,8 +212,18 @@ contract Inbox is IInbox, Ownable {
      * @dev it is imperative that the intent hashes correspond to fulfilled intents that originated on the chain with chainID {_sourceChainID}
      * @dev a fee is required to be sent with the transaction, it pays for the use of Hyperlane's architecture
      */
-    function sendBatch(uint256 _sourceChainID, address _prover, bytes32[] calldata _intentHashes) external payable {
-        sendBatchWithRelayer(_sourceChainID, _prover, _intentHashes, bytes(""), address(0));
+    function sendBatch(
+        uint256 _sourceChainID,
+        address _prover,
+        bytes32[] calldata _intentHashes
+    ) external payable {
+        sendBatchWithRelayer(
+            _sourceChainID,
+            _prover,
+            _intentHashes,
+            bytes(""),
+            address(0)
+        );
     }
 
     /**
@@ -215,19 +255,35 @@ contract Inbox is IInbox, Ownable {
         }
         bytes memory messageBody = abi.encode(_intentHashes, claimants);
         bytes32 _prover32 = _prover.addressToBytes32();
-        uint256 fee = fetchFee(_sourceChainID, _prover32, messageBody, _metadata, _postDispatchHook);
+        uint256 fee = fetchFee(
+            _sourceChainID,
+            _prover32,
+            messageBody,
+            _metadata,
+            _postDispatchHook
+        );
         if (msg.value < fee) {
             revert InsufficientFee(fee);
         }
         if (msg.value > fee) {
-            (bool success,) = payable(msg.sender).call{value: msg.value - fee}("");
+            (bool success, ) = payable(msg.sender).call{value: msg.value - fee}(
+                ""
+            );
             require(success, "Native transfer failed.");
         }
         if (_postDispatchHook == address(0)) {
-            IMailbox(mailbox).dispatch{value: fee}(uint32(_sourceChainID), _prover32, messageBody);
+            IMailbox(mailbox).dispatch{value: fee}(
+                uint32(_sourceChainID),
+                _prover32,
+                messageBody
+            );
         } else {
             IMailbox(mailbox).dispatch{value: fee}(
-                uint32(_sourceChainID), _prover32, messageBody, _metadata, IPostDispatchHook(_postDispatchHook)
+                uint32(_sourceChainID),
+                _prover32,
+                messageBody,
+                _metadata,
+                IPostDispatchHook(_postDispatchHook)
             );
         }
     }
@@ -250,9 +306,17 @@ contract Inbox is IInbox, Ownable {
     ) public view returns (uint256 fee) {
         return (
             _postDispatchHook == address(0)
-                ? IMailbox(mailbox).quoteDispatch(uint32(_sourceChainID), _prover, _messageBody)
+                ? IMailbox(mailbox).quoteDispatch(
+                    uint32(_sourceChainID),
+                    _prover,
+                    _messageBody
+                )
                 : IMailbox(mailbox).quoteDispatch(
-                    uint32(_sourceChainID), _prover, _messageBody, _metadata, IPostDispatchHook(_postDispatchHook)
+                    uint32(_sourceChainID),
+                    _prover,
+                    _messageBody,
+                    _metadata,
+                    IPostDispatchHook(_postDispatchHook)
                 )
         );
     }
@@ -268,7 +332,7 @@ contract Inbox is IInbox, Ownable {
         if (msg.sender != address(this)) {
             revert UnauthorizedTransferNative();
         }
-        (bool success,) = _to.call{value: _amount}("");
+        (bool success, ) = _to.call{value: _amount}("");
         require(success, "Native transfer failed.");
     }
 
@@ -301,7 +365,10 @@ contract Inbox is IInbox, Ownable {
      * @param _canSolve whether or not the solver will be on the whitelist afterward
      * @dev the solver whitelist has no meaning if isSolvingPublic is true
      */
-    function changeSolverWhitelist(address _solver, bool _canSolve) public onlyOwner {
+    function changeSolverWhitelist(
+        address _solver,
+        bool _canSolve
+    ) public onlyOwner {
         solverWhitelist[_solver] = _canSolve;
         emit SolverWhitelistChanged(_solver, _canSolve);
     }
@@ -317,7 +384,13 @@ contract Inbox is IInbox, Ownable {
         }
 
         bytes32 routeHash = keccak256(abi.encode(_route));
-        bytes32 intentHash = keccak256(abi.encodePacked(routeHash, _rewardHash));
+        bytes32 intentHash = keccak256(
+            abi.encodePacked(routeHash, _rewardHash)
+        );
+
+        if (_route.inbox != address(this)) {
+            revert InvalidInbox(_route.inbox);
+        }
 
         if (intentHash != _expectedHash) {
             revert InvalidHash(_expectedHash);
@@ -341,9 +414,16 @@ contract Inbox is IInbox, Ownable {
                 // no executing calls on the mailbox
                 revert CallToMailbox();
             }
-            (bool success, bytes memory result) = call.target.call{value: call.value}(call.data);
+            (bool success, bytes memory result) = call.target.call{
+                value: call.value
+            }(call.data);
             if (!success) {
-                revert IntentCallFailed(call.target, call.data, call.value,  result);
+                revert IntentCallFailed(
+                    call.target,
+                    call.data,
+                    call.value,
+                    result
+                );
             }
             results[i] = result;
         }

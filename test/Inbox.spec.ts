@@ -6,9 +6,17 @@ import {
   time,
   loadFixture,
 } from '@nomicfoundation/hardhat-toolbox/network-helpers'
-import { DataHexString } from 'ethers/lib.commonjs/utils/data'
 import { encodeTransfer, encodeTransferNative } from '../utils/encode'
 import { keccak256, toBeHex } from 'ethers'
+import {
+  encodeReward,
+  encodeRoute,
+  hashIntent,
+  Call,
+  Route,
+  Reward,
+  Intent,
+} from '../utils/intent'
 
 describe('Inbox Test', (): void => {
   let inbox: Inbox
@@ -17,14 +25,17 @@ describe('Inbox Test', (): void => {
   let owner: SignerWithAddress
   let solver: SignerWithAddress
   let dstAddr: SignerWithAddress
+  let route: Route
+  let reward: Reward
+  let intent: Intent
+  let routeHash: string
+  let rewardHash: string
   let intentHash: string
   let otherHash: string
-  let calldata: DataHexString
-  let otherCallData: DataHexString
-  let timeStamp: number
-  let otherTimeStamp: number
-  let dummyHyperProver: TestProver
-  const nonce = ethers.encodeBytes32String('0x987')
+  let calls: Call[]
+  let otherCalls: Call[]
+  let mockHyperProver: TestProver
+  const salt = ethers.encodeBytes32String('0x987')
   let erc20Address: string
   const timeDelta = 1000
   const mintAmount = 1000
@@ -65,83 +76,129 @@ describe('Inbox Test', (): void => {
     amount: number,
     timeDelta: number,
   ): Promise<{
+    calls: Call[]
+    route: Route
+    reward: Reward
+    intent: Intent
+    routeHash: string
+    rewardHash: string
     intentHash: string
-    calldata: DataHexString
-    timeStamp: number
   }> {
     erc20Address = await erc20.getAddress()
     const _calldata = await encodeTransfer(dstAddr.address, amount)
     const _timestamp = (await time.latest()) + timeDelta
-    const abiCoder = ethers.AbiCoder.defaultAbiCoder()
-    const intermediateHash = keccak256(
-      abiCoder.encode(
-        ['uint256', 'uint256', 'address[]', 'bytes[]', 'uint256', 'bytes32'],
-        [
-          sourceChainID,
-          (await owner.provider.getNetwork()).chainId,
-          [erc20Address],
-          [_calldata],
-          _timestamp,
-          nonce,
-        ],
-      ),
-    )
+
+    const _calls: Call[] = [
+      {
+        target: erc20Address,
+        data: _calldata,
+        value: 0,
+      },
+    ]
+    const _route = {
+      salt,
+      source: sourceChainID,
+      destination: Number((await owner.provider.getNetwork()).chainId),
+      inbox: await inbox.getAddress(),
+      calls: _calls,
+    }
+    const _routeHash = keccak256(encodeRoute(_route))
+
+    const _reward = {
+      creator: solver.address,
+      prover: solver.address,
+      deadline: _timestamp,
+      nativeValue: 0n,
+      tokens: [
+        {
+          token: erc20Address,
+          amount: amount,
+        },
+      ],
+    }
+
+    const _rewardHash = keccak256(encodeReward(_reward))
+
+    const _intent = {
+      route: _route,
+      reward: _reward,
+    }
+
     const _intentHash = keccak256(
-      abiCoder.encode(
-        ['address', 'bytes32'],
-        [await inbox.getAddress(), intermediateHash],
-      ),
+      ethers.solidityPacked(['bytes32', 'bytes32'], [_routeHash, _rewardHash]),
     )
+
     return {
+      calls: _calls,
+      route: _route,
+      reward: _reward,
+      intent: _intent,
+      routeHash: _routeHash,
+      rewardHash: _rewardHash,
       intentHash: _intentHash,
-      calldata: _calldata,
-      timeStamp: _timestamp,
     }
   }
   async function createIntentDataNative(
     amount: number,
     timeDelta: number,
   ): Promise<{
+    calls: Call[]
+    route: Route
+    reward: Reward
+    intent: Intent
+    routeHash: string
+    rewardHash: string
     intentHash: string
-    calldata: DataHexString
-    timeStamp: number
   }> {
     const _calldata = await encodeTransferNative(dstAddr.address, amount)
+    const _calls: Call[] = [
+      {
+        target: await inbox.getAddress(),
+        data: _calldata,
+        value: 0,
+      },
+    ]
     const _timestamp = (await time.latest()) + timeDelta
-    const abiCoder = ethers.AbiCoder.defaultAbiCoder()
-    const intermediateHash = keccak256(
-      abiCoder.encode(
-        ['uint256', 'uint256', 'address[]', 'bytes[]', 'uint256', 'bytes32'],
-        [
-          sourceChainID,
-          (await owner.provider.getNetwork()).chainId,
-          [await inbox.getAddress()],
-          [_calldata],
-          _timestamp,
-          nonce,
-        ],
-      ),
-    )
-    const _intentHash = keccak256(
-      abiCoder.encode(
-        ['address', 'bytes32'],
-        [await inbox.getAddress(), intermediateHash],
-      ),
-    )
-    return {
+
+    const _route: Route = {
+      salt,
+      source: sourceChainID,
+      destination: Number((await owner.provider.getNetwork()).chainId),
+      inbox: await inbox.getAddress(),
+      calls: _calls,
+    }
+    const _reward: Reward = {
+      creator: solver.address,
+      prover: solver.address,
+      deadline: _timestamp,
+      nativeValue: BigInt(amount),
+      tokens: [],
+    }
+    const _intent: Intent = {
+      route: _route,
+      reward: _reward,
+    }
+    const {
+      routeHash: _routeHash,
+      rewardHash: _rewardHash,
       intentHash: _intentHash,
-      calldata: _calldata,
-      timeStamp: _timestamp,
+    } = hashIntent(_intent)
+    return {
+      calls: _calls,
+      route: _route,
+      reward: _reward,
+      intent: _intent,
+      routeHash: _routeHash,
+      rewardHash: _rewardHash,
+      intentHash: _intentHash,
     }
   }
 
   beforeEach(async (): Promise<void> => {
     ;({ inbox, mailbox, erc20, owner, solver, dstAddr } =
       await loadFixture(deployInboxFixture))
-    ;({ intentHash, calldata, timeStamp } = await createIntentData(
-      mintAmount,
-      timeDelta,
-    ))
+    ;({ calls, route, reward, intent, routeHash, rewardHash, intentHash } =
+      await createIntentData(mintAmount, timeDelta))
   })
   it('initializes correctly', async () => {
     expect(await inbox.owner()).to.eq(owner.address)
@@ -206,32 +263,8 @@ describe('Inbox Test', (): void => {
       await expect(
         inbox
           .connect(owner)
-          .fulfillStorage(
-            sourceChainID,
-            [erc20Address],
-            [calldata],
-            timeDelta,
-            nonce,
-            dstAddr.address,
-            intentHash,
-          ),
+          .fulfillStorage(route, rewardHash, dstAddr.address, intentHash),
       ).to.be.revertedWithCustomError(inbox, 'UnauthorizedSolveAttempt')
-    })
-    it('should revert if the timestamp is expired', async () => {
-      timeStamp -= 2 * timeDelta
-      await expect(
-        inbox
-          .connect(solver)
-          .fulfillStorage(
-            sourceChainID,
-            [erc20Address],
-            [calldata],
-            timeStamp,
-            nonce,
-            dstAddr.address,
-            intentHash,
-          ),
-      ).to.be.revertedWithCustomError(inbox, 'IntentExpired')
     })
 
     it('should revert if the generated hash does not match the expected hash', async () => {
@@ -244,55 +277,26 @@ describe('Inbox Test', (): void => {
       await expect(
         inbox
           .connect(solver)
-          .fulfillStorage(
-            sourceChainID,
-            [erc20Address],
-            [calldata],
-            timeStamp,
-            nonce,
-            dstAddr.address,
-            goofyHash,
-          ),
+          .fulfillStorage(route, rewardHash, dstAddr.address, goofyHash),
       ).to.be.revertedWithCustomError(inbox, 'InvalidHash')
     })
     it('should revert via InvalidHash if all intent data was input correctly, but the intent used a different inbox on creation', async () => {
       const anotherInbox = await (
         await ethers.getContractFactory('Inbox')
       ).deploy(owner.address, false, [owner.address])
-      const abiCoder = ethers.AbiCoder.defaultAbiCoder()
-      const intermediateHash = keccak256(
-        abiCoder.encode(
-          ['uint256', 'uint256', 'address[]', 'bytes[]', 'uint256', 'bytes32'],
-          [
-            sourceChainID,
-            (await owner.provider.getNetwork()).chainId,
-            [erc20Address],
-            [calldata],
-            timeStamp,
-            nonce,
-          ],
-        ),
-      )
-      const sameIntentDifferentInboxHash = keccak256(
-        abiCoder.encode(
-          ['address', 'bytes32'],
-          [await anotherInbox.getAddress(), intermediateHash],
-        ),
-      )
+
+      const _route = {
+        ...route,
+        inbox: await anotherInbox.getAddress(),
+      }
+
+      const _intentHash = hashIntent({ route: _route, reward }).intentHash
 
       await expect(
         inbox
           .connect(solver)
-          .fulfillStorage(
-            sourceChainID,
-            [erc20Address],
-            [calldata],
-            timeStamp,
-            nonce,
-            dstAddr.address,
-            sameIntentDifferentInboxHash,
-          ),
-      ).to.be.revertedWithCustomError(inbox, 'InvalidHash')
+          .fulfillStorage(_route, rewardHash, dstAddr.address, _intentHash),
+      ).to.be.revertedWithCustomError(inbox, 'InvalidInbox')
     })
   })
 
@@ -301,66 +305,33 @@ describe('Inbox Test', (): void => {
       await expect(
         inbox
           .connect(solver)
-          .fulfillStorage(
-            sourceChainID,
-            [erc20Address],
-            [calldata],
-            timeStamp,
-            nonce,
-            ethers.ZeroAddress,
-            intentHash,
-          ),
+          .fulfillStorage(route, rewardHash, ethers.ZeroAddress, intentHash),
       ).to.be.revertedWithCustomError(inbox, 'ZeroClaimant')
     })
     it('should revert if the call fails', async () => {
       await expect(
         inbox
           .connect(solver)
-          .fulfillStorage(
-            sourceChainID,
-            [erc20Address],
-            [calldata],
-            timeStamp,
-            nonce,
-            dstAddr.address,
-            intentHash,
-          ),
+          .fulfillStorage(route, rewardHash, dstAddr.address, intentHash),
       ).to.be.revertedWithCustomError(inbox, 'IntentCallFailed')
     })
     it('should revert if one of the targets is the mailbox', async () => {
       await inbox.connect(owner).setMailbox(await mailbox.getAddress())
-      const abiCoder = ethers.AbiCoder.defaultAbiCoder()
-      const intermediateHash = keccak256(
-        abiCoder.encode(
-          ['uint256', 'uint256', 'address[]', 'bytes[]', 'uint256', 'bytes32'],
-          [
-            sourceChainID,
-            (await owner.provider.getNetwork()).chainId,
-            [await mailbox.getAddress()],
-            [calldata],
-            timeStamp,
-            nonce,
-          ],
-        ),
-      )
-      const newHash = keccak256(
-        abiCoder.encode(
-          ['address', 'bytes32'],
-          [await inbox.getAddress(), intermediateHash],
-        ),
-      )
+      const _route = {
+        ...route,
+        calls: [
+          {
+            target: await mailbox.getAddress(),
+            data: '0x',
+            value: 0,
+          },
+        ],
+      }
+      const _intentHash = hashIntent({ route: _route, reward }).intentHash
       await expect(
         inbox
           .connect(solver)
-          .fulfillStorage(
-            sourceChainID,
-            [await mailbox.getAddress()],
-            [calldata],
-            timeStamp,
-            nonce,
-            dstAddr.address,
-            newHash,
-          ),
+          .fulfillStorage(_route, rewardHash, dstAddr.address, _intentHash),
       ).to.be.revertedWithCustomError(inbox, 'CallToMailbox')
     })
     it('should not revert when called by a whitelisted solver', async () => {
@@ -371,15 +342,7 @@ describe('Inbox Test', (): void => {
       await expect(
         inbox
           .connect(solver)
-          .fulfillStorage(
-            sourceChainID,
-            [erc20Address],
-            [calldata],
-            timeStamp,
-            nonce,
-            dstAddr.address,
-            intentHash,
-          ),
+          .fulfillStorage(route, rewardHash, dstAddr.address, intentHash),
       ).to.not.be.reverted
     })
     it('should not revert when called by a non-whitelisted solver when solving is public', async () => {
@@ -392,15 +355,7 @@ describe('Inbox Test', (): void => {
       await expect(
         inbox
           .connect(owner)
-          .fulfillStorage(
-            sourceChainID,
-            [erc20Address],
-            [calldata],
-            timeStamp,
-            nonce,
-            dstAddr.address,
-            intentHash,
-          ),
+          .fulfillStorage(route, rewardHash, dstAddr.address, intentHash),
       ).to.not.be.reverted
     })
 
@@ -416,15 +371,7 @@ describe('Inbox Test', (): void => {
       await expect(
         inbox
           .connect(solver)
-          .fulfillStorage(
-            sourceChainID,
-            [erc20Address],
-            [calldata],
-            timeStamp,
-            nonce,
-            dstAddr.address,
-            intentHash,
-          ),
+          .fulfillStorage(route, rewardHash, dstAddr.address, intentHash),
       )
         .to.emit(inbox, 'Fulfillment')
         .withArgs(intentHash, sourceChainID, dstAddr.address)
@@ -445,10 +392,8 @@ describe('Inbox Test', (): void => {
       )
 
       const nativeToTransfer = ethers.parseEther('0.1')
-      ;({ intentHash, calldata, timeStamp } = await createIntentDataNative(
-        nativeToTransfer,
-        timeDelta,
-      ))
+      ;({ calls, route, reward, intent, routeHash, rewardHash, intentHash } =
+        await createIntentDataNative(nativeToTransfer, timeDelta))
 
       // transfer the tokens to the inbox so it can process the transaction
 
@@ -459,15 +404,7 @@ describe('Inbox Test', (): void => {
       await expect(
         inbox
           .connect(solver)
-          .fulfillStorage(
-            sourceChainID,
-            [await inbox.getAddress()],
-            [calldata],
-            timeStamp,
-            nonce,
-            dstAddr.address,
-            intentHash,
-          ),
+          .fulfillStorage(route, rewardHash, dstAddr.address, intentHash),
       )
         .to.emit(inbox, 'Fulfillment')
         .withArgs(intentHash, sourceChainID, dstAddr.address)
@@ -490,15 +427,7 @@ describe('Inbox Test', (): void => {
       await expect(
         inbox
           .connect(solver)
-          .fulfillStorage(
-            sourceChainID,
-            [erc20Address],
-            [calldata],
-            timeStamp,
-            nonce,
-            dstAddr.address,
-            intentHash,
-          ),
+          .fulfillStorage(route, rewardHash, dstAddr.address, intentHash),
       )
         .to.emit(inbox, 'ToBeProven')
         .withArgs(intentHash, sourceChainID, dstAddr.address)
@@ -506,21 +435,13 @@ describe('Inbox Test', (): void => {
       await expect(
         inbox
           .connect(solver)
-          .fulfillStorage(
-            sourceChainID,
-            [erc20Address],
-            [calldata],
-            timeStamp,
-            nonce,
-            dstAddr.address,
-            intentHash,
-          ),
+          .fulfillStorage(route, rewardHash, dstAddr.address, intentHash),
       ).to.be.revertedWithCustomError(inbox, 'IntentAlreadyFulfilled')
     })
   })
   describe('hyper proving', () => {
     beforeEach(async () => {
-      dummyHyperProver = await (
+      mockHyperProver = await (
         await ethers.getContractFactory('TestProver')
       ).deploy()
       await inbox.connect(owner).setMailbox(await mailbox.getAddress())
@@ -532,9 +453,9 @@ describe('Inbox Test', (): void => {
       expect(
         await inbox.fetchFee(
           sourceChainID,
-          ethers.zeroPadBytes(await dummyHyperProver.getAddress(), 32),
-          calldata,
-          calldata,
+          ethers.zeroPadBytes(await mockHyperProver.getAddress(), 32),
+          calls[0].data,
+          calls[0].data,
           ethers.ZeroAddress,
         ),
       ).to.eq(toBeHex(`100000`, 32))
@@ -545,25 +466,19 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfillHyperInstant(
-            sourceChainID,
-            [erc20Address],
-            [calldata],
-            timeStamp,
-            nonce,
+            route,
+            rewardHash,
             dstAddr.address,
             intentHash,
-            await dummyHyperProver.getAddress(),
+            await mockHyperProver.getAddress(),
             {
               value:
                 Number(
                   await inbox.fetchFee(
                     sourceChainID,
-                    ethers.zeroPadBytes(
-                      await dummyHyperProver.getAddress(),
-                      32,
-                    ),
-                    calldata,
-                    calldata,
+                    ethers.zeroPadBytes(await mockHyperProver.getAddress(), 32),
+                    calls[0].data,
+                    calls[0].data,
                     ethers.ZeroAddress,
                   ),
                 ) - 1,
@@ -577,21 +492,18 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfillHyperInstant(
-            sourceChainID,
-            [erc20Address],
-            [calldata],
-            timeStamp,
-            nonce,
+            route,
+            rewardHash,
             dstAddr.address,
             intentHash,
-            await dummyHyperProver.getAddress(),
+            await mockHyperProver.getAddress(),
             {
               value: Number(
                 await inbox.fetchFee(
                   sourceChainID,
-                  ethers.zeroPadBytes(await dummyHyperProver.getAddress(), 32),
-                  calldata,
-                  calldata,
+                  ethers.zeroPadBytes(await mockHyperProver.getAddress(), 32),
+                  calls[0].data,
+                  calls[0].data,
                   ethers.ZeroAddress,
                 ),
               ),
@@ -605,7 +517,7 @@ describe('Inbox Test', (): void => {
 
       expect(await mailbox.destinationDomain()).to.eq(sourceChainID)
       expect(await mailbox.recipientAddress()).to.eq(
-        ethers.zeroPadValue(await dummyHyperProver.getAddress(), 32),
+        ethers.zeroPadValue(await mockHyperProver.getAddress(), 32),
       )
       expect(await mailbox.messageBody()).to.eq(
         ethers.AbiCoder.defaultAbiCoder().encode(
@@ -617,28 +529,24 @@ describe('Inbox Test', (): void => {
     })
     it('fulfills hyper instant with relayer', async () => {
       const relayerAddress = ethers.Wallet.createRandom().address
-      const metadata = calldata
       await expect(
         inbox
           .connect(solver)
           .fulfillHyperInstantWithRelayer(
-            sourceChainID,
-            [erc20Address],
-            [calldata],
-            timeStamp,
-            nonce,
+            route,
+            rewardHash,
             dstAddr.address,
             intentHash,
-            await dummyHyperProver.getAddress(),
-            metadata,
+            await mockHyperProver.getAddress(),
+            calls[0].data,
             relayerAddress,
             {
               value: Number(
                 await inbox.fetchFee(
                   sourceChainID,
-                  ethers.zeroPadBytes(await dummyHyperProver.getAddress(), 32),
-                  calldata,
-                  metadata,
+                  ethers.zeroPadBytes(await mockHyperProver.getAddress(), 32),
+                  calls[0].data,
+                  calls[0].data,
                   relayerAddress,
                 ),
               ),
@@ -652,7 +560,7 @@ describe('Inbox Test', (): void => {
 
       expect(await mailbox.destinationDomain()).to.eq(sourceChainID)
       expect(await mailbox.recipientAddress()).to.eq(
-        ethers.zeroPadValue(await dummyHyperProver.getAddress(), 32),
+        ethers.zeroPadValue(await mockHyperProver.getAddress(), 32),
       )
       expect(await mailbox.messageBody()).to.eq(
         ethers.AbiCoder.defaultAbiCoder().encode(
@@ -660,7 +568,7 @@ describe('Inbox Test', (): void => {
           [[intentHash], [dstAddr.address]],
         ),
       )
-      expect(await mailbox.metadata()).to.eq(metadata)
+      expect(await mailbox.metadata()).to.eq(calls[0].data)
       expect(await mailbox.relayer()).to.eq(relayerAddress)
       expect(await mailbox.dispatchedWithRelayer()).to.be.true
     })
@@ -670,14 +578,11 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfillHyperBatched(
-            sourceChainID,
-            [erc20Address],
-            [calldata],
-            timeStamp,
-            nonce,
+            route,
+            rewardHash,
             dstAddr.address,
             intentHash,
-            await dummyHyperProver.getAddress(),
+            await mockHyperProver.getAddress(),
           ),
       )
         .to.emit(inbox, 'Fulfillment')
@@ -687,7 +592,7 @@ describe('Inbox Test', (): void => {
           intentHash,
           sourceChainID,
           dstAddr.address,
-          await dummyHyperProver.getAddress(),
+          await mockHyperProver.getAddress(),
         )
 
       expect(await mailbox.dispatched()).to.be.false
@@ -695,9 +600,9 @@ describe('Inbox Test', (): void => {
     it('refunds solver when too much fee is sent', async () => {
       const fee = await inbox.fetchFee(
         sourceChainID,
-        ethers.zeroPadBytes(await dummyHyperProver.getAddress(), 32),
-        calldata,
-        calldata,
+        ethers.zeroPadBytes(await mockHyperProver.getAddress(), 32),
+        calls[0].data,
+        calls[0].data,
         ethers.ZeroAddress,
       )
       const initialSolverbalance = await ethers.provider.getBalance(
@@ -707,14 +612,11 @@ describe('Inbox Test', (): void => {
       await inbox
         .connect(solver)
         .fulfillHyperInstant(
-          sourceChainID,
-          [erc20Address],
-          [calldata],
-          timeStamp,
-          nonce,
+          route,
+          rewardHash,
           dstAddr.address,
           intentHash,
-          await dummyHyperProver.getAddress(),
+          await mockHyperProver.getAddress(),
           {
             value: fee + excess,
           },
@@ -731,13 +633,15 @@ describe('Inbox Test', (): void => {
       it('should revert if number of intents exceeds MAX_BATCH_SIZE', async () => {
         const i = intentHash
         const hashes: string[] = [i, i, i, i, i, i, i, i, i, i, i, i, i, i]
-        expect(hashes.length).to.be.greaterThan(await inbox.MAX_BATCH_SIZE())
+        expect(hashes.length).to.be.greaterThan(
+          Number(await inbox.MAX_BATCH_SIZE()),
+        )
         await expect(
           inbox
             .connect(solver)
             .sendBatch(
               sourceChainID,
-              await dummyHyperProver.getAddress(),
+              await mockHyperProver.getAddress(),
               hashes,
             ),
         ).to.be.revertedWithCustomError(inbox, 'BatchTooLarge')
@@ -746,14 +650,14 @@ describe('Inbox Test', (): void => {
       it('should revert if sending a batch containing an intent that has not been fulfilled', async () => {
         const hashes: string[] = [intentHash]
         expect(hashes.length).to.be.lessThanOrEqual(
-          await inbox.MAX_BATCH_SIZE(),
+          Number(await inbox.MAX_BATCH_SIZE()),
         )
         await expect(
           inbox
             .connect(solver)
             .sendBatch(
               sourceChainID,
-              await dummyHyperProver.getAddress(),
+              await mockHyperProver.getAddress(),
               hashes,
             ),
         )
@@ -766,14 +670,11 @@ describe('Inbox Test', (): void => {
         await inbox
           .connect(solver)
           .fulfillHyperBatched(
-            sourceChainID,
-            [erc20Address],
-            [calldata],
-            timeStamp,
-            nonce,
+            route,
+            rewardHash,
             dstAddr.address,
             intentHash,
-            await dummyHyperProver.getAddress(),
+            await mockHyperProver.getAddress(),
           )
         expect(await mailbox.dispatched()).to.be.false
         await expect(
@@ -781,7 +682,7 @@ describe('Inbox Test', (): void => {
             .connect(solver)
             .sendBatch(
               sourceChainID,
-              await dummyHyperProver.getAddress(),
+              await mockHyperProver.getAddress(),
               [intentHash],
               {
                 value:
@@ -789,11 +690,11 @@ describe('Inbox Test', (): void => {
                     await inbox.fetchFee(
                       sourceChainID,
                       ethers.zeroPadBytes(
-                        await dummyHyperProver.getAddress(),
+                        await mockHyperProver.getAddress(),
                         32,
                       ),
-                      calldata,
-                      calldata,
+                      calls[0].data,
+                      calls[0].data,
                       ethers.ZeroAddress,
                     ),
                   ) - 1,
@@ -810,7 +711,7 @@ describe('Inbox Test', (): void => {
             .connect(solver)
             .sendBatch(
               sourceChainID,
-              await dummyHyperProver.getAddress(),
+              await mockHyperProver.getAddress(),
               [intentHash],
               {
                 value:
@@ -818,11 +719,11 @@ describe('Inbox Test', (): void => {
                     await inbox.fetchFee(
                       sourceChainID,
                       ethers.zeroPadBytes(
-                        await dummyHyperProver.getAddress(),
+                        await mockHyperProver.getAddress(),
                         32,
                       ),
-                      calldata,
-                      calldata,
+                      calls[0].data,
+                      calls[0].data,
                       ethers.ZeroAddress,
                     ),
                   ) + 1,
@@ -842,14 +743,11 @@ describe('Inbox Test', (): void => {
         await inbox
           .connect(solver)
           .fulfillHyperBatched(
-            sourceChainID,
-            [erc20Address],
-            [calldata],
-            timeStamp,
-            nonce,
+            route,
+            rewardHash,
             dstAddr.address,
             intentHash,
-            await dummyHyperProver.getAddress(),
+            await mockHyperProver.getAddress(),
           )
         expect(await mailbox.dispatched()).to.be.false
         await expect(
@@ -857,18 +755,15 @@ describe('Inbox Test', (): void => {
             .connect(solver)
             .sendBatch(
               sourceChainID,
-              await dummyHyperProver.getAddress(),
+              await mockHyperProver.getAddress(),
               [intentHash],
               {
                 value: Number(
                   await inbox.fetchFee(
                     sourceChainID,
-                    ethers.zeroPadBytes(
-                      await dummyHyperProver.getAddress(),
-                      32,
-                    ),
-                    calldata,
-                    calldata,
+                    ethers.zeroPadBytes(await mockHyperProver.getAddress(), 32),
+                    calls[0].data,
+                    calls[0].data,
                     ethers.ZeroAddress,
                   ),
                 ),
@@ -877,7 +772,7 @@ describe('Inbox Test', (): void => {
         ).to.not.be.reverted
         expect(await mailbox.destinationDomain()).to.eq(sourceChainID)
         expect(await mailbox.recipientAddress()).to.eq(
-          ethers.zeroPadValue(await dummyHyperProver.getAddress(), 32),
+          ethers.zeroPadValue(await mockHyperProver.getAddress(), 32),
         )
         expect(await mailbox.messageBody()).to.eq(
           ethers.AbiCoder.defaultAbiCoder().encode(
@@ -889,19 +784,15 @@ describe('Inbox Test', (): void => {
       })
       it('succeeds for a single intent with relayer', async () => {
         const relayerAddress = ethers.Wallet.createRandom().address
-        const metadata = calldata
         expect(await mailbox.dispatched()).to.be.false
         await inbox
           .connect(solver)
           .fulfillHyperBatched(
-            sourceChainID,
-            [erc20Address],
-            [calldata],
-            timeStamp,
-            nonce,
+            route,
+            rewardHash,
             dstAddr.address,
             intentHash,
-            await dummyHyperProver.getAddress(),
+            await mockHyperProver.getAddress(),
           )
         expect(await mailbox.dispatched()).to.be.false
         await expect(
@@ -909,20 +800,17 @@ describe('Inbox Test', (): void => {
             .connect(solver)
             .sendBatchWithRelayer(
               sourceChainID,
-              await dummyHyperProver.getAddress(),
+              await mockHyperProver.getAddress(),
               [intentHash],
-              metadata,
+              calls[0].data,
               relayerAddress,
               {
                 value: Number(
                   await inbox.fetchFee(
                     sourceChainID,
-                    ethers.zeroPadBytes(
-                      await dummyHyperProver.getAddress(),
-                      32,
-                    ),
-                    calldata,
-                    calldata,
+                    ethers.zeroPadBytes(await mockHyperProver.getAddress(), 32),
+                    calls[0].data,
+                    calls[0].data,
                     ethers.ZeroAddress,
                   ),
                 ),
@@ -931,7 +819,7 @@ describe('Inbox Test', (): void => {
         ).to.not.be.reverted
         expect(await mailbox.destinationDomain()).to.eq(sourceChainID)
         expect(await mailbox.recipientAddress()).to.eq(
-          ethers.zeroPadValue(await dummyHyperProver.getAddress(), 32),
+          ethers.zeroPadValue(await mockHyperProver.getAddress(), 32),
         )
         expect(await mailbox.messageBody()).to.eq(
           ethers.AbiCoder.defaultAbiCoder().encode(
@@ -939,7 +827,7 @@ describe('Inbox Test', (): void => {
             [[intentHash], [dstAddr.address]],
           ),
         )
-        expect(await mailbox.metadata()).to.eq(metadata)
+        expect(await mailbox.metadata()).to.eq(calls[0].data)
         expect(await mailbox.relayer()).to.eq(relayerAddress)
         expect(await mailbox.dispatchedWithRelayer()).to.be.true
       })
@@ -948,56 +836,54 @@ describe('Inbox Test', (): void => {
         await inbox
           .connect(solver)
           .fulfillHyperBatched(
-            sourceChainID,
-            [erc20Address],
-            [calldata],
-            timeStamp,
-            nonce,
+            route,
+            rewardHash,
             dstAddr.address,
             intentHash,
-            await dummyHyperProver.getAddress(),
+            await mockHyperProver.getAddress(),
           )
         const newTokenAmount = 12345
         const newTimeDelta = 1123
+
         ;({
+          calls: otherCalls,
+          route,
+          reward,
+          intent,
+          routeHash,
+          rewardHash,
           intentHash: otherHash,
-          calldata: otherCallData,
-          timeStamp: otherTimeStamp,
         } = await createIntentData(newTokenAmount, newTimeDelta))
         await erc20.mint(solver.address, newTokenAmount)
         await erc20
           .connect(solver)
           .transfer(await inbox.getAddress(), newTokenAmount)
+
         await inbox
           .connect(solver)
           .fulfillHyperBatched(
-            sourceChainID,
-            [erc20Address],
-            [otherCallData],
-            otherTimeStamp,
-            nonce,
+            route,
+            rewardHash,
             dstAddr.address,
             otherHash,
-            await dummyHyperProver.getAddress(),
+            await mockHyperProver.getAddress(),
           )
         expect(await mailbox.dispatched()).to.be.false
+
         await expect(
           inbox
             .connect(solver)
             .sendBatch(
               sourceChainID,
-              await dummyHyperProver.getAddress(),
+              await mockHyperProver.getAddress(),
               [intentHash, otherHash],
               {
                 value: Number(
                   await inbox.fetchFee(
                     sourceChainID,
-                    ethers.zeroPadBytes(
-                      await dummyHyperProver.getAddress(),
-                      32,
-                    ),
-                    calldata,
-                    calldata,
+                    ethers.zeroPadBytes(await mockHyperProver.getAddress(), 32),
+                    otherCalls[0].data,
+                    otherCalls[0].data,
                     ethers.ZeroAddress,
                   ),
                 ),
@@ -1006,7 +892,7 @@ describe('Inbox Test', (): void => {
         ).to.not.be.reverted
         expect(await mailbox.destinationDomain()).to.eq(sourceChainID)
         expect(await mailbox.recipientAddress()).to.eq(
-          ethers.zeroPadValue(await dummyHyperProver.getAddress(), 32),
+          ethers.zeroPadValue(await mockHyperProver.getAddress(), 32),
         )
         expect(await mailbox.messageBody()).to.eq(
           ethers.AbiCoder.defaultAbiCoder().encode(

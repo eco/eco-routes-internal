@@ -7,7 +7,7 @@ import { expect } from 'chai'
 import { ethers } from 'hardhat'
 import { HyperProver, Inbox, TestERC20, TestMailbox } from '../typechain-types'
 import { encodeTransfer } from '../utils/encode'
-import { getBytes } from 'ethers'
+import { hashIntent, TokenAmount } from '../utils/intent'
 
 describe('HyperProver Test', (): void => {
   let inbox: Inbox
@@ -121,32 +121,35 @@ describe('HyperProver Test', (): void => {
       const sourceChainID = 12345
       const calldata = await encodeTransfer(await claimant.getAddress(), amount)
       const timeStamp = (await time.latest()) + 1000
-      const nonce = ethers.encodeBytes32String('0x987')
-      const intermediateHash = ethers.keccak256(
-        abiCoder.encode(
-          ['uint256', 'uint256', 'address[]', 'bytes[]', 'uint256', 'bytes32'],
-          [
-            sourceChainID,
-            (await owner.provider.getNetwork()).chainId,
-            [await token.getAddress()],
-            [calldata],
-            timeStamp,
-            nonce,
-          ],
+      const salt = ethers.encodeBytes32String('0x987')
+
+      const route = {
+        salt: salt,
+        source: sourceChainID,
+        destination: Number(
+          (await hyperProver.runner?.provider?.getNetwork())?.chainId,
         ),
-      )
-      const intentHash = ethers.keccak256(
-        abiCoder.encode(
-          ['address', 'bytes32'],
-          [await inbox.getAddress(), intermediateHash],
-        ),
-      )
+        inbox: await inbox.getAddress(),
+        calls: [
+          {
+            target: await token.getAddress(),
+            data: calldata,
+            value: 0,
+          },
+        ],
+      }
+      const reward = {
+        creator: await owner.getAddress(),
+        prover: await hyperProver.getAddress(),
+        deadline: timeStamp + 1000,
+        nativeValue: 1n,
+        tokens: [] as TokenAmount[],
+      }
+
+      const { intentHash, rewardHash } = hashIntent({ route, reward })
       const fulfillData = [
-        sourceChainID,
-        [await token.getAddress()],
-        [calldata],
-        timeStamp,
-        nonce,
+        route,
+        rewardHash,
         await claimant.getAddress(),
         intentHash,
         await hyperProver.getAddress(),
@@ -256,32 +259,38 @@ describe('HyperProver Test', (): void => {
       const sourceChainID = 12345
       const calldata = await encodeTransfer(await claimant.getAddress(), amount)
       const timeStamp = (await time.latest()) + 1000
-      let nonce = ethers.encodeBytes32String('0x987')
-      let intermediateHash = ethers.keccak256(
-        abiCoder.encode(
-          ['uint256', 'uint256', 'address[]', 'bytes[]', 'uint256', 'bytes32'],
-          [
-            sourceChainID,
-            (await owner.provider.getNetwork()).chainId,
-            [await token.getAddress()],
-            [calldata],
-            timeStamp,
-            nonce,
-          ],
+      let salt = ethers.encodeBytes32String('0x987')
+      const route = {
+        salt: salt,
+        source: sourceChainID,
+        destination: Number(
+          (await hyperProver.runner?.provider?.getNetwork())?.chainId,
         ),
-      )
-      const intentHash0 = ethers.keccak256(
-        abiCoder.encode(
-          ['address', 'bytes32'],
-          [await inbox.getAddress(), intermediateHash],
-        ),
-      )
+        inbox: await inbox.getAddress(),
+        calls: [
+          {
+            target: await token.getAddress(),
+            data: calldata,
+            value: 0,
+          },
+        ],
+      }
+      const reward = {
+        creator: await owner.getAddress(),
+        prover: await hyperProver.getAddress(),
+        deadline: timeStamp + 1000,
+        nativeValue: 1n,
+        tokens: [],
+      }
+
+      const { intentHash: intentHash0, rewardHash: rewardHash0 } = hashIntent({
+        route,
+        reward,
+      })
+
       const fulfillData0 = [
-        sourceChainID,
-        [await token.getAddress()],
-        [calldata],
-        timeStamp,
-        nonce,
+        route,
+        rewardHash0,
         await claimant.getAddress(),
         intentHash0,
         await hyperProver.getAddress(),
@@ -301,34 +310,37 @@ describe('HyperProver Test', (): void => {
           await hyperProver.getAddress(),
         )
 
-      nonce = ethers.encodeBytes32String('0x1234')
-      intermediateHash = ethers.keccak256(
-        abiCoder.encode(
-          ['uint256', 'uint256', 'address[]', 'bytes[]', 'uint256', 'bytes32'],
-          [
-            sourceChainID,
-            (await owner.provider.getNetwork()).chainId,
-            [await token.getAddress()],
-            [calldata],
-            timeStamp,
-            nonce,
-          ],
+      salt = ethers.encodeBytes32String('0x1234')
+      const route1 = {
+        salt: salt,
+        source: sourceChainID,
+        destination: Number(
+          (await hyperProver.runner?.provider?.getNetwork())?.chainId,
         ),
-      )
-
-      const intentHash1 = ethers.keccak256(
-        abiCoder.encode(
-          ['address', 'bytes32'],
-          [await inbox.getAddress(), intermediateHash],
-        ),
-      )
+        inbox: await inbox.getAddress(),
+        calls: [
+          {
+            target: await token.getAddress(),
+            data: calldata,
+            value: 0,
+          },
+        ],
+      }
+      const reward1 = {
+        creator: await owner.getAddress(),
+        prover: await hyperProver.getAddress(),
+        deadline: timeStamp + 1000,
+        nativeValue: 1n,
+        tokens: [],
+      }
+      const { intentHash: intentHash1, rewardHash: rewardHash1 } = hashIntent({
+        route: route1,
+        reward: reward1,
+      })
 
       const fulfillData1 = [
-        sourceChainID,
-        [await token.getAddress()],
-        [calldata],
-        timeStamp,
-        nonce,
+        route1,
+        rewardHash1,
         await claimant.getAddress(),
         intentHash1,
         await hyperProver.getAddress(),
