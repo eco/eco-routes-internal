@@ -9,6 +9,7 @@ import {
   encodeReward,
   encodeRoute,
   hashIntent,
+  intentFunderAddress,
   intentVaultAddress,
   Call,
   TokenAmount,
@@ -133,7 +134,7 @@ describe('Intent Source Test', (): void => {
         ethers.solidityPacked(['bytes32', 'bytes32'], [routeHash, rewardHash]),
       )
     })
-    it('computes valid intent vailt address', async () => {
+    it('computes valid intent vault address', async () => {
       const predictedVaultAddress = await intentVaultAddress(
         await intentSource.getAddress(),
         { route, reward },
@@ -957,6 +958,20 @@ describe('Intent Source Test', (): void => {
       }
       intent = { route, reward }
       ;({ intentHash, routeHash, rewardHash } = hashIntent(intent))
+    })
+
+    it('should compute valid intent funder address', async () => {
+      const predictedAddress = await intentFunderAddress(
+        await intentSource.getAddress(),
+        { route, reward },
+      )
+
+      const contractAddress = await intentSource.intentFunderAddress({
+        route,
+        reward,
+      })
+
+      expect(contractAddress).to.eq(predictedAddress)
     })
 
     it('should fund intent with single token', async () => {
