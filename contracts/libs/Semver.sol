@@ -4,5 +4,7 @@ pragma solidity ^0.8.26;
 import {ISemver} from "../interfaces/ISemver.sol";
 
 abstract contract Semver is ISemver {
-    function version() external pure returns (string memory) { return "0.1.51-beta"; }
+    function version() external pure returns (string memory) {
+        return "0.1.51-6d0b217";
+    }
 }
