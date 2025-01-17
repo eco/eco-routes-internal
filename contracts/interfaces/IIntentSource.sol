@@ -7,62 +7,106 @@ import {ISemver} from "./ISemver.sol";
 import {Call, TokenAmount, Reward, Intent} from "../types/Intent.sol";
 
 /**
- * This contract is the source chain portion of the Eco Protocol's intent system.
- *
- * It can be used to create intents as well as withdraw the associated rewards.
- * Its counterpart is the inbox contract that lives on the destination chain.
- * This contract makes a call to the prover contract (on the source chain) in order to verify intent fulfillment.
+ * @title IIntentSource
+ * @notice Interface for the source chain portion of the Eco Protocol's intent system
+ * @dev Used to create intents and withdraw their associated rewards. Works with an inbox
+ * contract on the destination chain and verifies fulfillment via a prover contract
  */
 interface IIntentSource is ISemver {
     /**
-     * @notice thrown on a call to withdraw() by someone who is not entitled to the rewards for a
-     * given intent.
-     * @param _hash the hash of the intent, also the key to the intents mapping
+     * @notice Thrown when an unauthorized address attempts to withdraw intent rewards
+     * @param _hash Hash of the intent (key in intents mapping)
      */
     error UnauthorizedWithdrawal(bytes32 _hash);
 
     /**
-     * @notice thrown on a call to withdraw() for an intent whose rewards have already been withdrawn.
-     * @param _hash the hash of the intent on which withdraw was attempted
+     * @notice Thrown when attempting to withdraw from an intent with already claimed rewards
+     * @param _hash Hash of the intent
      */
     error NothingToWithdraw(bytes32 _hash);
 
     /**
-     * @notice thrown on a call to createIntent where _targets and _data have different lengths, or when one of their lengths is zero.
+     * @notice Thrown when target addresses and calldata arrays have mismatched lengths or are empty
      */
     error CalldataMismatch();
 
     /**
-     * @notice thrown on a call to createIntent where _rewardTokens and _rewardAmounts have different lengths, or when one of their lengths is zero.
+     * @notice Thrown when reward tokens and amounts arrays have mismatched lengths or are empty
      */
     error RewardsMismatch();
 
     /**
-     * @notice thrown on a call to batchWithdraw where an intent's claimant does not match the input claimant address
-     * @param _hash the hash of the intent on which withdraw was attempted
+     * @notice Thrown when batch withdrawal intent claimant doesn't match provided address
+     * @param _hash Hash of the mismatched intent
      */
     error BadClaimant(bytes32 _hash);
 
     /**
-     * @notice thrown on transfer failure
-     * @param _token the token
-     * @param _to the recipient
-     * @param _amount the amount
+     * @notice Thrown when a token transfer fails
+     * @param _token Address of the token
+     * @param _to Intended recipient
+     * @param _amount Transfer amount
      */
     error TransferFailed(address _token, address _to, uint256 _amount);
 
     /**
-     * @notice emitted on a successful call to createIntent
-     * @param hash The hash of the intent, also the key to the intents mapping
-     * @param salt The nonce provided by the creator
-     * @param destination The destination chain
-     * @param inbox The inbox contract on the destination chain
-     * @param calls The instructions
-     * @param creator The address that created the intent
-     * @param prover The prover contract address for the intent
-     * @param deadline The time by which the intent must be fulfilled in order to claim the reward
-     * @param nativeValue The amount of native tokens offered as reward
-     * @param tokens The reward tokens and amounts
+     * @notice Thrown when attempting to publish an intent that already exists
+     * @param intentHash Hash of the intent that already exists in the system
+     */
+    error IntentAlreadyExists(bytes32 intentHash);
+
+    /**
+     * @notice Thrown when attempting to fund an intent that has already been funded
+     */
+    error IntentAlreadyFunded();
+
+    /**
+     * @notice Thrown when the sent native token amount is less than the required reward amount
+     */
+    error InsufficientNativeReward();
+
+    /**
+     * @notice Thrown when attempting to validate an intent that fails basic validation checks
+     * @dev This includes cases where the vault doesn't have sufficient balance or other validation failures
+     */
+    error InvalidIntent();
+
+    /**
+     * @notice Thrown when array lengths don't match in batch operations
+     * @dev Used specifically in batch withdraw operations when routeHashes and rewards arrays have different lengths
+     */
+    error ArrayLengthMismatch();
+
+    /**
+     * @notice Status of an intent's reward claim
+     */
+    enum ClaimStatus {
+        NotClaimed,
+        Claimed
+    }
+
+    /**
+     * @notice State of an intent's reward claim
+     * @dev Tracks claimant address and claim status
+     */
+    struct ClaimState {
+        address claimant;
+        uint8 status;
+    }
+
+    /**
+     * @notice Emitted when a new intent is created
+     * @param hash Hash of the created intent (key in intents mapping)
+     * @param salt Creator-provided nonce
+     * @param source Source chain ID
+     * @param destination Destination chain ID
+     * @param inbox Address of inbox contract on destination chain
+     * @param calls Array of instruction calls to execute
+     * @param creator Address that created the intent
+     * @param prover Address of prover contract for validation
+     * @param deadline Timestamp by which intent must be fulfilled for reward claim
+     * @param nativeValue Amount of native tokens offered as reward
+     * @param tokens Array of ERC20 tokens and amounts offered as rewards
      */
     event IntentCreated(
         bytes32 indexed hash,
@@ -78,29 +122,35 @@ interface IIntentSource is ISemver {
         TokenAmount[] tokens
     );
 
-    enum ClaimStatus {
-        NotClaimed,
-        Claimed
-    }
-
-    struct ClaimState {
-        address claimant;
-        uint8 status;
-    }
-
     /**
-     * @notice emitted on successful call to withdraw
-     * @param _hash the hash of the intent on which withdraw was attempted
-     * @param _recipient the address that received the rewards for this intent
+     * @notice Emitted when rewards are successfully withdrawn
+     * @param _hash Hash of the claimed intent
+     * @param _recipient Address receiving the rewards
      */
     event Withdrawal(bytes32 _hash, address indexed _recipient);
 
+    /**
+     * @notice Gets the claim state for a given intent
+     * @param intentHash Hash of the intent to query
+     * @return Claim state struct containing claimant and status
+     */
     function getClaim(
         bytes32 intentHash
     ) external view returns (ClaimState memory);
 
+    /**
+     * @notice Gets the override token used for vault refunds
+     * @return Address of the vault refund token
+     */
     function getVaultRefundToken() external view returns (address);
 
+    /**
+     * @notice Calculates the hash components of an intent
+     * @param intent Intent to hash
+     * @return intentHash Combined hash of route and reward
+     * @return routeHash Hash of the route component
+     * @return rewardHash Hash of the reward component
+     */
     function getIntentHash(
         Intent calldata intent
     )
@@ -108,17 +158,22 @@ interface IIntentSource is ISemver {
         pure
         returns (bytes32 intentHash, bytes32 routeHash, bytes32 rewardHash);
 
+    /**
+     * @notice Calculates the deterministic vault address for an intent
+     * @param intent Intent to calculate vault address for
+     * @return Predicted address of the intent vault
+     */
     function intentVaultAddress(
         Intent calldata intent
     ) external view returns (address);
 
     /**
-     * @notice Creates an intent to execute instructions on a contract on a supported chain in exchange for a bundle of assets.
-     * @dev If a proof ON THE SOURCE CHAIN is not completed by the expiry time, the reward funds will not be redeemable by the solver, REGARDLESS OF WHETHER THE INSTRUCTIONS WERE EXECUTED.
-     * The onus of that time management (i.e. how long it takes for data to post to L1, etc.) is on the intent solver.
-     * @param intent The intent struct with all the intent params
-     * @param fundReward whether to fund the reward or not
-     * @return intentHash the hash of the intent
+     * @notice Creates an intent to execute instructions on a supported chain for rewards
+     * @dev Source chain proof must complete before expiry or rewards are unclaimable,
+     *      regardless of execution status. Solver manages timing of L1 data posting
+     * @param intent The complete intent struct
+     * @param fundReward Whether to transfer rewards to vault during creation
+     * @return intentHash Hash of the created intent
      */
     function publishIntent(
         Intent calldata intent,
@@ -126,17 +181,18 @@ interface IIntentSource is ISemver {
     ) external payable returns (bytes32 intentHash);
 
     /**
-     * @notice Validates an intent by checking that the intent's rewards are  valid.
-     * @param intent the intent to validate
+     * @notice Verifies an intent's rewards are valid
+     * @param intent Intent to validate
+     * @return True if rewards are valid and funded
      */
     function validateIntent(
         Intent calldata intent
     ) external view returns (bool);
 
     /**
-     * @notice allows withdrawal of reward funds locked up for a given intent
-     * @param routeHash the hash of the route of the intent
-     * @param reward the reward struct of the intent
+     * @notice Withdraws reward funds for a fulfilled intent
+     * @param routeHash Hash of the intent's route
+     * @param reward Reward struct containing distribution details
      */
     function withdrawRewards(
         bytes32 routeHash,
@@ -144,9 +200,9 @@ interface IIntentSource is ISemver {
     ) external;
 
     /**
-     * @notice allows withdrawal of reward funds locked up for a given intent
-     * @param routeHashes the hashes of the routes of the intents
-     * @param rewards the rewards struct of the intents
+     * @notice Batch withdraws rewards for multiple intents
+     * @param routeHashes Array of route hashes
+     * @param rewards Array of reward structs
      */
     function batchWithdraw(
         bytes32[] calldata routeHashes,
@@ -154,10 +210,10 @@ interface IIntentSource is ISemver {
     ) external;
 
     /**
-     * @notice Refunds the rewards associated with an intent to its creator
-     * @param routeHash The hash of the route of the intent
-     * @param reward The reward of the intent
-     * @param token Any specific token that could be wrongly sent to the vault
+     * @notice Refunds rewards back to the intent creator
+     * @param routeHash Hash of the intent's route
+     * @param reward Reward struct containing distribution details
+     * @param token Optional token to refund if incorrectly sent to vault
      */
     function refundIntent(
         bytes32 routeHash,

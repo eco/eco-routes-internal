@@ -8,6 +8,12 @@ import {IL1Block} from "../interfaces/IL1Block.sol";
 import {BaseProver} from "./BaseProver.sol";
 import {Semver} from "../libs/Semver.sol";
 
+/**
+ * @title Prover
+ * @notice Validates cross-chain intent execution through storage proofs and Bedrock/Cannon L2 proving
+ * @dev Inherits from BaseProver to provide core proving functionality. Supports both storage-based
+ * proofs and optimistic rollup verification through various proving mechanisms
+ */
 contract Prover is BaseProver, Semver {
     ProofType public constant PROOF_TYPE = ProofType.Storage;
 
@@ -41,6 +47,15 @@ contract Prover is BaseProver, Semver {
     // But optimism maintains a service that posts L1 block data on L2.
     IL1Block public l1BlockhashOracle;
 
+    /**
+     * @notice Configuration data for a chain's proving mechanism
+     * @param provingMechanism Type of proving used (e.g., Bedrock, Cannon)
+     * @param settlementChainId ID of chain where proofs are settled
+     * @param settlementContract Address of contract handling proof settlement
+     * @param blockhashOracle Address of oracle providing block data
+     * @param outputRootVersionNumber Version of output root format
+     * @param finalityDelaySeconds Required delay before finalizing proofs
+     */
     struct ChainConfiguration {
         uint8 provingMechanism;
         uint256 settlementChainId;
@@ -50,23 +65,48 @@ contract Prover is BaseProver, Semver {
         uint256 finalityDelaySeconds;
     }
 
+    /**
+     * @notice Helper struct for constructor chain configuration
+     * @param chainId ID of chain being configured
+     * @param chainConfiguration Configuration parameters for the chain
+     */
     struct ChainConfigurationConstructor {
         uint256 chainId;
         ChainConfiguration chainConfiguration;
     }
 
-    // map the chain id to chain configuration
+    /**
+     * @notice Maps chain IDs to their proving configurations
+     */
     mapping(uint256 => ChainConfiguration) public chainConfigurations;
 
+    /**
+     * @notice Stores proven block data for a chain
+     * @param blockNumber Number of the proven block
+     * @param blockHash Hash of the proven block
+     * @param stateRoot State root of the proven block
+     */
     struct BlockProof {
         uint256 blockNumber;
         bytes32 blockHash;
         bytes32 stateRoot;
     }
 
-    // Store the last BlockProof for each ChainId
+    /**
+     * @notice Maps chain IDs to their latest proven block state
+     */
     mapping(uint256 => BlockProof) public provenStates;
 
+    /**
+     * @notice Proof data required for dispute game factory verification
+     * @param messagePasserStateRoot Root of the message passer state
+     * @param latestBlockHash Hash of latest block
+     * @param gameIndex Index in the dispute game factory
+     * @param gameId Unique identifier of the dispute game
+     * @param disputeFaultGameStorageProof Proof of storage for dispute game
+     * @param rlpEncodedDisputeGameFactoryData RLP encoded factory contract data
+     * @param disputeGameFactoryAccountProof Proof of factory contract account
+     */
     struct DisputeGameFactoryProofData {
         bytes32 messagePasserStateRoot;
         bytes32 latestBlockHash;
@@ -77,6 +117,14 @@ contract Prover is BaseProver, Semver {
         bytes[] disputeGameFactoryAccountProof;
     }
 
+    /**
+     * @notice Status data for a fault dispute game
+     * @param createdAt Timestamp of game creation
+     * @param resolvedAt Timestamp of game resolution
+     * @param gameStatus Current status of the game
+     * @param initialized Whether game is initialized
+     * @param l2BlockNumberChallenged Whether block number was challenged
+     */
     struct FaultDisputeGameStatusSlotData {
         uint64 createdAt;
         uint64 resolvedAt;
@@ -85,6 +133,15 @@ contract Prover is BaseProver, Semver {
         bool l2BlockNumberChallenged;
     }
 
+    /**
+     * @notice Proof data for fault dispute game verification
+     * @param faultDisputeGameStateRoot State root of dispute game
+     * @param faultDisputeGameRootClaimStorageProof Proof of root claim storage
+     * @param faultDisputeGameStatusSlotData Status data of the game
+     * @param faultDisputeGameStatusStorageProof Proof of game status storage
+     * @param rlpEncodedFaultDisputeGameData RLP encoded game contract data
+     * @param faultDisputeGameAccountProof Proof of game contract account
+     */
     struct FaultDisputeGameProofData {
         bytes32 faultDisputeGameStateRoot;
         bytes[] faultDisputeGameRootClaimStorageProof;
@@ -95,9 +152,9 @@ contract Prover is BaseProver, Semver {
     }
 
     /**
-     * @notice emitted when L1 world state is proven
-     * @param _blockNumber  the block number corresponding to this L1 world state
-     * @param _L1WorldStateRoot the world state root at _blockNumber
+     * @notice Emitted when L1 world state is successfully proven
+     * @param _blockNumber Block number of proven state
+     * @param _L1WorldStateRoot World state root that was proven
      */
     event L1WorldStateProven(
         uint256 indexed _blockNumber,
@@ -105,10 +162,10 @@ contract Prover is BaseProver, Semver {
     );
 
     /**
-     * @notice emitted when L2 world state is proven
-     * @param _destinationChainID the chainID of the destination chain
-     * @param _blockNumber the blocknumber corresponding to the world state
-     * @param _L2WorldStateRoot the world state root at _blockNumber
+     * @notice Emitted when L2 world state is successfully proven
+     * @param _destinationChainID Chain ID of the L2
+     * @param _blockNumber Block number of proven state
+     * @param _L2WorldStateRoot World state root that was proven
      */
     event L2WorldStateProven(
         uint256 indexed _destinationChainID,
@@ -117,9 +174,9 @@ contract Prover is BaseProver, Semver {
     );
 
     /**
-     * @notice emitted on a proving state if the blockNumber is less than or equal to the current blockNumber + SETTLEMENT_BLOCKS_DELAY
-     * @param _inputBlockNumber the block number we are trying to prove
-     * @param _nextProvableBlockNumber the next block number that can be proven
+     * @notice Block number is too recent to prove
+     * @param _inputBlockNumber Block attempted to prove
+     * @param _nextProvableBlockNumber Next valid block number
      */
     error NeedLaterBlock(
         uint256 _inputBlockNumber,
@@ -127,16 +184,16 @@ contract Prover is BaseProver, Semver {
     );
 
     /**
-     * @notice emitted on a proving state if the blockNumber is less than or equal to the current blockNumber
-     * @param _inputBlockNumber the block number we are trying to prove
-     * @param _latestBlockNumber the latest block number that has been proven
+     * @notice Block number is older than currently proven block
+     * @param _inputBlockNumber Block attempted to prove
+     * @param _latestBlockNumber Current proven block
      */
     error OutdatedBlock(uint256 _inputBlockNumber, uint256 _latestBlockNumber);
 
     /**
-     * @notice emitted if the passed RLPEncodedBlockData Hash does not match the keccak256 hash of the RPLEncodedData
-     * @param _expectedBlockHash the expected block hash for the RLP encoded data
-     * @param _calculatedBlockHash the calculated block hash from the RLP encoded data
+     * @notice RLP encoded block data hash mismatch
+     * @param _expectedBlockHash Expected hash
+     * @param _calculatedBlockHash Actual hash
      */
     error InvalidRLPEncodedBlock(
         bytes32 _expectedBlockHash,
@@ -144,12 +201,11 @@ contract Prover is BaseProver, Semver {
     );
 
     /**
-     * @notice emitted when proveStorage fails
-     * we validate a storage proof  using SecureMerkleTrie.verifyInclusionProof
-     * @param _key the key for the storage proof
-     * @param _val the _value for the storage proof
-     * @param _proof the storage proof
-     * @param _root the root
+     * @notice Failed storage proof verification
+     * @param _key Storage key
+     * @param _val Storage value
+     * @param _proof Merkle proof
+     * @param _root Expected root
      */
     error InvalidStorageProof(
         bytes _key,
@@ -159,12 +215,11 @@ contract Prover is BaseProver, Semver {
     );
 
     /**
-     * @notice emitted when proveAccount fails
-     * we validate account proof  using SecureMerkleTrie.verifyInclusionProof
-     * @param _address the address of the data
-     * @param _data the data we are validating
-     * @param _proof the account proof
-     * @param _root the root
+     * @notice Failed account proof verification
+     * @param _address Account address
+     * @param _data Account data
+     * @param _proof Merkle proof
+     * @param _root Expected root
      */
     error InvalidAccountProof(
         bytes _address,
@@ -174,9 +229,9 @@ contract Prover is BaseProver, Semver {
     );
 
     /**
-     * @notice emitted when the settlement chain state root has not yet been proven
-     * @param _blockProofStateRoot the state root of the block that we are trying to prove
-     * @param _l1WorldStateRoot the state root of the last block that was proven on the settlement chain
+     * @notice Settlement chain state not yet proven
+     * @param _blockProofStateRoot State root attempted to prove
+     * @param _l1WorldStateRoot Current proven state root
      */
     error SettlementChainStateRootNotProved(
         bytes32 _blockProofStateRoot,
@@ -184,9 +239,9 @@ contract Prover is BaseProver, Semver {
     );
 
     /**
-     * @notice emitted when the settlement chain state root has not yet been proven
-     * @param _blockProofStateRoot the state root of the block that we are trying to prove
-     * @param _l2WorldStateRoot the state root of the last block that was proven on the settlement chain
+     * @notice Destination chain state not yet proven
+     * @param _blockProofStateRoot State root attempted to prove
+     * @param _l2WorldStateRoot Current proven state root
      */
     error DestinationChainStateRootNotProved(
         bytes32 _blockProofStateRoot,
@@ -194,9 +249,9 @@ contract Prover is BaseProver, Semver {
     );
 
     /**
-     * @notice emitted when the settlement chain state root has not yet been proven
-     * @param _blockTimeStamp the timestamp of the block that we are trying to prove
-     * @param _finalityDelayTimeStamp the time stamp including finality delay that we need to wait for
+     * @notice Block timestamp before finality period
+     * @param _blockTimeStamp Block timestamp
+     * @param _finalityDelayTimeStamp Required timestamp including delay
      */
     error BlockBeforeFinalityPeriod(
         uint256 _blockTimeStamp,
@@ -204,32 +259,36 @@ contract Prover is BaseProver, Semver {
     );
 
     /**
-     * @notice emitted when we receive an incorrectly encoded contract state root
-     * @param _outputOracleStateRoot the state root that was encoded incorrectly
+     * @notice Invalid output oracle state root encoding
+     * @param _outputOracleStateRoot Invalid state root
      */
     error IncorrectOutputOracleStateRoot(bytes _outputOracleStateRoot);
 
     /**
-     * @notice emitted when we receive an incorrectly encoded disputeGameFactory state root
-     * @param _disputeGameFactoryStateRoot the state root that was encoded incorrectly
+     * @notice Invalid dispute game factory state root encoding
+     * @param _disputeGameFactoryStateRoot Invalid state root
      */
     error IncorrectDisputeGameFactoryStateRoot(
         bytes _disputeGameFactoryStateRoot
     );
 
     /**
-     * @notice emitted when we receive an incorrectly encoded disputeGameFactory state root
-     * @param _inboxStateRoot the state root that was encoded incorrectly
+     * @notice Invalid inbox state root encoding
+     * @param _inboxStateRoot Invalid state root
      */
     error IncorrectInboxStateRoot(bytes _inboxStateRoot);
 
     /**
-     * @notice emitted when a fault dispute game has not been resolved
-     * @param _gameStatus the status of the fault dispute game (2 is resolved)
+     * @notice Fault dispute game not yet resolved
+     * @param _gameStatus Current game status
      */
     error FaultDisputeGameUnresolved(uint8 _gameStatus);
 
-    // Check that the intent has not expired and that the sender is permitted to solve intents
+    /**
+     * @notice Validates RLP encoded block data matches expected hash
+     * @param _rlpEncodedBlockData Encoded block data
+     * @param _expectedBlockHash Expected block hash
+     */
     modifier validRLPEncodeBlock(
         bytes calldata _rlpEncodedBlockData,
         bytes32 _expectedBlockHash
@@ -245,6 +304,11 @@ contract Prover is BaseProver, Semver {
         }
     }
 
+    /**
+     * @notice Initializes prover with chain configurations
+     * @param _settlementBlocksDelay Minimum blocks between settlement proofs
+     * @param _chainConfigurations Array of chain configurations
+     */
     constructor(
         uint256 _settlementBlocksDelay,
         ChainConfigurationConstructor[] memory _chainConfigurations
@@ -258,10 +322,18 @@ contract Prover is BaseProver, Semver {
         }
     }
 
+    /**
+     * @notice Returns the proof type used by this prover
+     */
     function getProofType() external pure override returns (ProofType) {
         return PROOF_TYPE;
     }
-
+    /**
+     * @notice Configures proving mechanism for a chain
+     * @dev Sets blockhash oracle if configuring current chain
+     * @param chainId Chain to configure
+     * @param chainConfiguration Configuration parameters
+     */
     function _setChainConfiguration(
         uint256 chainId,
         ChainConfiguration memory chainConfiguration
@@ -273,11 +345,12 @@ contract Prover is BaseProver, Semver {
     }
 
     /**
-     * @notice validates a storage proof against using SecureMerkleTrie.verifyInclusionProof
-     * @param _key key
-     * @param _val value
-     * @param _proof proof
-     * @param _root root
+     * @notice Validates a storage proof against a root
+     * @dev Uses SecureMerkleTrie for verification
+     * @param _key Storage slot key
+     * @param _val Expected value
+     * @param _proof Merkle proof
+     * @param _root Expected root
      */
     function proveStorage(
         bytes memory _key,
@@ -289,20 +362,14 @@ contract Prover is BaseProver, Semver {
             revert InvalidStorageProof(_key, _val, _proof, _root);
         }
     }
-    /**
-     * @notice validates an account proof against using SecureMerkleTrie.verifyInclusionProof
-     * @param _address address of contract
-     * @param _data data
-     * @param _proof proof
-     * @param _root root
-     */
 
     /**
-     * @notice validates a storage proof against using SecureMerkleTrie.verifyInclusionProof
-     * @param _key key
-     * @param _val value
-     * @param _proof proof
-     * @param _root root
+     * @notice Validates a bytes32 storage value against a root
+     * @dev Encodes value as RLP before verification
+     * @param _key Storage slot key
+     * @param _val Expected bytes32 value
+     * @param _proof Merkle proof
+     * @param _root Expected root
      */
     function proveStorageBytes32(
         bytes memory _key,
@@ -325,11 +392,12 @@ contract Prover is BaseProver, Semver {
     }
 
     /**
-     * @notice validates an account proof against using SecureMerkleTrie.verifyInclusionProof
-     * @param _address address of contract
-     * @param _data data
-     * @param _proof proof
-     * @param _root root
+     * @notice Validates an account proof against a root
+     * @dev Uses SecureMerkleTrie for verification
+     * @param _address Account address
+     * @param _data Expected account data
+     * @param _proof Merkle proof
+     * @param _root Expected root
      */
     function proveAccount(
         bytes memory _address,
@@ -350,11 +418,12 @@ contract Prover is BaseProver, Semver {
     }
 
     /**
-     * @notice generates the output root used for Bedrock and Cannon proving
-     * @param outputRootVersion the output root version number usually 0
-     * @param worldStateRoot world state root
-     * @param messagePasserStateRoot message passer state root
-     * @param latestBlockHash latest block hash
+     * @notice Generates an output root for Bedrock and Cannon proving
+     * @param outputRootVersion Version number (usually 0)
+     * @param worldStateRoot State root
+     * @param messagePasserStateRoot Message passer state root
+     * @param latestBlockHash Latest block hash
+     * @return Output root hash
      */
     function generateOutputRoot(
         uint256 outputRootVersion,
@@ -374,8 +443,10 @@ contract Prover is BaseProver, Semver {
     }
 
     /**
-     * @notice helper function for getting all rlp data encoded
-     * @param dataList list of data elements to be encoded
+     * @notice RLP encodes a list of data elements
+     * @dev Helper function for batch encoding
+     * @param dataList List of data elements to encode
+     * @return RLP encoded bytes
      */
     function rlpEncodeDataLibList(
         bytes[] memory dataList
@@ -388,11 +459,12 @@ contract Prover is BaseProver, Semver {
     }
 
     /**
-     * @notice Packs values into a 32 byte GameId type.
-     * @param _gameType The game type.
-     * @param _timestamp The timestamp of the game's creation.
-     * @param _gameProxy The game proxy address.
-     * @return gameId_ The packed GameId.
+     * @notice Packs game metadata into a 32-byte GameId
+     * @dev Combines type, timestamp, and proxy address into single identifier
+     * @param _gameType Game type identifier
+     * @param _timestamp Creation timestamp
+     * @param _gameProxy Proxy contract address
+     * @return gameId_ Packed game identifier
      */
     function pack(
         uint32 _gameType,
@@ -408,11 +480,11 @@ contract Prover is BaseProver, Semver {
     }
 
     /**
-     * @notice Unpacks values from a 32 byte GameId type.
-     * @param _gameId The packed GameId.
-     * @return gameType_ The game type.
-     * @return timestamp_ The timestamp of the game's creation.
-     * @return gameProxy_ The game proxy address.
+     * @notice Unpacks a 32-byte GameId into its components
+     * @param _gameId Packed game identifier
+     * @return gameType_ Game type identifier
+     * @return timestamp_ Creation timestamp
+     * @return gameProxy_ Proxy contract address
      */
     function unpack(
         bytes32 _gameId
@@ -432,9 +504,10 @@ contract Prover is BaseProver, Semver {
     }
 
     /**
-     * @notice converts bytes to uint
-     * @param b bytes to convert
-     * @return uint256 converted uint
+     * @notice Converts bytes to uint256
+     * @dev Manual byte-by-byte conversion
+     * @param b Bytes to convert
+     * @return Converted uint256 value
      */
     function _bytesToUint(bytes memory b) internal pure returns (uint256) {
         uint256 number;
@@ -448,13 +521,14 @@ contract Prover is BaseProver, Semver {
     }
 
     /**
-     * @notice assembles the game status storage slot
-     * @param createdAt the time the game was created
-     * @param resolvedAt the time the game was resolved
-     * @param gameStatus the status of the game
-     * @param initialized whether the game has been initialized
-     * @param l2BlockNumberChallenged whether the l2 block number has been challenged
-     * @return gameStatusStorageSlotRLP the game status storage slot in RLP format
+     * @notice Assembles game status storage slot data
+     * @dev Packs status fields into a single bytes32
+     * @param createdAt Creation timestamp
+     * @param resolvedAt Resolution timestamp
+     * @param gameStatus Game status code
+     * @param initialized Initialization status
+     * @param l2BlockNumberChallenged Block number challenge status
+     * @return gameStatusStorageSlotRLP Packed status data
      */
     function assembleGameStatusStorage(
         uint64 createdAt,
@@ -484,12 +558,9 @@ contract Prover is BaseProver, Semver {
     }
 
     /**
-     * @notice validates input L1 block state against the L1 oracle contract.
-     * @param rlpEncodedBlockData properly encoded L1 block data
-     * @dev inputting the correct block's data encoded as expected will result in its hash matching
-     * the blockhash found on the L1 oracle contract. This means that the world state root found
-     * in that block corresponds to the block on the oracle contract, and that it represents a valid
-     * state.
+     * @notice Proves L1 settlement layer state against oracle
+     * @dev Validates block data against L1 blockhash oracle and updates proven state
+     * @param rlpEncodedBlockData RLP encoded block data
      */
     function proveSettlementLayerState(
         bytes calldata rlpEncodedBlockData
@@ -502,6 +573,7 @@ contract Prover is BaseProver, Semver {
         // not necessary because we already confirm that the data is correct by ensuring that it hashes to the block hash
         // require(l1WorldStateRoot.length <= 32); // ensure lossless casting to bytes32
 
+        // Extract block proof from encoded data
         BlockProof memory blockProof = BlockProof({
             blockNumber: _bytesToUint(
                 RLPReader.readBytes(RLPReader.readList(rlpEncodedBlockData)[8])
@@ -511,6 +583,8 @@ contract Prover is BaseProver, Semver {
                 RLPReader.readBytes(RLPReader.readList(rlpEncodedBlockData)[3])
             )
         });
+
+        // Verify block delay and update state
         BlockProof memory existingBlockProof = provenStates[settlementChainId];
         if (
             existingBlockProof.blockNumber + SETTLEMENT_BLOCKS_DELAY <
@@ -528,21 +602,22 @@ contract Prover is BaseProver, Semver {
             );
         }
     }
-    /**
-     * @notice Validates World state by ensuring that the passed in world state root corresponds to value in the L2 output oracle on the Settlement Layer
-     * @param chainId the chain id of the chain we are proving
-     * @param rlpEncodedBlockData properly encoded L1 block data
-     * @param l2WorldStateRoot the state root of the last block in the batch which contains the block in which the fulfill tx happened
-     * @param l2MessagePasserStateRoot // storage root / storage hash from eth_getProof(l2tol1messagePasser, [], block where intent was fulfilled)
-     * @param l2OutputIndex the batch number
-     * @param l1StorageProof storage proof from settlment chain for eth_getProof(L2OutputOracle, [], L1 block number)
-     * @param rlpEncodedOutputOracleData rlp encoding of (balance, nonce, storageHash, codeHash) of eth_getProof(L2OutputOracle, [], L1 block number)
-     * @param l1AccountProof accountProof from settlement chain for eth_getProof(L2OutputOracle, [], )
-     * @param l1WorldStateRoot the l1 world state root that was proven in proveSettlementLayerState
-     */
 
+    /**
+     * @notice Handles Bedrock L2 world state validation
+     * @dev Verifies L2 output root against L1 oracle and updates proven state
+     * @param chainId Destination chain ID
+     * @param rlpEncodedBlockData RLP encoded block data
+     * @param l2WorldStateRoot L2 state root
+     * @param l2MessagePasserStateRoot L2 message passer state root
+     * @param l2OutputIndex Batch number
+     * @param l1StorageProof L1 storage proof for L2OutputOracle
+     * @param rlpEncodedOutputOracleData RLP encoded L2OutputOracle data
+     * @param l1AccountProof L1 account proof for L2OutputOracle
+     * @param l1WorldStateRoot Proven L1 world state root
+     */
     function proveWorldStateBedrock(
-        uint256 chainId, //the destination chain id of the intent we are proving
+        uint256 chainId,
         bytes calldata rlpEncodedBlockData,
         bytes32 l2WorldStateRoot,
         bytes32 l2MessagePasserStateRoot,
@@ -561,6 +636,8 @@ contract Prover is BaseProver, Semver {
         BlockProof memory existingSettlementBlockProof = provenStates[
             chainConfiguration.settlementChainId
         ];
+
+        // Verify settlement chain state root
         if (existingSettlementBlockProof.stateRoot != l1WorldStateRoot) {
             revert SettlementChainStateRootNotProved(
                 existingSettlementBlockProof.stateRoot,
@@ -568,7 +645,7 @@ contract Prover is BaseProver, Semver {
             );
         }
 
-        // check that the End Batch Block timestamp is greater than the current timestamp + finality delay
+        // Verify block timestamp meets finality delay
         uint256 endBatchBlockTimeStamp = _bytesToUint(
             RLPReader.readBytes(RLPReader.readList(rlpEncodedBlockData)[11])
         );
@@ -583,6 +660,7 @@ contract Prover is BaseProver, Semver {
             );
         }
 
+        // Generate and verify output root
         bytes32 blockHash = keccak256(rlpEncodedBlockData);
         bytes32 outputRoot = generateOutputRoot(
             L2_OUTPUT_ROOT_VERSION_NUMBER,
@@ -591,6 +669,7 @@ contract Prover is BaseProver, Semver {
             blockHash
         );
 
+        // Calculate storage slot and verify output root
         bytes32 outputRootStorageSlot = bytes32(
             (uint256(keccak256(abi.encode(L2_OUTPUT_SLOT_NUMBER))) +
                 l2OutputIndex *
@@ -619,6 +698,7 @@ contract Prover is BaseProver, Semver {
             l1WorldStateRoot
         );
 
+        // Update proven state if newer block
         BlockProof memory existingBlockProof = provenStates[chainId];
         BlockProof memory blockProof = BlockProof({
             blockNumber: _bytesToUint(
@@ -627,6 +707,7 @@ contract Prover is BaseProver, Semver {
             blockHash: blockHash,
             stateRoot: l2WorldStateRoot
         });
+
         if (existingBlockProof.blockNumber < blockProof.blockNumber) {
             provenStates[chainId] = blockProof;
             emit L2WorldStateProven(
@@ -644,6 +725,16 @@ contract Prover is BaseProver, Semver {
         }
     }
 
+    /**
+     * @notice Validates fault dispute game from factory configuration
+     * @dev Internal helper for Cannon proving
+     * @param disputeGameFactoryAddress Factory contract address
+     * @param l2WorldStateRoot L2 state root to verify
+     * @param disputeGameFactoryProofData Proof data for factory validation
+     * @param l1WorldStateRoot Proven L1 world state root
+     * @return faultDisputeGameProxyAddress Address of game proxy
+     * @return rootClaim Generated root claim
+     */
     function _faultDisputeGameFromFactory(
         address disputeGameFactoryAddress,
         bytes32 l2WorldStateRoot,
@@ -654,6 +745,7 @@ contract Prover is BaseProver, Semver {
         pure
         returns (address faultDisputeGameProxyAddress, bytes32 rootClaim)
     {
+        // Generate root claim from state data
         bytes32 _rootClaim = generateOutputRoot(
             L2_OUTPUT_ROOT_VERSION_NUMBER,
             l2WorldStateRoot,
@@ -661,6 +753,7 @@ contract Prover is BaseProver, Semver {
             disputeGameFactoryProofData.latestBlockHash
         );
 
+        // Verify game exists in factory
         bytes32 disputeGameFactoryStorageSlot = bytes32(
             abi.encode(
                 (uint256(
@@ -683,6 +776,7 @@ contract Prover is BaseProver, Semver {
             );
         }
 
+        // Verify storage and account proofs
         proveStorageBytes32(
             abi.encodePacked(disputeGameFactoryStorageSlot),
             disputeGameFactoryProofData.gameId,
@@ -697,6 +791,7 @@ contract Prover is BaseProver, Semver {
             l1WorldStateRoot
         );
 
+        // Get proxy address from game ID
         (, , address _faultDisputeGameProxyAddress) = unpack(
             disputeGameFactoryProofData.gameId
         );
@@ -704,12 +799,21 @@ contract Prover is BaseProver, Semver {
         return (_faultDisputeGameProxyAddress, _rootClaim);
     }
 
+    /**
+     * @notice Verifies fault dispute game resolution
+     * @dev Verifies game status and root claim
+     * @param rootClaim Expected root claim value
+     * @param faultDisputeGameProxyAddress Game proxy contract
+     * @param faultDisputeGameProofData Proof data for game verification
+     * @param l1WorldStateRoot Proven L1 world state root
+     */
     function _faultDisputeGameIsResolved(
         bytes32 rootClaim,
         address faultDisputeGameProxyAddress,
         FaultDisputeGameProofData memory faultDisputeGameProofData,
         bytes32 l1WorldStateRoot
     ) internal pure {
+        // Verify game is resolved
         if (
             faultDisputeGameProofData
                 .faultDisputeGameStatusSlotData
@@ -720,7 +824,9 @@ contract Prover is BaseProver, Semver {
                     .faultDisputeGameStatusSlotData
                     .gameStatus
             );
-        } // ensure faultDisputeGame is resolved
+        }
+
+        // ensure faultDisputeGame is resolved
         // Prove that the FaultDispute game has been settled
         // storage proof for FaultDisputeGame rootClaim (means block is valid)
         proveStorageBytes32(
@@ -730,6 +836,7 @@ contract Prover is BaseProver, Semver {
             bytes32(faultDisputeGameProofData.faultDisputeGameStateRoot)
         );
 
+        // Assemble and verify game status
         bytes32 faultDisputeGameStatusStorage = assembleGameStatusStorage(
             faultDisputeGameProofData.faultDisputeGameStatusSlotData.createdAt,
             faultDisputeGameProofData.faultDisputeGameStatusSlotData.resolvedAt,
@@ -742,8 +849,7 @@ contract Prover is BaseProver, Semver {
                 .l2BlockNumberChallenged
         );
 
-        // faultDisputeGameProofData.faultDisputeGameStatusSlotData.filler
-        // storage proof for FaultDisputeGame status (showing defender won)
+        // Verify game status storage proof
         proveStorageBytes32(
             abi.encodePacked(uint256(L2_FAULT_DISPUTE_GAME_STATUS_SLOT)),
             faultDisputeGameStatusStorage,
@@ -757,7 +863,7 @@ contract Prover is BaseProver, Semver {
             )
         );
 
-        // The Account Proof for FaultDisputeGameFactory
+        // Verify game contract account proof
         proveAccount(
             abi.encodePacked(faultDisputeGameProxyAddress),
             faultDisputeGameProofData.rlpEncodedFaultDisputeGameData,
@@ -767,21 +873,17 @@ contract Prover is BaseProver, Semver {
     }
 
     /**
-     * @notice Validates world state for Cannon by validating the following Storage proofs for the faultDisputeGame.
-     * @notice 1) the rootClaim is correct by checking the gameId is in storage in the gamesList (will need to know the index number)
-     * @notice 2) calculate the FaultDisputeGameAddress from the gameId
-     * @notice 2) the l2BlockNumber is correct
-     * @notice 3) the status is complete (2)
-     * @notice this gives a total of 3 StorageProofs and 1 AccountProof which must be validated.
-     * @param chainId the chain id of the chain we are proving
-     * @param rlpEncodedBlockData properly encoded L1 block data
-     * @param l2WorldStateRoot the state root of the last block in the batch which contains the block in which the fulfill tx happened
-     * @param disputeGameFactoryProofData the proof data for the DisputeGameFactory
-     * @param faultDisputeGameProofData the proof data for the FaultDisputeGame
-     * @param l1WorldStateRoot the l1 world state root that was proven for the settlement chain
+     * @notice Proves L2 world state using Cannon verification
+     * @dev Verifies through fault dispute game resolution
+     * @param chainId ID of destination chain
+     * @param rlpEncodedBlockData RLP encoded block data
+     * @param l2WorldStateRoot L2 state root to verify
+     * @param disputeGameFactoryProofData Proof data for factory verification
+     * @param faultDisputeGameProofData Proof data for game verification
+     * @param l1WorldStateRoot Proven L1 world state root
      */
     function proveWorldStateCannon(
-        uint256 chainId, //the destination chain id of the intent we are proving
+        uint256 chainId,
         bytes calldata rlpEncodedBlockData,
         bytes32 l2WorldStateRoot,
         DisputeGameFactoryProofData calldata disputeGameFactoryProofData,
@@ -797,6 +899,8 @@ contract Prover is BaseProver, Semver {
         ChainConfiguration memory chainConfiguration = chainConfigurations[
             chainId
         ];
+
+        // Verify settlement chain state root
         BlockProof memory existingSettlementBlockProof = provenStates[
             chainConfiguration.settlementChainId
         ];
@@ -808,9 +912,9 @@ contract Prover is BaseProver, Semver {
         }
         // prove that the FaultDisputeGame was created by the Dispute Game Factory
 
+        // Verify dispute game creation and resolution
         bytes32 rootClaim;
         address faultDisputeGameProxyAddress;
-
         (
             faultDisputeGameProxyAddress,
             rootClaim
@@ -828,6 +932,7 @@ contract Prover is BaseProver, Semver {
             l1WorldStateRoot
         );
 
+        // Update proven state if newer block
         BlockProof memory existingBlockProof = provenStates[chainId];
         BlockProof memory blockProof = BlockProof({
             blockNumber: _bytesToUint(
@@ -836,6 +941,7 @@ contract Prover is BaseProver, Semver {
             blockHash: keccak256(rlpEncodedBlockData),
             stateRoot: l2WorldStateRoot
         });
+
         if (existingBlockProof.blockNumber < blockProof.blockNumber) {
             provenStates[chainId] = blockProof;
             emit L2WorldStateProven(
@@ -854,19 +960,19 @@ contract Prover is BaseProver, Semver {
     }
 
     /**
-     * @notice Validates an intent has been proven by checking the storage proof on the destination chain
-     * to ensure that the inentHash maps to the claimant address in the inbox contract
-     * @param chainId the destination chain id of the intent we are proving
-     * @param claimant the address that can claim the reward
-     * @param inboxContract the address of the inbox contract on the destination chain
-     * @param intermediateHash the hash which, when hashed with the correct inbox contract, will result in the correct intentHash
-     * @param l2StorageProof A storage proof for the intentHash mapping to the claimant address
-     * @param rlpEncodedInboxData RLP encoded data for the inbox contract including nonce, balance, storageHash, codeHash
-     * @param l2AccountProof An account proof for the destination chain  inbox contract
-     * @param l2WorldStateRoot The world state root of the destination chain
+     * @notice Proves an intent's execution on destination chain
+     * @dev Verifies storage proof of intent fulfillment
+     * @param chainId Destination chain ID
+     * @param claimant Address eligible to claim rewards
+     * @param inboxContract Inbox contract address
+     * @param intermediateHash Partial intent hash
+     * @param l2StorageProof Storage proof for intent mapping
+     * @param rlpEncodedInboxData RLP encoded inbox contract data
+     * @param l2AccountProof Account proof for inbox contract
+     * @param l2WorldStateRoot L2 world state root
      */
     function proveIntent(
-        uint256 chainId, //the destination chain id of the intent we are proving
+        uint256 chainId,
         address claimant,
         address inboxContract,
         bytes32 intermediateHash,
@@ -875,7 +981,7 @@ contract Prover is BaseProver, Semver {
         bytes[] calldata l2AccountProof,
         bytes32 l2WorldStateRoot
     ) public {
-        // ChainConfiguration memory chainConfiguration = chainConfigurations[chainId];
+        // Verify L2 state root is proven
         BlockProof memory existingBlockProof = provenStates[chainId];
         if (existingBlockProof.stateRoot != l2WorldStateRoot) {
             revert DestinationChainStateRootNotProved(
@@ -884,10 +990,12 @@ contract Prover is BaseProver, Semver {
             );
         }
 
+        // Calculate full intent hash
         bytes32 intentHash = keccak256(
             abi.encode(inboxContract, intermediateHash)
         );
 
+        // Calculate storage slot for intent mapping
         bytes32 messageMappingSlot = keccak256(
             abi.encode(
                 intentHash,
@@ -895,6 +1003,7 @@ contract Prover is BaseProver, Semver {
             )
         );
 
+        // Verify inbox state root
         bytes memory inboxStateRoot = RLPReader.readBytes(
             RLPReader.readList(rlpEncodedInboxData)[2]
         );
@@ -902,7 +1011,8 @@ contract Prover is BaseProver, Semver {
         if (inboxStateRoot.length > 32) {
             revert IncorrectInboxStateRoot(inboxStateRoot);
         }
-        // proves that the claimaint address corresponds to the intentHash on the contract
+
+        // Verify storage proof for claimant mapping
         proveStorageBytes32(
             abi.encodePacked(messageMappingSlot),
             bytes32(uint256(uint160(claimant))),
@@ -910,7 +1020,7 @@ contract Prover is BaseProver, Semver {
             bytes32(inboxStateRoot)
         );
 
-        // proves that the inbox data corresponds to the l2worldstate
+        // Verify inbox contract account proof
         proveAccount(
             abi.encodePacked(inboxContract),
             rlpEncodedInboxData,
@@ -918,6 +1028,7 @@ contract Prover is BaseProver, Semver {
             l2WorldStateRoot
         );
 
+        // Record proven intent and emit event
         provenIntents[intentHash] = claimant;
         emit IntentProven(intentHash, claimant);
     }

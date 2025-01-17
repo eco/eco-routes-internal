@@ -5,29 +5,56 @@ import {ISemver} from "./ISemver.sol";
 
 import {Route} from "../types/Intent.sol";
 
+/**
+ * @title IInbox
+ * @notice Interface for the destination chain portion of the Eco Protocol's intent system
+ * @dev Handles intent fulfillment and proving via different mechanisms (storage proofs,
+ * Hyperlane instant/batched)
+ */
 interface IInbox is ISemver {
-    // Event emitted when an intent is succesfully fulfilled
+    /**
+     * @notice Emitted when an intent is successfully fulfilled
+     * @param _hash Hash of the fulfilled intent
+     * @param _sourceChainID ID of the source chain
+     * @param _claimant Address eligible to claim rewards
+     */
     event Fulfillment(
         bytes32 indexed _hash,
         uint256 indexed _sourceChainID,
         address indexed _claimant
     );
 
-    // Event emitted when an intent is ready to be proven via a storage prover
+    /**
+     * @notice Emitted when an intent is ready for storage proof validation
+     * @param _hash Hash of the intent to prove
+     * @param _sourceChainID ID of the source chain
+     * @param _claimant Address eligible to claim rewards
+     */
     event ToBeProven(
         bytes32 indexed _hash,
         uint256 indexed _sourceChainID,
         address indexed _claimant
     );
 
-    // Event emitted when an intent is fulfilled with the instant hyperprover path
+    /**
+     * @notice Emitted when an intent is fulfilled using Hyperlane instant proving
+     * @param _hash Hash of the fulfilled intent
+     * @param _sourceChainID ID of the source chain
+     * @param _claimant Address eligible to claim rewards
+     */
     event HyperInstantFulfillment(
         bytes32 indexed _hash,
         uint256 indexed _sourceChainID,
         address indexed _claimant
     );
 
-    // Event emitted when an intent is added to a batch to be proven with the hyperprover
+    /**
+     * @notice Emitted when an intent is added to a Hyperlane batch
+     * @param _hash Hash of the batched intent
+     * @param _sourceChainID ID of the source chain
+     * @param _claimant Address eligible to claim rewards
+     * @param _prover Address of the Hyperlane prover
+     */
     event AddToBatch(
         bytes32 indexed _hash,
         uint256 indexed _sourceChainID,
@@ -35,37 +62,68 @@ interface IInbox is ISemver {
         address _prover
     );
 
-    // Event emitted when solving is made public
+    /**
+     * @notice Emitted when intent solving is made public
+     */
     event SolvingIsPublic();
 
-    // Event emitted when Hyperlane Mailbox is set
+    /**
+     * @notice Emitted when Hyperlane mailbox address is set
+     * @param _mailbox Address of the mailbox contract
+     */
     event MailboxSet(address indexed _mailbox);
 
-    // Event emitted when a change is made to the solver whitelist
+    /**
+     * @notice Emitted when solver whitelist status changes
+     * @param _solver Address of the solver
+     * @param _canSolve Updated whitelist status
+     */
     event SolverWhitelistChanged(
         address indexed _solver,
         bool indexed _canSolve
     );
 
-    // Error thrown when solving intents is not public and a non-whitelisted address made a solve attempt
+    /**
+     * @notice Unauthorized solver attempted to fulfill intent
+     * @param _solver Address of the unauthorized solver
+     */
     error UnauthorizedSolveAttempt(address _solver);
 
-    // Error thrown when the intent can no longer be fulfilled because its timestamp has expired
+    /**
+     * @notice Intent has expired and can no longer be fulfilled
+     */
     error IntentExpired();
 
-    // Error thrown when the intent has already been fulfilled
+    /**
+     * @notice Intent has already been fulfilled
+     * @param _hash Hash of the fulfilled intent
+     */
     error IntentAlreadyFulfilled(bytes32 _hash);
 
-    // Error thrown when the inbox address is not a contract
+    /**
+     * @notice Invalid inbox address provided
+     * @param _inbox Address that is not a valid inbox
+     */
     error InvalidInbox(address _inbox);
 
-    // Error thrown when the hash generated on the inbox contract does not match the expected hash
+    /**
+     * @notice Generated hash doesn't match expected hash
+     * @param _expectedHash Hash that was expected
+     */
     error InvalidHash(bytes32 _expectedHash);
 
-    // Error thrown when the claimant in a fulfill call is the zero address
+    /**
+     * @notice Zero address provided as claimant
+     */
     error ZeroClaimant();
 
-    // Error thrown when the intent call failed while itertating through the callAddresses
+    /**
+     * @notice Call during intent execution failed
+     * @param _addr Target contract address
+     * @param _data Call data that failed
+     * @param value Native token value sent
+     * @param _returnData Error data returned
+     */
     error IntentCallFailed(
         address _addr,
         bytes _data,
@@ -73,30 +131,46 @@ interface IInbox is ISemver {
         bytes _returnData
     );
 
-    // Error thrown when a solver attempts to make a call to the hyperlane mailbox
+    /**
+     * @notice Attempted call to Hyperlane mailbox
+     */
     error CallToMailbox();
 
-    // Error thrown when an external address attempts to call transferNative
+    /**
+     * @notice Unauthorized attempt to transfer native tokens
+     */
     error UnauthorizedTransferNative();
 
-    // Error thrown when the number of intents in a call to sendBatch exceeds MAX_BATCH_SIZE
+    /**
+     * @notice Batch size exceeds maximum limit
+     */
     error BatchTooLarge();
 
-    // Error thrown when an intent that is not yet fulfilled is sent as part of a hyperprove batch
+    /**
+     * @notice Attempted to batch an unfulfilled intent
+     * @param _hash Hash of the unfulfilled intent
+     */
     error IntentNotFulfilled(bytes32 _hash);
 
-    // Error thrown when the fee sent by the solver for a hyperprover fulfillment is less than the fee required by the mailbox
+    /**
+     * @notice Insufficient fee provided for Hyperlane fulfillment
+     * @param _requiredFee Amount of fee required
+     */
     error InsufficientFee(uint256 _requiredFee);
 
     /**
-     * This function is the main entry point for fulfilling an intent. It validates that the intentHash is the hash of the other parameters.
-     * It then calls the addresses with their respective calldata, and if successful marks the intent as fulfilled and emits an event.
-     * @param _route The route of the intent
-     * @param _rewardHash The hash of the reward
-     * @param _claimant The address who can claim the reward on the src chain. Not part of the hash
-     * @param _expectedHash The hash a solver should expect to be generated from the params above.
-     * @dev this is a guardrail to make sure solves dont accidentally solve intents that cannot be proven.
-     * @return results The results of the calls as an array of bytes
+     * @notice Native token transfer failed
+     */
+    error NativeTransferFailed();
+
+    /**
+     * @notice Fulfills an intent using storage proofs
+     * @dev Validates intent hash, executes calls, and marks as fulfilled
+     * @param _route Route information for the intent
+     * @param _rewardHash Hash of the reward details
+     * @param _claimant Address eligible to claim rewards
+     * @param _expectedHash Expected hash for validation
+     * @return Array of execution results
      */
     function fulfillStorage(
         Route calldata _route,
@@ -106,14 +180,14 @@ interface IInbox is ISemver {
     ) external payable returns (bytes[] memory);
 
     /**
-     * Same as above but with the added _prover parameter. This fulfill method is used to fulfill an intent that is proving with the HyperProver and wishes to prove immediately.
-     * @param _route The route of the intent
-     * @param _rewardHash The hash of the reward
-     * @param _claimant The address who can claim the reward on the src chain. Not part of the hash
-     * @param _expectedHash The hash a solver should expect to be generated from the params above.
-     * @dev this is a guardrail to make sure solves dont accidentally solve intents that cannot be proven.
-     * @param _prover The prover against which this intent will be checked
-     * @return results The results of the calls as an array of bytes
+     * @notice Fulfills an intent with immediate Hyperlane proving
+     * @dev Higher cost but faster than batched proving
+     * @param _route Route information for the intent
+     * @param _rewardHash Hash of the reward details
+     * @param _claimant Address eligible to claim rewards
+     * @param _expectedHash Expected hash for validation
+     * @param _prover Address of the Hyperlane prover
+     * @return Array of execution results
      */
     function fulfillHyperInstant(
         Route calldata _route,
@@ -124,14 +198,14 @@ interface IInbox is ISemver {
     ) external payable returns (bytes[] memory);
 
     /**
-     * Same as above but with the added _prover parameter. This fulfill method is used to fulfill an intent that is proving with the HyperProver, but defers proving to lower cost.
-     * @param _route The route of the intent
-     * @param _rewardHash The hash of the reward
-     * @param _claimant The address who can claim the reward on the src chain. Not part of the hash
-     * @param _expectedHash The hash a solver should expect to be generated from the params above.
-     * @dev this is a guardrail to make sure solves dont accidentally solve intents that cannot be proven.
-     * @param _prover The prover against which this intent will be checked
-     * @return results The results of the calls as an array of bytes
+     * @notice Fulfills an intent for deferred Hyperlane batch proving
+     * @dev Lower cost but slower than instant proving
+     * @param _route Route information for the intent
+     * @param _rewardHash Hash of the reward details
+     * @param _claimant Address eligible to claim rewards
+     * @param _expectedHash Expected hash for validation
+     * @param _prover Address of the Hyperlane prover
+     * @return Array of execution results
      */
     function fulfillHyperBatched(
         Route calldata _route,
@@ -142,11 +216,11 @@ interface IInbox is ISemver {
     ) external payable returns (bytes[] memory);
 
     /**
-     * Sends a batch of intents to the hyperprover in a single message.
-     * All intents should be between the same source and destination chains and should be proven against the same hyperprover.
-     * @param _sourceChainID The chainID of the source chain
-     * @param _prover The prover against which these intents will be proven. Should be the same for all intents in a given batch
-     * @param _intentHashes The array of intent hashes to be proven
+     * @notice Submits a batch of fulfilled intents to Hyperlane
+     * @dev All intents must share source chain and prover
+     * @param _sourceChainID Source chain ID for the batch
+     * @param _prover Hyperlane prover address
+     * @param _intentHashes Array of intent hashes to prove
      */
     function sendBatch(
         uint256 _sourceChainID,
