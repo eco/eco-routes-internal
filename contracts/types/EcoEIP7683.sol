@@ -18,8 +18,6 @@ struct OnchainCrosschainOrderData {
     uint256 nativeValue;
     // addresses and amounts of reward tokens
     TokenAmount[] tokens;
-    // boolean indicating whether the creator wants to add rewards during intent creation
-    bool addRewards;
 }
 
 struct GaslessCrosschainOrderData {
@@ -35,8 +33,6 @@ struct GaslessCrosschainOrderData {
     uint256 nativeValue;
     // addresses and amounts of reward tokens
     TokenAmount[] tokens;
-    // boolean indicating whether the creator wants to add rewards during intent creation
-    bool addRewards;
 }
 
 abstract contract EcoEIP7683 {

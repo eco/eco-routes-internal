@@ -4,7 +4,7 @@ export type OnchainCrosschainOrderData = {
     route: Route
     creator: string
     prover: string
-    nativeValue: number
+    nativeValue: bigint
     tokens: TokenAmount[]
     addRewards: boolean
 }

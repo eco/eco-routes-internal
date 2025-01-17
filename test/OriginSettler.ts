@@ -53,6 +53,9 @@ describe('Origin Settler Test', (): void => {
   let onchainCrosschainOrder: OnchainCrossChainOrderStruct
   let onchainCrosschainOrderData: OnchainCrosschainOrderData
 
+  const onchainCrosschainOrderTypehash: BytesLike = "19a2c716a34145b8ff3a5a548a03718f6b228a3c87a94a9314a627d1746ea6d9"
+  const gaslessCrosschainOrderTypehash: BytesLike = "44e582ef7cc7484b33a2721670194e16869b333e96968b6eaab920fc1f1960c3"
+
   async function deploySourceFixture(): Promise<{
     originSettler: Eco7683OriginSettler
     intentSource: IntentSource
@@ -168,14 +171,19 @@ describe('Origin Settler Test', (): void => {
         ethers.solidityPacked(['bytes32', 'bytes32'], [routeHash, rewardHash]),
       )
 
-      bytes onchainCrosschainOrderData = {
-
+      onchainCrosschainOrderData = {
+        route: route,
+        creator: creator.address,
+        prover: await prover.getAddress(),
+        nativeValue: rewardNativeEth,
+        tokens: rewardTokens,
+        addRewards: true,
       }
 
       onchainCrosschainOrder = {
         fillDeadline: expiry,
-        orderDataType: 
-        orderData: onchainCr
+        orderDataType: onchainCrosschainOrderTypehash,
+        orderData: onchainCrosschainOrderData
       }
     })
 
