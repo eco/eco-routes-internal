@@ -12,6 +12,8 @@ import {Semver} from "./libs/Semver.sol";
 
 import {IntentVault} from "./IntentVault.sol";
 
+import "hardhat/console.sol";
+
 /**
  * @notice Source chain contract for the Eco Protocol's intent system
  * @dev Used to create intents and withdraw associated rewards. Works in conjunction with
@@ -277,7 +279,7 @@ contract IntentSource is IIntentSource, Semver {
         uint256 rewardsLength = reward.tokens.length;
 
         if (vault.balance < reward.nativeValue) return false;
-
+        
         for (uint256 i = 0; i < rewardsLength; i++) {
             address token = reward.tokens[i].token;
             uint256 amount = reward.tokens[i].amount;

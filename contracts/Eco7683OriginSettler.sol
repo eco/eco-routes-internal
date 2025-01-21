@@ -7,10 +7,11 @@ import {IOriginSettler} from "./interfaces/EIP7683/IOriginSettler.sol";
 import {Intent, Reward, Route, Call, TokenAmount} from "./types/Intent.sol";
 import {OnchainCrosschainOrderData, GaslessCrosschainOrderData} from "./types/EcoEIP7683.sol";
 import {IntentSource} from "./IntentSource.sol";
+import {Semver} from "./libs/Semver.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
-
-contract Eco7683OriginSettler is IOriginSettler, EIP712 {
+import "hardhat/console.sol";
+contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
     using ECDSA for bytes32;
 
     error OriginChainIDMismatch();
@@ -25,10 +26,10 @@ contract Eco7683OriginSettler is IOriginSettler, EIP712 {
     address public immutable INTENT_SOURCE;
 
     constructor(
-        address _intentSource,
-        string memory name,
-        string memory version
-    ) EIP712(name, version) {
+        string memory _name,
+        string memory _version,
+        address _intentSource
+    ) EIP712(_name, _version) {
         INTENT_SOURCE = _intentSource;
     }
 
@@ -63,7 +64,7 @@ contract Eco7683OriginSettler is IOriginSettler, EIP712 {
                     gaslessCrosschainOrderData.tokens
                 )
             ),
-            gaslessCrosschainOrderData.addRewards
+            false
         );
         emit Open(orderId, resolveFor(order, originFillerData));
     }
@@ -74,8 +75,36 @@ contract Eco7683OriginSettler is IOriginSettler, EIP712 {
         if (onchainCrosschainOrderData.route.source != block.chainid) {
             revert OriginChainIDMismatch();
         }
+
         // orderId is the intentHash
         bytes32 orderId = IntentSource(INTENT_SOURCE).publishIntent(
+            Intent(
+                onchainCrosschainOrderData.route,
+                Reward(
+                    onchainCrosschainOrderData.creator,
+                    onchainCrosschainOrderData.prover,
+                    order.fillDeadline,
+                    onchainCrosschainOrderData.nativeValue,
+                    onchainCrosschainOrderData.tokens
+                )
+            ),
+            onchainCrosschainOrderData.addRewards
+        );
+        emit Open(orderId, resolve(order));
+    }
+
+    function openPayable(
+        OnchainCrossChainOrder calldata order
+    ) external payable {
+        OnchainCrosschainOrderData memory onchainCrosschainOrderData = abi
+            .decode(order.orderData, (OnchainCrosschainOrderData));
+        if (onchainCrosschainOrderData.route.source != block.chainid) {
+            revert OriginChainIDMismatch();
+        }
+        // orderId is the intentHash
+        bytes32 orderId = IntentSource(INTENT_SOURCE).publishIntent{
+            value: msg.value
+        }(
             Intent(
                 onchainCrosschainOrderData.route,
                 Reward(
