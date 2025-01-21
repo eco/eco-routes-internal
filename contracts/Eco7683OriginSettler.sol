@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {OnchainCrossChainOrder, ResolvedCrossChainOrder, GaslessCrossChainOrder} from "./types/EIP7683.sol";
+import {OnchainCrossChainOrder, ResolvedCrossChainOrder, GaslessCrossChainOrder, Output, FillInstruction} from "./types/EIP7683.sol";
 import {IOriginSettler} from "./interfaces/EIP7683/IOriginSettler.sol";
 import {Intent, Reward, Route, Call, TokenAmount} from "./types/Intent.sol";
 import {OnchainCrosschainOrderData, GaslessCrosschainOrderData} from "./types/EcoEIP7683.sol";
@@ -126,38 +126,132 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
     ) public view override returns (ResolvedCrossChainOrder memory) {
         GaslessCrosschainOrderData memory gaslessCrosschainOrderData = abi
             .decode(order.orderData, (GaslessCrosschainOrderData));
+        Output[] memory maxSpent = new Output[](0); //doesn't have a very useful meaning here since our protocol is not specifically built around swaps
+        uint256 tokenCount = gaslessCrosschainOrderData.tokens.length;
+        Output[] memory minReceived = new Output[](tokenCount); //rewards are fixed
+        for (uint256 i = 0; i < tokenCount; i++) {
+            minReceived[i] = Output(
+                bytes32(
+                    bytes20(uint160(gaslessCrosschainOrderData.tokens[i].token))
+                ),
+                gaslessCrosschainOrderData.tokens[i].amount,
+                bytes32(bytes20(uint160(address(0)))), //filler is not known
+                gaslessCrosschainOrderData.destination
+            );
+        }
+        uint256 callCount = gaslessCrosschainOrderData.calls.length;
+        FillInstruction[] memory fillInstructions = new FillInstruction[](
+            callCount
+        );
+        for (uint256 j = 0; j < callCount; j++) {
+            fillInstructions[j] = FillInstruction(
+                uint64(gaslessCrosschainOrderData.destination),
+                bytes32(bytes20(uint160(gaslessCrosschainOrderData.inbox))),
+                abi.encode(gaslessCrosschainOrderData.calls[j])
+            );
+        }
+        (bytes32 intentHash, , ) = IntentSource(INTENT_SOURCE).getIntentHash(
+            Intent(
+                Route(
+                    bytes32(order.nonce),
+                    order.originChainId,
+                    gaslessCrosschainOrderData.destination,
+                    gaslessCrosschainOrderData.inbox,
+                    gaslessCrosschainOrderData.calls
+                ),
+                Reward(
+                    order.user,
+                    gaslessCrosschainOrderData.prover,
+                    order.fillDeadline,
+                    gaslessCrosschainOrderData.nativeValue,
+                    gaslessCrosschainOrderData.tokens
+                )
+            )
+        );
         return
             ResolvedCrossChainOrder(
-                gaslessCrosschainOrderData.user,
-                gaslessCrosschainOrderData.originChainId,
+                order.user,
+                order.originChainId,
                 order.fillDeadline, // we do not use opendeadline
                 order.fillDeadline,
-                IntentSource(INTENT_SOURCE).getIntentHash(
-                    Intent(
-                        Route(
-                            bytes32(order.nonce),
-                            order.originChainId,
-                            gaslessCrosschainOrderData.destination,
-                            gaslessCrosschainOrderData.inbox,
-                            gaslessCrosschainOrderData.calls
-                        ),
-                        Reward(
-                            order.user,
-                            gaslessCrosschainOrderData.prover,
-                            order.fillDeadline,
-                            gaslessCrosschainOrderData.nativeValue,
-                            gaslessCrosschainOrderData.tokens
-                        )
-                    ),
-                    false
-                ),
+                // (bytes32, , ) = IntentSource(INTENT_SOURCE).getIntentHash(
+                //     Intent(
+                //         Route(
+                //             bytes32(order.nonce),
+                //             order.originChainId,
+                //             gaslessCrosschainOrderData.destination,
+                //             gaslessCrosschainOrderData.inbox,
+                //             GaslessCrosschainOrderData.calls
+                //         ),
+                //         Reward(
+                //             order.user,
+                //             gaslessCrosschainOrderData.prover,
+                //             order.fillDeadline,
+                //             gaslessCrosschainOrderData.nativeValue,
+                //             gaslessCrosschainOrderData.tokens
+                //         )
+                //     )
+                // ),
+                intentHash,
+                maxSpent,
+                minReceived,
+                fillInstructions
             );
     }
 
     function resolve(
         OnchainCrossChainOrder calldata order
     ) public view override returns (ResolvedCrossChainOrder memory) {
-        // return ResolvedCrossChainOrder();
+        OnchainCrosschainOrderData memory onchainCrosschainOrderData = abi
+            .decode(order.orderData, (OnchainCrosschainOrderData));
+        Output[] memory maxSpent = new Output[](0); //doesn't have a very useful meaning here since our protocol is not specifically built around swaps
+        uint256 tokenCount = onchainCrosschainOrderData.tokens.length;
+        Output[] memory minReceived = new Output[](tokenCount); //rewards are fixed
+        for (uint256 i = 0; i < tokenCount; i++) {
+            minReceived[i] = Output(
+                bytes32(
+                    bytes20(uint160(onchainCrosschainOrderData.tokens[i].token))
+                ),
+                onchainCrosschainOrderData.tokens[i].amount,
+                bytes32(bytes20(uint160(address(0)))), //filler is not known
+                onchainCrosschainOrderData.route.destination
+            );
+        }
+        (bytes32 intentHash, , ) = IntentSource(INTENT_SOURCE).getIntentHash(
+            Intent(
+                onchainCrosschainOrderData.route,
+                Reward(
+                    onchainCrosschainOrderData.creator,
+                    onchainCrosschainOrderData.prover,
+                    order.fillDeadline,
+                    onchainCrosschainOrderData.nativeValue,
+                    onchainCrosschainOrderData.tokens
+                )
+            )
+        );
+        return
+            ResolvedCrossChainOrder(
+                onchainCrosschainOrderData.creator,
+                onchainCrosschainOrderData.route.source,
+                order.fillDeadline,
+                order.fillDeadline,
+                // IntentSource(INTENT_SOURCE).getIntentHash(
+                //     Intent(
+                //         onchainCrosschainOrderData.route,
+                //         Reward(
+                //             onchainCrosschainOrderData.creator,
+                //             onchainCrosschainOrderData.prover,
+                //             order.fillDeadline,
+                //             onchainCrosschainOrderData.nativeValue,
+                //             onchainCrosschainOrderData.tokens
+                //         )
+                //     )
+                // ),
+                intentHash,
+                maxSpent,
+                minReceived,
+                new FillInstruction[](0)
+            );
     }
 
     function _verifyOpenFor(
