@@ -12,6 +12,15 @@ export type OnchainCrosschainOrderData = {
   addRewards: boolean
 }
 
+export type GaslessCrosschainOrderData = {
+  destination: number
+  inbox: string
+  calls: Call[]
+  prover: string
+  nativeValue: bigint
+  tokens: TokenAmount[]
+}
+
 const OnchainCrosschainOrderDataStruct = [
   {
     name: 'route',
@@ -46,6 +55,30 @@ const OnchainCrosschainOrderDataStruct = [
   { name: 'addRewards', type: 'bool' },
 ]
 
+const GaslessCrosschainOrderDataStruct = [
+  { name: 'destination', type: 'uint256' },
+  { name: 'inbox', type: 'address' },
+  {
+    name: 'calls',
+    type: 'tuple[]',
+    components: [
+      { name: 'target', type: 'address' },
+      { name: 'data', type: 'bytes' },
+      { name: 'value', type: 'uint256' },
+    ],
+  },
+  { name: 'prover', type: 'address' },
+  { name: 'nativeValue', type: 'uint256' },
+  {
+    name: 'tokens',
+    type: 'tuple[]',
+    components: [
+      { name: 'token', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+  },
+]
+
 export async function encodeOnchainCrosschainOrderData(
   onchainCrosschainOrderData: OnchainCrosschainOrderData,
 ) {
@@ -58,5 +91,20 @@ export async function encodeOnchainCrosschainOrderData(
       },
     ],
     [onchainCrosschainOrderData],
+  )
+}
+
+export async function encodeGaslessCrosschainOrderData(
+  gaslessCrosschainOrderData: GaslessCrosschainOrderData,
+) {
+  const abiCoder = AbiCoder.defaultAbiCoder()
+  return abiCoder.encode(
+    [
+      {
+        type: 'tuple',
+        components: GaslessCrosschainOrderDataStruct,
+      },
+    ],
+    [gaslessCrosschainOrderData],
   )
 }
