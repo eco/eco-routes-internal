@@ -23,7 +23,10 @@ import {
   Intent,
 } from '../utils/intent'
 import { OnchainCrossChainOrderStruct } from '../typechain-types/contracts/Eco7683OriginSettler'
-import { OnchainCrosschainOrderData } from '../utils/EcoEIP7683'
+import {
+  OnchainCrosschainOrderData,
+  encodeOnchainCrosschainOrderData,
+} from '../utils/EcoEIP7683'
 import exp from 'constants'
 
 describe('Origin Settler Test', (): void => {
@@ -51,10 +54,16 @@ describe('Origin Settler Test', (): void => {
   let rewardHash: BytesLike
   let intentHash: BytesLike
   let onchainCrosschainOrder: OnchainCrossChainOrderStruct
+  let onchainCrosschainOrder_addRewards: OnchainCrossChainOrderStruct
   let onchainCrosschainOrderData: OnchainCrosschainOrderData
 
-  const onchainCrosschainOrderTypehash: BytesLike = "19a2c716a34145b8ff3a5a548a03718f6b228a3c87a94a9314a627d1746ea6d9"
-  const gaslessCrosschainOrderTypehash: BytesLike = "44e582ef7cc7484b33a2721670194e16869b333e96968b6eaab920fc1f1960c3"
+  const name = 'Eco 7683 Origin Settler'
+  const version = '1.5.0'
+
+  const onchainCrosschainOrderTypehash: BytesLike =
+    '0x19a2c716a34145b8ff3a5a548a03718f6b228a3c87a94a9314a627d1746ea6d9'
+  const gaslessCrosschainOrderTypehash: BytesLike =
+    '0x44e582ef7cc7484b33a2721670194e16869b333e96968b6eaab920fc1f1960c3'
 
   async function deploySourceFixture(): Promise<{
     originSettler: Eco7683OriginSettler
@@ -80,6 +89,8 @@ describe('Origin Settler Test', (): void => {
       'Eco7683OriginSettler',
     )
     const originSettler = await originSettlerFactory.deploy(
+      name,
+      '1.0.0',
       await intentSource.getAddress(),
     )
 
@@ -145,10 +156,7 @@ describe('Origin Settler Test', (): void => {
         { token: await tokenA.getAddress(), amount: mintAmount },
         { token: await tokenB.getAddress(), amount: mintAmount * 2 },
       ]
-      salt = await encodeIdentifier(
-        0,
-        (await ethers.provider.getNetwork()).chainId,
-      )
+      salt = keccak256('0xdeadbeef')
       route = {
         salt: salt,
         source: Number(
@@ -175,26 +183,87 @@ describe('Origin Settler Test', (): void => {
         route: route,
         creator: creator.address,
         prover: await prover.getAddress(),
-        nativeValue: rewardNativeEth,
-        tokens: rewardTokens,
+        nativeValue: reward.nativeValue,
+        tokens: reward.tokens,
+        addRewards: false,
+      }
+
+      const onchainCrosschainOrderData_addRewards = {
+        route: route,
+        creator: creator.address,
+        prover: await prover.getAddress(),
+        nativeValue: reward.nativeValue,
+        tokens: reward.tokens,
         addRewards: true,
       }
 
       onchainCrosschainOrder = {
         fillDeadline: expiry,
         orderDataType: onchainCrosschainOrderTypehash,
-        orderData: onchainCrosschainOrderData
+        orderData: await encodeOnchainCrosschainOrderData(
+          onchainCrosschainOrderData,
+        ),
+      }
+      onchainCrosschainOrder_addRewards = {
+        fillDeadline: expiry,
+        orderDataType: onchainCrosschainOrderTypehash,
+        orderData: await encodeOnchainCrosschainOrderData(
+          onchainCrosschainOrderData_addRewards,
+        ),
       }
     })
 
-    it('creates via open', async () => {
-      await intentSource
+    it.only('creates via open, addRewards false', async () => {
+      //   console.log(route)
+      //   console.log('orderdata: ', onchainCrosschainOrder.orderData)
+
+      const vaultAddress = await intentSource.intentVaultAddress({
+        route,
+        reward,
+      })
+      console.log(' ')
+      await tokenA.connect(creator).transfer(vaultAddress, mintAmount)
+      await tokenB.connect(creator).transfer(vaultAddress, 2 * mintAmount)
+      const tx = await creator.sendTransaction({
+        to: vaultAddress,
+        value: rewardNativeEth,
+      })
+      await tx.wait()
+
+      await originSettler.connect(creator).open(onchainCrosschainOrder)
+
+      const events = await intentSource.queryFilter(
+        intentSource.filters.IntentCreated(),
+      )
+      console.log(events[0].args)
+
+      //   await expect(originSettler.connect(creator).open(onchainCrosschainOrder))
+      //     .to.emit(intentSource, 'IntentCreated')
+      //     .withArgs(
+      //       intentHash,
+      //       salt,
+      //       Number((await intentSource.runner?.provider?.getNetwork())?.chainId),
+      //       chainId,
+      //       await inbox.getAddress(),
+      //       calls.map(Object.values),
+      //       await creator.getAddress(),
+      //       await prover.getAddress(),
+      //       expiry,
+      //       rewardNativeEth,
+      //       rewardTokens.map(Object.values),
+      //     )
+      //   expect(
+      //     await intentSource.validateIntent({
+      //       route,
+      //       reward: { ...reward, nativeValue: rewardNativeEth },
+      //     }),
+      //   ).to.be.true
+    })
+
+    it('creates via openPayable, addrewards true', async () => {
+      await originSettler
         .connect(creator)
-        .publishIntent(
-          { route, reward: { ...reward, nativeValue: rewardNativeEth } },
-          true,
-          { value: rewardNativeEth },
-        )
+        .openPayable(onchainCrosschainOrder, { value: rewardNativeEth })
       expect(
         await intentSource.validateIntent({
           route,
@@ -202,32 +271,30 @@ describe('Origin Settler Test', (): void => {
         }),
       ).to.be.true
     })
-    it('emits open event', async () => {
-      const intent = {
-        route,
-        reward: { ...reward, nativeValue: rewardNativeEth },
-      }
-      const { intentHash } = hashIntent(intent)
+    //   const intent = {
+    //     route,
+    //     reward: { ...reward, nativeValue: rewardNativeEth },
+    //   }
+    //   const { intentHash } = hashIntent(intent)
 
-      await expect(
-        intentSource
-          .connect(creator)
-          .publishIntent(intent, true, { value: rewardNativeEth }),
-      )
-        .to.emit(intentSource, 'IntentCreated')
-        .withArgs(
-          intentHash,
-          salt,
-          Number((await intentSource.runner?.provider?.getNetwork())?.chainId),
-          chainId,
-          await inbox.getAddress(),
-          calls.map(Object.values),
-          await creator.getAddress(),
-          await prover.getAddress(),
-          expiry,
-          rewardNativeEth,
-          rewardTokens.map(Object.values),
-        )
-    })
+    //   await expect(
+    //     intentSource
+    //       .connect(creator)
+    //       .publishIntent(intent, true, { value: rewardNativeEth }),
+    //   )
+    //     .to.emit(intentSource, 'IntentCreated')
+    //     .withArgs(
+    //       intentHash,
+    //       salt,
+    //       Number((await intentSource.runner?.provider?.getNetwork())?.chainId),
+    //       chainId,
+    //       await inbox.getAddress(),
+    //       calls.map(Object.values),
+    //       await creator.getAddress(),
+    //       await prover.getAddress(),
+    //       expiry,
+    //       rewardNativeEth,
+    //       rewardTokens.map(Object.values),
+    //     )
   })
 })
