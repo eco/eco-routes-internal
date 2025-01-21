@@ -93,49 +93,65 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         emit Open(orderId, resolve(order));
     }
 
-    function openPayable(
-        OnchainCrossChainOrder calldata order
-    ) external payable {
-        OnchainCrosschainOrderData memory onchainCrosschainOrderData = abi
-            .decode(order.orderData, (OnchainCrosschainOrderData));
-        if (onchainCrosschainOrderData.route.source != block.chainid) {
-            revert OriginChainIDMismatch();
-        }
-        // orderId is the intentHash
-        bytes32 orderId = IntentSource(INTENT_SOURCE).publishIntent{
-            value: msg.value
-        }(
-            Intent(
-                onchainCrosschainOrderData.route,
-                Reward(
-                    onchainCrosschainOrderData.creator,
-                    onchainCrosschainOrderData.prover,
-                    order.fillDeadline,
-                    onchainCrosschainOrderData.nativeValue,
-                    onchainCrosschainOrderData.tokens
-                )
-            ),
-            onchainCrosschainOrderData.addRewards
-        );
-        emit Open(orderId, resolve(order));
-    }
+    // function openPayable(
+    //     OnchainCrossChainOrder calldata order
+    // ) external payable {
+    //     OnchainCrosschainOrderData memory onchainCrosschainOrderData = abi
+    //         .decode(order.orderData, (OnchainCrosschainOrderData));
+    //     if (onchainCrosschainOrderData.route.source != block.chainid) {
+    //         revert OriginChainIDMismatch();
+    //     }
+    //     // orderId is the intentHash
+    //     bytes32 orderId = IntentSource(INTENT_SOURCE).publishIntent{
+    //         value: msg.value
+    //     }(
+    //         Intent(
+    //             onchainCrosschainOrderData.route,
+    //             Reward(
+    //                 onchainCrosschainOrderData.creator,
+    //                 onchainCrosschainOrderData.prover,
+    //                 order.fillDeadline,
+    //                 onchainCrosschainOrderData.nativeValue,
+    //                 onchainCrosschainOrderData.tokens
+    //             )
+    //         ),
+    //         onchainCrosschainOrderData.addRewards
+    //     );
+    //     emit Open(orderId, resolve(order));
+    // }
 
     function resolveFor(
         GaslessCrossChainOrder calldata order,
         bytes calldata originFillerData
     ) public view override returns (ResolvedCrossChainOrder memory) {
-        // OnchainCrosschainOrderData memory crosschainOrderData = abi.decode(
-        //     order.orderData,
-        //     (OnchainCrosschainOrderData)
-        // );
-        // return
-        //     ResolvedCrossChainOrder(
-        //         crosschainOrderData.creator,
-        //         crosschainOrderData.sourceChainID,
-        //         crosschainOrderData.openDeadline, //is this already open?
-        //         order.fillDeadline,
-        //         OnchainCrosschainOrderData.nonce
-        //     );
+        GaslessCrosschainOrderData memory gaslessCrosschainOrderData = abi
+            .decode(order.orderData, (GaslessCrosschainOrderData));
+        return
+            ResolvedCrossChainOrder(
+                gaslessCrosschainOrderData.user,
+                gaslessCrosschainOrderData.originChainId,
+                order.fillDeadline, // we do not use opendeadline
+                order.fillDeadline,
+                IntentSource(INTENT_SOURCE).getIntentHash(
+                    Intent(
+                        Route(
+                            bytes32(order.nonce),
+                            order.originChainId,
+                            gaslessCrosschainOrderData.destination,
+                            gaslessCrosschainOrderData.inbox,
+                            gaslessCrosschainOrderData.calls
+                        ),
+                        Reward(
+                            order.user,
+                            gaslessCrosschainOrderData.prover,
+                            order.fillDeadline,
+                            gaslessCrosschainOrderData.nativeValue,
+                            gaslessCrosschainOrderData.tokens
+                        )
+                    ),
+                    false
+                ),
+            );
     }
 
     function resolve(
