@@ -174,24 +174,6 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                 order.originChainId,
                 order.fillDeadline, // we do not use opendeadline
                 order.fillDeadline,
-                // (bytes32, , ) = IntentSource(INTENT_SOURCE).getIntentHash(
-                //     Intent(
-                //         Route(
-                //             bytes32(order.nonce),
-                //             order.originChainId,
-                //             gaslessCrosschainOrderData.destination,
-                //             gaslessCrosschainOrderData.inbox,
-                //             GaslessCrosschainOrderData.calls
-                //         ),
-                //         Reward(
-                //             order.user,
-                //             gaslessCrosschainOrderData.prover,
-                //             order.fillDeadline,
-                //             gaslessCrosschainOrderData.nativeValue,
-                //             gaslessCrosschainOrderData.tokens
-                //         )
-                //     )
-                // ),
                 intentHash,
                 maxSpent,
                 minReceived,
@@ -217,6 +199,19 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                 onchainCrosschainOrderData.route.destination
             );
         }
+        uint256 callCount = onchainCrosschainOrderData.route.calls.length;
+        FillInstruction[] memory fillInstructions = new FillInstruction[](
+            callCount
+        );
+        for (uint256 j = 0; j < callCount; j++) {
+            fillInstructions[j] = FillInstruction(
+                uint64(onchainCrosschainOrderData.route.destination),
+                bytes32(
+                    bytes20(uint160(onchainCrosschainOrderData.route.inbox))
+                ),
+                abi.encode(onchainCrosschainOrderData.route.calls[j])
+            );
+        }
         (bytes32 intentHash, , ) = IntentSource(INTENT_SOURCE).getIntentHash(
             Intent(
                 onchainCrosschainOrderData.route,
@@ -235,22 +230,10 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                 onchainCrosschainOrderData.route.source,
                 order.fillDeadline,
                 order.fillDeadline,
-                // IntentSource(INTENT_SOURCE).getIntentHash(
-                //     Intent(
-                //         onchainCrosschainOrderData.route,
-                //         Reward(
-                //             onchainCrosschainOrderData.creator,
-                //             onchainCrosschainOrderData.prover,
-                //             order.fillDeadline,
-                //             onchainCrosschainOrderData.nativeValue,
-                //             onchainCrosschainOrderData.tokens
-                //         )
-                //     )
-                // ),
                 intentHash,
                 maxSpent,
                 minReceived,
-                new FillInstruction[](0)
+                fillInstructions
             );
     }
 
