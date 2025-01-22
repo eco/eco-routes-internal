@@ -4,7 +4,7 @@ pragma solidity ^0.8.26;
 
 import {ISemver} from "./ISemver.sol";
 
-import {Call, TokenAmount, Reward, Intent} from "../types/Intent.sol";
+import {Intent, Reward, Call, TokenAmount} from "../types/Intent.sol";
 
 /**
  * @title IIntentSource
@@ -48,6 +48,16 @@ interface IIntentSource is ISemver {
      * @param _amount Transfer amount
      */
     error TransferFailed(address _token, address _to, uint256 _amount);
+
+    /**
+     * @notice Thrown when a native token transfer fails
+     */
+    error NativeRewardTransferFailed();
+
+    /**
+     * @notice Thrown when a permit call to a contract fails
+     */
+    error PermitCallFailed();
 
     /**
      * @notice Thrown when attempting to publish an intent that already exists
@@ -95,6 +105,13 @@ interface IIntentSource is ISemver {
     }
 
     /**
+     * @notice Emitted when an intent is funded with native tokens
+     * @param intentHash Hash of the funded intent
+     * @param fundingSource Address of the funder
+     */
+    event IntentFunded(bytes32 intentHash, address fundingSource);
+
+    /**
      * @notice Emitted when a new intent is created
      * @param hash Hash of the created intent (key in intents mapping)
      * @param salt Creator-provided nonce
@@ -139,6 +156,12 @@ interface IIntentSource is ISemver {
     ) external view returns (ClaimState memory);
 
     /**
+     * @notice Gets the funding source for the intent funder
+     * @return Address of the native token funding source
+     */
+    function getFundingSource() external view returns (address);
+
+    /**
      * @notice Gets the override token used for vault refunds
      * @return Address of the vault refund token
      */
@@ -159,6 +182,15 @@ interface IIntentSource is ISemver {
         returns (bytes32 intentHash, bytes32 routeHash, bytes32 rewardHash);
 
     /**
+     * @notice Calculates the deterministic address of the intent funder
+     * @param intent Intent to calculate vault address for
+     * @return Address of the intent funder
+     */
+    function intentFunderAddress(
+        Intent calldata intent
+    ) external view returns (address);
+
+    /**
      * @notice Calculates the deterministic vault address for an intent
      * @param intent Intent to calculate vault address for
      * @return Predicted address of the intent vault
@@ -166,6 +198,21 @@ interface IIntentSource is ISemver {
     function intentVaultAddress(
         Intent calldata intent
     ) external view returns (address);
+
+    /**
+     * @notice Funds an intent with native tokens and ERC20 tokens
+     * @dev Allows for permit calls to approve token transfers
+     * @param routeHash Hash of the route component
+     * @param reward Reward structure containing distribution details
+     * @param fundingAddress Address to fund the intent from
+     * @param permitCalls Array of permit calls to approve token transfers
+     */
+    function fundIntent(
+        bytes32 routeHash,
+        Reward calldata reward,
+        address fundingAddress,
+        Call[] calldata permitCalls
+    ) external payable;
 
     /**
      * @notice Creates an intent to execute instructions on a supported chain for rewards
