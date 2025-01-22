@@ -122,7 +122,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
 
     function resolveFor(
         GaslessCrossChainOrder calldata order,
-        bytes calldata originFillerData
+        bytes calldata originFillerData // i dont think we need this
     ) public view override returns (ResolvedCrossChainOrder memory) {
         GaslessCrosschainOrderData memory gaslessCrosschainOrderData = abi
             .decode(order.orderData, (GaslessCrosschainOrderData));
