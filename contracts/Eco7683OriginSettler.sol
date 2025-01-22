@@ -10,13 +10,12 @@ import {IntentSource} from "./IntentSource.sol";
 import {Semver} from "./libs/Semver.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "hardhat/console.sol";
 contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
     using ECDSA for bytes32;
-
-    error OriginChainIDMismatch();
-
-    error BadSignature();
+    using SafeERC20 for IERC20;
 
     bytes32 GASLESS_CROSSCHAIN_ORDER_TYPEHASH =
         keccak256(
@@ -33,92 +32,73 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         INTENT_SOURCE = _intentSource;
     }
 
-    function openFor(
-        GaslessCrossChainOrder calldata order,
-        bytes calldata signature,
-        bytes calldata originFillerData
-    ) external override {
-        if (!_verifyOpenFor(order, signature)) {
-            revert BadSignature();
-        }
-        GaslessCrosschainOrderData memory gaslessCrosschainOrderData = abi
-            .decode(order.orderData, (GaslessCrosschainOrderData));
-        if (order.originChainId != block.chainid) {
-            revert OriginChainIDMismatch();
-        }
-        // orderId is the intentHash
-        bytes32 orderId = IntentSource(INTENT_SOURCE).publishIntent(
-            Intent(
-                Route(
-                    bytes32(order.nonce),
-                    order.originChainId,
-                    gaslessCrosschainOrderData.destination,
-                    gaslessCrosschainOrderData.inbox,
-                    gaslessCrosschainOrderData.calls
-                ),
-                Reward(
-                    order.user,
-                    gaslessCrosschainOrderData.prover,
-                    order.fillDeadline,
-                    gaslessCrosschainOrderData.nativeValue,
-                    gaslessCrosschainOrderData.tokens
-                )
-            ),
-            false
-        );
-        emit Open(orderId, resolveFor(order, originFillerData));
-    }
-
-    function open(OnchainCrossChainOrder calldata order) external override {
+    //assumes user has funds approved for the intent
+    //transfer at time of open
+    function open(
+        OnchainCrossChainOrder calldata order
+    ) external payable override {
         OnchainCrosschainOrderData memory onchainCrosschainOrderData = abi
             .decode(order.orderData, (OnchainCrosschainOrderData));
+
         if (onchainCrosschainOrderData.route.source != block.chainid) {
             revert OriginChainIDMismatch();
         }
 
-        // orderId is the intentHash
-        bytes32 orderId = IntentSource(INTENT_SOURCE).publishIntent(
-            Intent(
-                onchainCrosschainOrderData.route,
-                Reward(
-                    onchainCrosschainOrderData.creator,
-                    onchainCrosschainOrderData.prover,
-                    order.fillDeadline,
-                    onchainCrosschainOrderData.nativeValue,
-                    onchainCrosschainOrderData.tokens
-                )
-            ),
-            onchainCrosschainOrderData.addRewards
+        Intent memory intent = Intent(
+            onchainCrosschainOrderData.route,
+            Reward(
+                onchainCrosschainOrderData.creator,
+                onchainCrosschainOrderData.prover,
+                order.fillDeadline,
+                onchainCrosschainOrderData.nativeValue,
+                onchainCrosschainOrderData.tokens
+            )
         );
+
+        bytes32 orderId = _openEcoIntent(intent, msg.sender);
+
         emit Open(orderId, resolve(order));
     }
 
-    // function openPayable(
-    //     OnchainCrossChainOrder calldata order
-    // ) external payable {
-    //     OnchainCrosschainOrderData memory onchainCrosschainOrderData = abi
-    //         .decode(order.orderData, (OnchainCrosschainOrderData));
-    //     if (onchainCrosschainOrderData.route.source != block.chainid) {
-    //         revert OriginChainIDMismatch();
-    //     }
-    //     // orderId is the intentHash
-    //     bytes32 orderId = IntentSource(INTENT_SOURCE).publishIntent{
-    //         value: msg.value
-    //     }(
-    //         Intent(
-    //             onchainCrosschainOrderData.route,
-    //             Reward(
-    //                 onchainCrosschainOrderData.creator,
-    //                 onchainCrosschainOrderData.prover,
-    //                 order.fillDeadline,
-    //                 onchainCrosschainOrderData.nativeValue,
-    //                 onchainCrosschainOrderData.tokens
-    //             )
-    //         ),
-    //         onchainCrosschainOrderData.addRewards
-    //     );
-    //     emit Open(orderId, resolve(order));
-    // }
+    //assumes user has funds approved for the intent
+    //transfer at time of open
+    function openFor(
+        GaslessCrossChainOrder calldata order,
+        bytes calldata signature,
+        bytes calldata originFillerData
+    ) external payable override {
+        if (!_verifyOpenFor(order, signature)) {
+            revert BadSignature();
+        }
+
+        GaslessCrosschainOrderData memory gaslessCrosschainOrderData = abi
+            .decode(order.orderData, (GaslessCrosschainOrderData));
+
+        if (order.originChainId != block.chainid) {
+            revert OriginChainIDMismatch();
+        }
+
+        Intent memory intent = Intent(
+            Route(
+                bytes32(order.nonce),
+                order.originChainId,
+                gaslessCrosschainOrderData.destination,
+                gaslessCrosschainOrderData.inbox,
+                gaslessCrosschainOrderData.calls
+            ),
+            Reward(
+                order.user,
+                gaslessCrosschainOrderData.prover,
+                order.fillDeadline,
+                gaslessCrosschainOrderData.nativeValue,
+                gaslessCrosschainOrderData.tokens
+            )
+        );
+
+        bytes32 orderId = _openEcoIntent(intent, order.user);
+
+        emit Open(orderId, resolveFor(order, originFillerData));
+    }
 
     function resolveFor(
         GaslessCrossChainOrder calldata order,
@@ -129,6 +109,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         Output[] memory maxSpent = new Output[](0); //doesn't have a very useful meaning here since our protocol is not specifically built around swaps
         uint256 tokenCount = gaslessCrosschainOrderData.tokens.length;
         Output[] memory minReceived = new Output[](tokenCount); //rewards are fixed
+
         for (uint256 i = 0; i < tokenCount; i++) {
             minReceived[i] = Output(
                 bytes32(
@@ -139,10 +120,12 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                 gaslessCrosschainOrderData.destination
             );
         }
+
         uint256 callCount = gaslessCrosschainOrderData.calls.length;
         FillInstruction[] memory fillInstructions = new FillInstruction[](
             callCount
         );
+
         for (uint256 j = 0; j < callCount; j++) {
             fillInstructions[j] = FillInstruction(
                 uint64(gaslessCrosschainOrderData.destination),
@@ -150,6 +133,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                 abi.encode(gaslessCrosschainOrderData.calls[j])
             );
         }
+
         (bytes32 intentHash, , ) = IntentSource(INTENT_SOURCE).getIntentHash(
             Intent(
                 Route(
@@ -189,6 +173,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         Output[] memory maxSpent = new Output[](0); //doesn't have a very useful meaning here since our protocol is not specifically built around swaps
         uint256 tokenCount = onchainCrosschainOrderData.tokens.length;
         Output[] memory minReceived = new Output[](tokenCount); //rewards are fixed
+
         for (uint256 i = 0; i < tokenCount; i++) {
             minReceived[i] = Output(
                 bytes32(
@@ -199,10 +184,12 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                 onchainCrosschainOrderData.route.destination
             );
         }
+
         uint256 callCount = onchainCrosschainOrderData.route.calls.length;
         FillInstruction[] memory fillInstructions = new FillInstruction[](
             callCount
         );
+
         for (uint256 j = 0; j < callCount; j++) {
             fillInstructions[j] = FillInstruction(
                 uint64(onchainCrosschainOrderData.route.destination),
@@ -212,6 +199,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                 abi.encode(onchainCrosschainOrderData.route.calls[j])
             );
         }
+
         (bytes32 intentHash, , ) = IntentSource(INTENT_SOURCE).getIntentHash(
             Intent(
                 onchainCrosschainOrderData.route,
@@ -255,8 +243,38 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
 
         bytes32 hash = _hashTypedDataV4(structHash);
         address signer = hash.recover(signature);
+
         if (signer != order.user) {
             return false;
         }
+    }
+
+    function _openEcoIntent(
+        Intent memory _intent,
+        address _user
+    ) internal returns (bytes32 intentHash) {
+        address vault = IntentSource(INTENT_SOURCE).intentVaultAddress(_intent);
+
+        if (_intent.reward.nativeValue > 0) {
+            if (msg.value < _intent.reward.nativeValue) {
+                revert InsufficientNativeReward();
+            }
+
+            payable(vault).transfer(_intent.reward.nativeValue);
+
+            if (msg.value > _intent.reward.nativeValue) {
+                payable(msg.sender).transfer(
+                    msg.value - _intent.reward.nativeValue
+                );
+            }
+        }
+        uint256 rewardsLength = _intent.reward.tokens.length;
+        for (uint256 i = 0; i < rewardsLength; i++) {
+            address token = _intent.reward.tokens[i].token;
+            uint256 amount = _intent.reward.tokens[i].amount;
+
+            IERC20(token).safeTransferFrom(_user, vault, amount);
+        }
+        return IntentSource(INTENT_SOURCE).publishIntent(_intent, false);
     }
 }
