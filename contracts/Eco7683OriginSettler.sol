@@ -229,6 +229,9 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         GaslessCrossChainOrder calldata order,
         bytes calldata signature
     ) internal view returns (bool) {
+        if (order.originSettler != address(this)) {
+            return false;
+        }
         bytes32 structHash = keccak256(
             abi.encode(
                 GASLESS_CROSSCHAIN_ORDER_TYPEHASH,

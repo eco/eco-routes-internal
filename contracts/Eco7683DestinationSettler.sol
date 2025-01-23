@@ -9,6 +9,7 @@ import {Intent, Reward, Route, Call, TokenAmount} from "./types/Intent.sol";
 import {OnchainCrosschainOrderData} from "./types/EcoEIP7683.sol";
 import {IntentSource} from "./IntentSource.sol";
 import {Inbox} from "./Inbox.sol";
+import {IProver} from "./interfaces/IProver.sol";
 import {Semver} from "./libs/Semver.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
@@ -32,9 +33,9 @@ abstract contract Eco7683DestinationSettler is IDestinationSettler, Semver {
         bytes calldata originData,
         bytes calldata fillerData
     ) external payable {
-        (OnchainCrossChainOrder memory order, uint256 proofType) = abi.decode(
+        OnchainCrossChainOrder memory order = abi.decode(
             originData,
-            (OnchainCrossChainOrder, uint256)
+            (OnchainCrossChainOrder)
         );
         OnchainCrosschainOrderData memory onchainCrosschainOrderData = abi
             .decode(order.orderData, (OnchainCrosschainOrderData));
@@ -50,15 +51,19 @@ abstract contract Eco7683DestinationSettler is IDestinationSettler, Semver {
         );
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
         Inbox inbox = Inbox(payable(intent.route.inbox));
+        IProver.ProofType proofType = abi.decode(fillerData, (IProver.ProofType));
 
-        if (proofType == 0) {
-            //IProver.ProofType.Storage
-            address claimant = abi.decode(fillerData, (address));
+        if (proofType == IProver.ProofType.Storage) {
+            (, address claimant) = abi.decode(
+                fillerData,
+                (IProver.ProofType, address)
+            );
             inbox.fulfillStorage(intent.route, rewardHash, claimant, orderId);
-        } else if (proofType == 1) {
-            //IProver.ProofType.Hyperlane
-            (address claimant, bool batched, bytes memory relayerData) = abi
-                .decode(fillerData, (address, bool, bytes));
+        } else if (proofType == IProver.ProofType.Hyperlane) {
+            (, address claimant, bool batched,address postDispatchHook, bytes memory metadata) = abi.decode(
+                fillerData,
+                (IProver.ProofType, address, bool, address, bytes)
+            );
             if (batched) {
                 inbox.fulfillHyperBatched(
                     intent.route,
@@ -68,10 +73,6 @@ abstract contract Eco7683DestinationSettler is IDestinationSettler, Semver {
                     intent.reward.prover
                 );
             } else {
-                (address postDispatchHook, bytes memory metadata) = abi.decode(
-                    relayerData,
-                    (address, bytes)
-                );
                 inbox.fulfillHyperInstantWithRelayer(
                     intent.route,
                     rewardHash,

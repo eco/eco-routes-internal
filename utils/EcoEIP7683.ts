@@ -9,7 +9,6 @@ export type OnchainCrosschainOrderData = {
   prover: string
   nativeValue: bigint
   tokens: TokenAmount[]
-  addRewards: boolean
 }
 
 export type GaslessCrosschainOrderData = {
@@ -51,8 +50,7 @@ const OnchainCrosschainOrderDataStruct = [
       { name: 'token', type: 'address' },
       { name: 'amount', type: 'uint256' },
     ],
-  },
-  { name: 'addRewards', type: 'bool' },
+  }
 ]
 
 const GaslessCrosschainOrderDataStruct = [
