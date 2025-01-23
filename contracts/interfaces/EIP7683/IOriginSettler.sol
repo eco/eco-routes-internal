@@ -18,7 +18,7 @@ interface IOriginSettler {
      * @notice Thrown when the source chain's chainID does not match the expected value
      */
     error OriginChainIDMismatch();
-    
+
     /**
      * @notice Thrown when signature does not match the expected value
      */
@@ -39,13 +39,13 @@ interface IOriginSettler {
         GaslessCrossChainOrder calldata order,
         bytes calldata signature,
         bytes calldata originFillerData
-    ) external;
+    ) external payable;
 
     /// @notice Opens a cross-chain order
     /// @dev To be called by the user
     /// @dev This method must emit the Open event
     /// @param order The OnchainCrossChainOrder definition
-    function open(OnchainCrossChainOrder calldata order) external;
+    function open(OnchainCrossChainOrder calldata order) external payable;
 
     /// @notice Resolves a specific GaslessCrossChainOrder into a generic ResolvedCrossChainOrder
     /// @dev Intended to improve standardized integration of various order types and settlement contracts
