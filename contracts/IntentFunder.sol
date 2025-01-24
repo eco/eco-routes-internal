@@ -36,6 +36,17 @@ contract IntentFunder {
 
         // Get the address that is providing the tokens for funding
         address fundingSource = intentSource.getFundingSource();
+<<<<<<< HEAD
+=======
+        address refundToken = intentSource.getRefundToken();
+
+        if (refundToken != address(0)) {
+            IERC20(refundToken).safeTransfer(
+                reward.creator,
+                IERC20(refundToken).balanceOf(address(this))
+            );
+        }
+>>>>>>> feat/vault-based-intents
 
         // Iterate through each token in the reward structure
         for (uint256 i; i < rewardsLength; ++i) {
@@ -73,6 +84,7 @@ contract IntentFunder {
         // After all transfers are complete, self-destruct and send any remaining ETH to reward creator
         selfdestruct(payable(reward.creator));
     }
+<<<<<<< HEAD
 
     /**
      * @notice Enables the contract to receive native currency
@@ -81,4 +93,6 @@ contract IntentFunder {
      *      creator upon self-destruct
      */
     receive() external payable {}
+=======
+>>>>>>> feat/vault-based-intents
 }

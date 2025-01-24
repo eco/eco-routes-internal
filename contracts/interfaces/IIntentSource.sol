@@ -23,7 +23,7 @@ interface IIntentSource is ISemver {
      * @notice Thrown when attempting to withdraw from an intent with already claimed rewards
      * @param _hash Hash of the intent
      */
-    error NothingToWithdraw(bytes32 _hash);
+    error RewardsAlreadyWithdrawn(bytes32 _hash);
 
     /**
      * @notice Thrown when target addresses and calldata arrays have mismatched lengths or are empty
@@ -91,8 +91,9 @@ interface IIntentSource is ISemver {
      * @notice Status of an intent's reward claim
      */
     enum ClaimStatus {
-        NotClaimed,
-        Claimed
+        Initiated,
+        Claimed,
+        Refunded
     }
 
     /**
@@ -147,6 +148,13 @@ interface IIntentSource is ISemver {
     event Withdrawal(bytes32 _hash, address indexed _recipient);
 
     /**
+     * @notice Emitted when rewards are successfully withdrawn
+     * @param _hash Hash of the claimed intent
+     * @param _recipient Address receiving the rewards
+     */
+    event Refund(bytes32 _hash, address indexed _recipient);
+
+    /**
      * @notice Gets the claim state for a given intent
      * @param intentHash Hash of the intent to query
      * @return Claim state struct containing claimant and status
@@ -165,7 +173,7 @@ interface IIntentSource is ISemver {
      * @notice Gets the override token used for vault refunds
      * @return Address of the vault refund token
      */
-    function getVaultRefundToken() external view returns (address);
+    function getRefundToken() external view returns (address);
 
     /**
      * @notice Calculates the hash components of an intent
@@ -206,12 +214,21 @@ interface IIntentSource is ISemver {
      * @param reward Reward structure containing distribution details
      * @param fundingAddress Address to fund the intent from
      * @param permitCalls Array of permit calls to approve token transfers
+<<<<<<< HEAD
+=======
+     * @param recoverToken Address of the token to recover if sent to the vault
+>>>>>>> feat/vault-based-intents
      */
     function fundIntent(
         bytes32 routeHash,
         Reward calldata reward,
         address fundingAddress,
+<<<<<<< HEAD
         Call[] calldata permitCalls
+=======
+        Call[] calldata permitCalls,
+        address recoverToken
+>>>>>>> feat/vault-based-intents
     ) external payable;
 
     /**
@@ -219,12 +236,12 @@ interface IIntentSource is ISemver {
      * @dev Source chain proof must complete before expiry or rewards are unclaimable,
      *      regardless of execution status. Solver manages timing of L1 data posting
      * @param intent The complete intent struct
-     * @param fundReward Whether to transfer rewards to vault during creation
+     * @param fund Whether to transfer rewards to vault during creation
      * @return intentHash Hash of the created intent
      */
     function publishIntent(
         Intent calldata intent,
-        bool fundReward
+        bool fund
     ) external payable returns (bytes32 intentHash);
 
     /**
@@ -232,7 +249,7 @@ interface IIntentSource is ISemver {
      * @param intent Intent to validate
      * @return True if rewards are valid and funded
      */
-    function validateIntent(
+    function isIntentFunded(
         Intent calldata intent
     ) external view returns (bool);
 

@@ -18,8 +18,10 @@ import "hardhat/console.sol";
 /**
  * @notice Source chain contract for the Eco Protocol's intent system
  * @dev Used to create intents and withdraw associated rewards. Works in conjunction with
- * an inbox contract on the destination chain. Verifies intent fulfillment through
- * a prover contract on the source chain
+ *      an inbox contract on the destination chain. Verifies intent fulfillment through
+ *      a prover contract on the source chain
+ * @dev This contract shouldn't not hold any funds or hold ony roles for other contracts,
+ *      as it executes arbitrary calls to other contracts when funding intents.
  */
 contract IntentSource is IIntentSource, Semver {
     using SafeERC20 for IERC20;
@@ -28,7 +30,7 @@ contract IntentSource is IIntentSource, Semver {
 
     address public fundingSource;
 
-    address public vaultRefundToken;
+    address public refundToken;
 
     constructor() {}
 
@@ -55,8 +57,8 @@ contract IntentSource is IIntentSource, Semver {
      * @notice Gets the token used for vault refunds
      * @return Address of the vault refund token
      */
-    function getVaultRefundToken() external view returns (address) {
-        return vaultRefundToken;
+    function getRefundToken() external view returns (address) {
+        return refundToken;
     }
 
     /**
@@ -115,21 +117,24 @@ contract IntentSource is IIntentSource, Semver {
      * @param reward Reward structure containing distribution details
      * @param fundingAddress Address to fund the intent from
      * @param permitCalls Array of permit calls to approve token transfers
+     * @param recoverToken Optional token address for handling incorrect vault transfers
      */
     function fundIntent(
         bytes32 routeHash,
         Reward calldata reward,
         address fundingAddress,
-        Call[] calldata permitCalls
+        Call[] calldata permitCalls,
+        address recoverToken
     ) external payable {
         bytes32 rewardHash = keccak256(abi.encode(reward));
         bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
 
         address vault = _getIntentVaultAddress(intentHash, routeHash, reward);
-        int256 vaultBalanceDeficit = int256(reward.nativeValue) -
-            int256(vault.balance);
 
         emit IntentFunded(intentHash, fundingAddress);
+
+        int256 vaultBalanceDeficit = int256(reward.nativeValue) -
+            int256(vault.balance);
 
         if (vaultBalanceDeficit > 0 && msg.value > 0) {
             uint256 nativeAmount = msg.value > uint256(vaultBalanceDeficit)
@@ -163,9 +168,17 @@ contract IntentSource is IIntentSource, Semver {
 
         fundingSource = fundingAddress;
 
+        if (recoverToken != address(0)) {
+            refundToken = recoverToken;
+        }
+
         new IntentFunder{salt: routeHash}(vault, reward);
 
         fundingSource = address(0);
+
+        if (recoverToken != address(0)) {
+            refundToken = address(0);
+        }
     }
 
     /**
@@ -173,12 +186,12 @@ contract IntentSource is IIntentSource, Semver {
      * @dev If source chain proof isn't completed by expiry, rewards aren't redeemable regardless of execution.
      *      Solver must manage timing considerations (e.g., L1 data posting delays)
      * @param intent The intent struct containing all parameters
-     * @param fundReward Whether to fund the reward or not
+     * @param fund Whether to fund the reward or not
      * @return intentHash The hash of the created intent
      */
     function publishIntent(
         Intent calldata intent,
-        bool fundReward
+        bool fund
     ) external payable returns (bytes32 intentHash) {
         Route calldata route = intent.route;
         Reward calldata reward = intent.reward;
@@ -188,7 +201,7 @@ contract IntentSource is IIntentSource, Semver {
 
         (intentHash, routeHash, ) = getIntentHash(intent);
 
-        if (claims[intentHash].status != uint8(ClaimStatus.NotClaimed)) {
+        if (claims[intentHash].status != uint8(ClaimStatus.Initiated)) {
             revert IntentAlreadyExists(intentHash);
         }
 
@@ -208,11 +221,7 @@ contract IntentSource is IIntentSource, Semver {
 
         address vault = _getIntentVaultAddress(intentHash, routeHash, reward);
 
-        if (fundReward) {
-            if (_validateIntent(intent, vault)) {
-                revert IntentAlreadyFunded();
-            }
-
+        if (fund && !_isIntentFunded(intent, vault)) {
             if (reward.nativeValue > 0) {
                 if (msg.value < reward.nativeValue) {
                     revert InsufficientNativeReward();
@@ -221,21 +230,22 @@ contract IntentSource is IIntentSource, Semver {
                 payable(vault).transfer(reward.nativeValue);
 
                 if (msg.value > reward.nativeValue) {
-                    payable(msg.sender).transfer(
-                        msg.value - reward.nativeValue
-                    );
+                    (bool success, ) = payable(msg.sender).call{
+                        value: msg.value - reward.nativeValue
+                    }("");
+
+                    if (!success) {
+                        revert NativeRewardTransferFailed();
+                    }
                 }
             }
 
             for (uint256 i = 0; i < rewardsLength; i++) {
-                address token = reward.tokens[i].token;
-                uint256 amount = reward.tokens[i].amount;
-
-                IERC20(token).safeTransferFrom(msg.sender, vault, amount);
-            }
-        } else if (block.chainid == intent.route.source) {
-            if (!_validateIntent(intent, vault)) {
-                revert InvalidIntent();
+                IERC20(reward.tokens[i].token).safeTransferFrom(
+                    msg.sender,
+                    vault,
+                    reward.tokens[i].amount
+                );
             }
         }
     }
@@ -245,7 +255,7 @@ contract IntentSource is IIntentSource, Semver {
      * @param intent Intent to validate
      * @return True if intent is properly funded, false otherwise
      */
-    function validateIntent(
+    function isIntentFunded(
         Intent calldata intent
     ) external view returns (bool) {
         (bytes32 intentHash, bytes32 routeHash, ) = getIntentHash(intent);
@@ -255,7 +265,7 @@ contract IntentSource is IIntentSource, Semver {
             intent.reward
         );
 
-        return _validateIntent(intent, vault);
+        return _isIntentFunded(intent, vault);
     }
 
     /**
@@ -271,7 +281,8 @@ contract IntentSource is IIntentSource, Semver {
 
         // Claim the rewards if the intent has not been claimed
         if (
-            claimant != address(0) && claims[intentHash].claimant == address(0)
+            claimant != address(0) &&
+            claims[intentHash].status == uint8(ClaimStatus.Initiated)
         ) {
             claims[intentHash].claimant = claimant;
 
@@ -284,19 +295,11 @@ contract IntentSource is IIntentSource, Semver {
             return;
         }
 
-        if (claimant != address(0)) {
-            revert NothingToWithdraw(intentHash);
-        }
-
-        // Check if the intent has expired
-        if (claimant == address(0) && block.timestamp < reward.deadline) {
+        if (claimant == address(0)) {
             revert UnauthorizedWithdrawal(intentHash);
+        } else {
+            revert RewardsAlreadyWithdrawn(intentHash);
         }
-
-        emit Withdrawal(intentHash, reward.creator);
-
-        // Refund the rewards for expired intent
-        new IntentVault{salt: routeHash}(intentHash, reward);
     }
 
     /**
@@ -333,23 +336,20 @@ contract IntentSource is IIntentSource, Semver {
         bytes32 rewardHash = keccak256(abi.encode(reward));
         bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
 
-        if (
-            claims[intentHash].status == uint8(ClaimStatus.NotClaimed) &&
-            block.timestamp < reward.deadline
-        ) {
-            revert UnauthorizedWithdrawal(intentHash);
-        }
-
         if (token != address(0)) {
-            vaultRefundToken = token;
+            refundToken = token;
         }
 
-        emit Withdrawal(intentHash, reward.creator);
+        emit Refund(intentHash, reward.creator);
 
         new IntentVault{salt: routeHash}(intentHash, reward);
 
+        if (claims[intentHash].status == uint8(ClaimStatus.Initiated)) {
+            claims[intentHash].status = uint8(ClaimStatus.Refunded);
+        }
+
         if (token != address(0)) {
-            vaultRefundToken = address(0);
+            refundToken = address(0);
         }
     }
 
@@ -360,7 +360,7 @@ contract IntentSource is IIntentSource, Semver {
      * @param vault Address of the intent's vault
      * @return True if vault has sufficient funds, false otherwise
      */
-    function _validateIntent(
+    function _isIntentFunded(
         Intent calldata intent,
         address vault
     ) internal view returns (bool) {
