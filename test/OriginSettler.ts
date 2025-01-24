@@ -9,7 +9,7 @@ import {
   Eco7683OriginSettler,
 } from '../typechain-types'
 import { time, loadFixture } from '@nomicfoundation/hardhat-network-helpers'
-import { keccak256, BytesLike, ZeroAddress } from 'ethers'
+import { keccak256, BytesLike, ZeroAddress, AbiCoder } from 'ethers'
 import { encodeIdentifier, encodeTransfer } from '../utils/encode'
 import {
   encodeReward,
@@ -63,14 +63,18 @@ describe('Origin Settler Test', (): void => {
   let onchainCrosschainOrderData: OnchainCrosschainOrderData
   let gaslessCrosschainOrderData: GaslessCrosschainOrderData
   let gaslessCrosschainOrder: GaslessCrossChainOrderStruct
+  let finalHash: BytesLike
+  let signature: string
 
   const name = 'Eco 7683 Origin Settler'
   const version = '1.5.0'
 
   const onchainCrosschainOrderTypehash: BytesLike =
-    '0x19a2c716a34145b8ff3a5a548a03718f6b228a3c87a94a9314a627d1746ea6d9'
+    '0x70c61a52e3a0f99e3cf285eec63637cf3ddbaa3ff1bc113db9afab85d3ce6941'
   const gaslessCrosschainOrderTypehash: BytesLike =
-    '0x44e582ef7cc7484b33a2721670194e16869b333e96968b6eaab920fc1f1960c3'
+    '0x0dc54db9269648aac2dbf0a24ec877f6604de7a39d70a932e517955973048850'
+  const gaslessCrosschainOrderDataTypehash: BytesLike =
+    '0x58c324802ce1459a5182655ed022248fa0d67bc8ecdc1e70c632377791453c20'
 
   async function deploySourceFixture(): Promise<{
     originSettler: Eco7683OriginSettler
@@ -141,7 +145,8 @@ describe('Origin Settler Test', (): void => {
     // fund the creator and approve it to create an intent
     await mintAndApprove()
   })
-
+  {
+  }
   it('constructs', async () => {
     expect(await originSettler.INTENT_SOURCE()).to.be.eq(
       await intentSource.getAddress(),
@@ -163,8 +168,9 @@ describe('Origin Settler Test', (): void => {
         { token: await tokenA.getAddress(), amount: mintAmount },
         { token: await tokenB.getAddress(), amount: mintAmount * 2 },
       ]
-      salt = keccak256('0xdeadbeef')
-      nonce = 123
+      salt =
+        '0x0000000000000000000000000000000000000000000000000000000000000001'
+      nonce = 1
       route = {
         salt: salt,
         source: Number(
@@ -192,7 +198,7 @@ describe('Origin Settler Test', (): void => {
         creator: creator.address,
         prover: await prover.getAddress(),
         nativeValue: reward.nativeValue,
-        tokens: reward.tokens
+        tokens: reward.tokens,
       }
 
       onchainCrosschainOrder = {
@@ -202,7 +208,6 @@ describe('Origin Settler Test', (): void => {
           onchainCrosschainOrderData,
         ),
       }
-
       gaslessCrosschainOrderData = {
         destination: chainId,
         inbox: await inbox.getAddress(),
@@ -211,7 +216,6 @@ describe('Origin Settler Test', (): void => {
         nativeValue: reward.nativeValue,
         tokens: reward.tokens,
       }
-
       gaslessCrosschainOrder = {
         originSettler: await originSettler.getAddress(),
         user: creator.address,
@@ -221,14 +225,89 @@ describe('Origin Settler Test', (): void => {
         ),
         openDeadline: expiry,
         fillDeadline: expiry,
-        orderDataType: gaslessCrosschainOrderTypehash,
+        orderDataType: gaslessCrosschainOrderDataTypehash,
         orderData: await encodeGaslessCrosschainOrderData(
           gaslessCrosschainOrderData,
         ),
       }
+      const abiCoder = AbiCoder.defaultAbiCoder()
+      const orderDataHash = keccak256(
+        await encodeGaslessCrosschainOrderData(gaslessCrosschainOrderData),
+      )
+      const intermediateHash = keccak256(
+        abiCoder.encode(
+          [
+            'bytes32',
+            'address',
+            'address',
+            'uint256',
+            'uint256',
+            'uint256',
+            'uint256',
+            'bytes32',
+            'bytes32',
+          ],
+          [
+            gaslessCrosschainOrderTypehash,
+            await originSettler.getAddress(),
+            creator.address,
+            nonce,
+            Number(
+              (await originSettler.runner?.provider?.getNetwork())?.chainId,
+            ),
+            expiry,
+            expiry,
+            gaslessCrosschainOrderDataTypehash,
+            orderDataHash,
+          ],
+        ),
+      )
+
+      finalHash = keccak256(
+        ethers.solidityPacked(
+          ['bytes', 'bytes32', 'bytes32'],
+          ['0x1901', await originSettler.domainSeparatorV4(), intermediateHash],
+        ),
+      )
+      const domainPieces = await originSettler.eip712Domain()
+      const domain = {
+        name: domainPieces[1],
+        version: domainPieces[2],
+        chainId: domainPieces[3],
+        verifyingContract: domainPieces[4],
+      }
+
+      const types = {
+        GaslessCrossChainOrder: [
+          { name: 'originSettler', type: 'address' },
+          { name: 'user', type: 'address' },
+          { name: 'nonce', type: 'uint256' },
+          { name: 'originChainId', type: 'uint256' },
+          { name: 'openDeadline', type: 'uint32' },
+          { name: 'fillDeadline', type: 'uint32' },
+          { name: 'orderDataType', type: 'bytes32' },
+          { name: 'orderDataHash', type: 'bytes32' },
+        ],
+      }
+
+      const values = {
+        originSettler: await originSettler.getAddress(),
+        user: creator.address,
+        nonce: nonce,
+        originChainId: Number(
+          (await originSettler.runner?.provider?.getNetwork())?.chainId,
+        ),
+        openDeadline: expiry,
+        fillDeadline: expiry,
+        orderDataType: gaslessCrosschainOrderDataTypehash,
+        orderDataHash: keccak256(
+          await encodeGaslessCrosschainOrderData(gaslessCrosschainOrderData),
+        ),
+      }
+      signature = await creator.signTypedData(domain, types, values)
     })
 
-    it.only('creates via open', async () => {
+    it('creates via open', async () => {
       const vaultAddress = await intentSource.intentVaultAddress({
         route,
         reward,
@@ -247,6 +326,7 @@ describe('Origin Settler Test', (): void => {
       await tokenB
         .connect(creator)
         .approve(await originSettler.getAddress(), 2 * mintAmount)
+
       await expect(
         originSettler
           .connect(creator)
@@ -266,6 +346,45 @@ describe('Origin Settler Test', (): void => {
           reward.nativeValue,
           rewardTokens.map(Object.values),
         )
+        .to.emit(originSettler, 'Open')
+      expect(
+        await intentSource.validateIntent({
+          route,
+          reward: { ...reward, nativeValue: reward.nativeValue },
+        }),
+      ).to.be.true
+    })
+
+    it('creates via openFor', async () => {
+      const vaultAddress = await intentSource.intentVaultAddress({
+        route,
+        reward,
+      })
+
+      expect(
+        await intentSource.validateIntent({
+          route,
+          reward: { ...reward, nativeValue: reward.nativeValue },
+        }),
+      ).to.be.false
+
+      await tokenA
+        .connect(creator)
+        .approve(await originSettler.getAddress(), mintAmount)
+      await tokenB
+        .connect(creator)
+        .approve(await originSettler.getAddress(), 2 * mintAmount)
+
+      await expect(
+        originSettler
+          .connect(otherPerson)
+          .openFor(gaslessCrosschainOrder, signature, '0x', {
+            value: rewardNativeEth,
+          }),
+      )
+        .to.emit(intentSource, 'IntentCreated')
+        .and.to.emit(originSettler, 'Open')
+
       expect(
         await intentSource.validateIntent({
           route,
@@ -274,6 +393,4 @@ describe('Origin Settler Test', (): void => {
       ).to.be.true
     })
   })
-
-  it('creates via openFor', async () => {})
 })
