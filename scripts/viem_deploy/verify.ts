@@ -67,7 +67,7 @@ export async function getContractCreation(
 }
 
 export async function verifyContract(ver: VerifyContractType) {
-  if (true) {
+  if (ver) {
     console.log('Verify disabled...')
     return
   }
