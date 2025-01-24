@@ -214,21 +214,14 @@ interface IIntentSource is ISemver {
      * @param reward Reward structure containing distribution details
      * @param fundingAddress Address to fund the intent from
      * @param permitCalls Array of permit calls to approve token transfers
-<<<<<<< HEAD
-=======
      * @param recoverToken Address of the token to recover if sent to the vault
->>>>>>> feat/vault-based-intents
      */
     function fundIntent(
         bytes32 routeHash,
         Reward calldata reward,
         address fundingAddress,
-<<<<<<< HEAD
-        Call[] calldata permitCalls
-=======
         Call[] calldata permitCalls,
         address recoverToken
->>>>>>> feat/vault-based-intents
     ) external payable;
 
     /**

@@ -244,6 +244,10 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                 keccak256(order.orderData)
             )
         );
+
+        bytes32 hash = _hashTypedDataV4(structHash);
+        address signer = hash.recover(signature);
+
         return signer == order.user;
     }
 

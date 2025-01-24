@@ -314,7 +314,7 @@ describe('Origin Settler Test', (): void => {
       })
 
       expect(
-        await intentSource.validateIntent({
+        await intentSource.isIntentFunded({
           route,
           reward: { ...reward, nativeValue: reward.nativeValue },
         }),
@@ -348,7 +348,7 @@ describe('Origin Settler Test', (): void => {
         )
         .to.emit(originSettler, 'Open')
       expect(
-        await intentSource.validateIntent({
+        await intentSource.isIntentFunded({
           route,
           reward: { ...reward, nativeValue: reward.nativeValue },
         }),
@@ -362,7 +362,7 @@ describe('Origin Settler Test', (): void => {
       })
 
       expect(
-        await intentSource.validateIntent({
+        await intentSource.isIntentFunded({
           route,
           reward: { ...reward, nativeValue: reward.nativeValue },
         }),
@@ -386,7 +386,7 @@ describe('Origin Settler Test', (): void => {
         .and.to.emit(originSettler, 'Open')
 
       expect(
-        await intentSource.validateIntent({
+        await intentSource.isIntentFunded({
           route,
           reward: { ...reward, nativeValue: reward.nativeValue },
         }),
