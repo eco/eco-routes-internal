@@ -133,7 +133,7 @@ describe('Intent Source Test', (): void => {
         ethers.solidityPacked(['bytes32', 'bytes32'], [routeHash, rewardHash]),
       )
     })
-    it('computes valid intent vailt address', async () => {
+    it('computes valid intent vault address', async () => {
       const predictedVaultAddress = await intentVaultAddress(
         await intentSource.getAddress(),
         { route, reward },
@@ -149,7 +149,7 @@ describe('Intent Source Test', (): void => {
     it('creates properly with erc20 rewards', async () => {
       await intentSource.connect(creator).publishIntent({ route, reward }, true)
 
-      expect(await intentSource.validateIntent({ route, reward })).to.be.true
+      expect(await intentSource.isIntentFunded({ route, reward })).to.be.true
     })
     it('creates properly with native token rewards', async () => {
       await intentSource
@@ -160,7 +160,7 @@ describe('Intent Source Test', (): void => {
           { value: rewardNativeEth },
         )
       expect(
-        await intentSource.validateIntent({
+        await intentSource.isIntentFunded({
           route,
           reward: { ...reward, nativeValue: rewardNativeEth },
         }),
@@ -301,13 +301,13 @@ describe('Intent Source Test', (): void => {
           await claimant.getAddress(),
         )
 
-        expect(await intentSource.validateIntent(intent)).to.be.true
+        expect(await intentSource.isIntentFunded(intent)).to.be.true
 
         await intentSource
           .connect(otherPerson)
           .withdrawRewards(routeHash, reward)
 
-        expect(await intentSource.validateIntent(intent)).to.be.false
+        expect(await intentSource.isIntentFunded(intent)).to.be.false
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(
           Number(initialBalanceA) + reward.tokens[0].amount,
         )
@@ -331,7 +331,7 @@ describe('Intent Source Test', (): void => {
           .withdrawRewards(routeHash, reward)
         await expect(
           intentSource.connect(otherPerson).withdrawRewards(routeHash, reward),
-        ).to.be.revertedWithCustomError(intentSource, 'NothingToWithdraw')
+        ).to.be.revertedWithCustomError(intentSource, 'RewardsAlreadyWithdrawn')
       })
       it('allows refund if already claimed', async () => {
         expect(
@@ -353,20 +353,20 @@ describe('Intent Source Test', (): void => {
       beforeEach(async (): Promise<void> => {
         await time.increaseTo(expiry)
       })
-      it('gets withdrawn to creator', async () => {
+      it('gets refunded to creator', async () => {
         const initialBalanceA = await tokenA.balanceOf(
           await creator.getAddress(),
         )
         const initialBalanceB = await tokenB.balanceOf(
           await creator.getAddress(),
         )
-        expect(await intentSource.validateIntent(intent)).to.be.true
+        expect(await intentSource.isIntentFunded(intent)).to.be.true
 
         await intentSource
           .connect(otherPerson)
-          .withdrawRewards(routeHash, reward)
+          .refundIntent(routeHash, reward, ZeroAddress)
 
-        expect(await intentSource.validateIntent(intent)).to.be.false
+        expect(await intentSource.isIntentFunded(intent)).to.be.false
         expect(await tokenA.balanceOf(await creator.getAddress())).to.eq(
           Number(initialBalanceA) + reward.tokens[0].amount,
         )
@@ -389,13 +389,13 @@ describe('Intent Source Test', (): void => {
         const initialBalanceB = await tokenB.balanceOf(
           await claimant.getAddress(),
         )
-        expect(await intentSource.validateIntent(intent)).to.be.true
+        expect(await intentSource.isIntentFunded(intent)).to.be.true
 
         await intentSource
           .connect(otherPerson)
           .withdrawRewards(routeHash, reward)
 
-        expect(await intentSource.validateIntent(intent)).to.be.false
+        expect(await intentSource.isIntentFunded(intent)).to.be.false
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(
           Number(initialBalanceA) + reward.tokens[0].amount,
         )
@@ -502,7 +502,7 @@ describe('Intent Source Test', (): void => {
         const initialBalanceNative = await ethers.provider.getBalance(
           await claimant.getAddress(),
         )
-        expect(await intentSource.validateIntent(intent)).to.be.true
+        expect(await intentSource.isIntentFunded(intent)).to.be.true
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(0)
         expect(await tokenB.balanceOf(await claimant.getAddress())).to.eq(0)
         expect(
@@ -524,7 +524,7 @@ describe('Intent Source Test', (): void => {
           .connect(otherPerson)
           .batchWithdraw([routeHash], [reward])
 
-        expect(await intentSource.validateIntent(intent)).to.be.false
+        expect(await intentSource.isIntentFunded(intent)).to.be.false
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(
           mintAmount,
         )
@@ -547,7 +547,7 @@ describe('Intent Source Test', (): void => {
         const initialBalanceNative = await ethers.provider.getBalance(
           await creator.getAddress(),
         )
-        expect(await intentSource.validateIntent(intent)).to.be.true
+        expect(await intentSource.isIntentFunded(intent)).to.be.true
         expect(await tokenA.balanceOf(await creator.getAddress())).to.eq(0)
         expect(await tokenB.balanceOf(await creator.getAddress())).to.eq(0)
 
@@ -558,7 +558,7 @@ describe('Intent Source Test', (): void => {
           .connect(otherPerson)
           .batchWithdraw([routeHash], [reward])
 
-        expect(await intentSource.validateIntent(intent)).to.be.false
+        expect(await intentSource.isIntentFunded(intent)).to.be.false
         expect(await tokenA.balanceOf(await creator.getAddress())).to.eq(
           mintAmount,
         )
