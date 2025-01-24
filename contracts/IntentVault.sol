@@ -24,7 +24,7 @@ contract IntentVault is IIntentVault {
      * @param intentHash Hash of the intent being claimed/refunded
      * @param reward Reward data structure containing distribution details
      */
-    constructor(bytes32 intentHash, Reward memory reward) payable {
+    constructor(bytes32 intentHash, Reward memory reward) {
         // Get reference to the IntentSource contract that created this vault
         IIntentSource intentSource = IIntentSource(msg.sender);
         uint256 rewardsLength = reward.tokens.length;
@@ -34,7 +34,7 @@ contract IntentVault is IIntentVault {
             intentHash
         );
         address claimant = state.claimant;
-        address refundToken = intentSource.getVaultRefundToken();
+        address refundToken = intentSource.getRefundToken();
 
         // Ensure intent has expired if there's no claimant
         if (claimant == address(0) && block.timestamp < reward.deadline) {
