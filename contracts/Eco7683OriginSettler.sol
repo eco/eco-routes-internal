@@ -191,6 +191,14 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                 gaslessCrosschainOrderData.destination
             );
         }
+        if (gaslessCrosschainOrderData.nativeValue > 0) {
+            minReceived[tokenCount] = Output(
+                bytes32(bytes20(uint160(address(0)))),
+                gaslessCrosschainOrderData.nativeValue,
+                bytes32(bytes20(uint160(address(0)))),
+                gaslessCrosschainOrderData.destination
+            );
+        }
 
         uint256 callCount = gaslessCrosschainOrderData.calls.length;
         FillInstruction[] memory fillInstructions = new FillInstruction[](
@@ -202,14 +210,6 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                 uint64(gaslessCrosschainOrderData.destination),
                 bytes32(bytes20(uint160(gaslessCrosschainOrderData.inbox))),
                 abi.encode(gaslessCrosschainOrderData.calls[j])
-            );
-        }
-        if (gaslessCrosschainOrderData.nativeValue > 0) {
-            minReceived[tokenCount] = Output(
-                bytes32(bytes20(uint160(address(0)))),
-                gaslessCrosschainOrderData.nativeValue,
-                bytes32(bytes20(uint160(address(0)))),
-                gaslessCrosschainOrderData.destination
             );
         }
 

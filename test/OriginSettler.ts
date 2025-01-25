@@ -360,7 +360,7 @@ describe('Origin Settler Test', (): void => {
           }),
         ).to.be.true
       })
-      it.only('resolves onchainCrosschainOrder', async () => {
+      it('resolves onchainCrosschainOrder', async () => {
         const resolvedOrder: ResolvedCrossChainOrderStruct =
           await originSettler.resolve(onchainCrosschainOrder)
 
@@ -376,21 +376,34 @@ describe('Origin Settler Test', (): void => {
         )
         expect(resolvedOrder.orderId).to.eq(intentHash)
         expect(resolvedOrder.maxSpent.length).to.eq(0)
-        expect(resolvedOrder.minReceived.length).to.eq(reward.tokens.length)
-        for (let i = 0; i < resolvedOrder.minReceived.length; i++) {
+        expect(resolvedOrder.minReceived.length).to.eq(
+          reward.tokens.length + (reward.nativeValue > 0 ? 1 : 0),
+        )
+        for (let i = 0; i < resolvedOrder.minReceived.length - 1; i++) {
           expect(resolvedOrder.minReceived[i].token).to.eq(
-            abiCoder.encode(['bytes32'], [reward.tokens[i].token]),
+            ethers.zeroPadBytes(reward.tokens[i].token, 32),
           )
           expect(resolvedOrder.minReceived[i].amount).to.eq(
             reward.tokens[i].amount,
           )
           expect(resolvedOrder.minReceived[i].recipient).to.eq(
-            abiCoder.encode(['bytes32'], [ethers.ZeroAddress]),
+            ethers.zeroPadBytes(ethers.ZeroAddress, 32),
           )
           expect(resolvedOrder.minReceived[i].chainId).to.eq(
             onchainCrosschainOrderData.route.destination,
           )
         }
+        const i = resolvedOrder.minReceived.length - 1
+        expect(resolvedOrder.minReceived[i].token).to.eq(
+          ethers.zeroPadBytes(ethers.ZeroAddress, 32),
+        )
+        expect(resolvedOrder.minReceived[i].amount).to.eq(reward.nativeValue)
+        expect(resolvedOrder.minReceived[i].recipient).to.eq(
+          ethers.zeroPadBytes(ethers.ZeroAddress, 32),
+        )
+        expect(resolvedOrder.minReceived[i].chainId).to.eq(
+          onchainCrosschainOrderData.route.destination,
+        )
       })
     })
 
