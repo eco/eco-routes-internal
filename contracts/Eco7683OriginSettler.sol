@@ -106,7 +106,9 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
             .decode(order.orderData, (OnchainCrosschainOrderData));
         Output[] memory maxSpent = new Output[](0); //doesn't have a very useful meaning here since our protocol is not specifically built around swaps
         uint256 tokenCount = onchainCrosschainOrderData.tokens.length;
-        Output[] memory minReceived = new Output[](tokenCount); //rewards are fixed
+        Output[] memory minReceived = new Output[](
+            tokenCount + (onchainCrosschainOrderData.nativeValue > 0 ? 1 : 0)
+        ); //rewards are fixed
 
         for (uint256 i = 0; i < tokenCount; i++) {
             minReceived[i] = Output(
@@ -115,6 +117,14 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                 ),
                 onchainCrosschainOrderData.tokens[i].amount,
                 bytes32(bytes20(uint160(address(0)))), //filler is not known
+                onchainCrosschainOrderData.route.destination
+            );
+        }
+        if (onchainCrosschainOrderData.nativeValue > 0) {
+            minReceived[tokenCount] = Output(
+                bytes32(bytes20(uint160(address(0)))),
+                onchainCrosschainOrderData.nativeValue,
+                bytes32(bytes20(uint160(address(0)))),
                 onchainCrosschainOrderData.route.destination
             );
         }
@@ -167,7 +177,9 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
             .decode(order.orderData, (GaslessCrosschainOrderData));
         Output[] memory maxSpent = new Output[](0); //doesn't have a very useful meaning here since our protocol is not specifically built around swaps
         uint256 tokenCount = gaslessCrosschainOrderData.tokens.length;
-        Output[] memory minReceived = new Output[](tokenCount); //rewards are fixed
+        Output[] memory minReceived = new Output[](
+            tokenCount + (gaslessCrosschainOrderData.nativeValue > 0 ? 1 : 0)
+        ); //rewards are fixed
 
         for (uint256 i = 0; i < tokenCount; i++) {
             minReceived[i] = Output(
@@ -190,6 +202,14 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                 uint64(gaslessCrosschainOrderData.destination),
                 bytes32(bytes20(uint160(gaslessCrosschainOrderData.inbox))),
                 abi.encode(gaslessCrosschainOrderData.calls[j])
+            );
+        }
+        if (gaslessCrosschainOrderData.nativeValue > 0) {
+            minReceived[tokenCount] = Output(
+                bytes32(bytes20(uint160(address(0)))),
+                gaslessCrosschainOrderData.nativeValue,
+                bytes32(bytes20(uint160(address(0)))),
+                gaslessCrosschainOrderData.destination
             );
         }
 

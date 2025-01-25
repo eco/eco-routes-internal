@@ -26,6 +26,7 @@ import {
   OnchainCrossChainOrderStruct,
   GaslessCrossChainOrderStruct,
   ResolvedCrossChainOrderStruct,
+  OutputStruct,
 } from '../typechain-types/contracts/Eco7683OriginSettler'
 import {
   GaslessCrosschainOrderData,
@@ -66,6 +67,8 @@ describe('Origin Settler Test', (): void => {
   let gaslessCrosschainOrder: GaslessCrossChainOrderStruct
   let finalHash: BytesLike
   let signature: string
+
+  const abiCoder = AbiCoder.defaultAbiCoder()
 
   const name = 'Eco 7683 Origin Settler'
   const version = '1.5.0'
@@ -231,7 +234,6 @@ describe('Origin Settler Test', (): void => {
           gaslessCrosschainOrderData,
         ),
       }
-      const abiCoder = AbiCoder.defaultAbiCoder()
       const orderDataHash = keccak256(
         await encodeGaslessCrosschainOrderData(gaslessCrosschainOrderData),
       )
@@ -358,7 +360,7 @@ describe('Origin Settler Test', (): void => {
           }),
         ).to.be.true
       })
-      it.only('resolves', async () => {
+      it.only('resolves onchainCrosschainOrder', async () => {
         const resolvedOrder: ResolvedCrossChainOrderStruct =
           await originSettler.resolve(onchainCrosschainOrder)
 
@@ -373,11 +375,22 @@ describe('Origin Settler Test', (): void => {
           onchainCrosschainOrder.fillDeadline,
         )
         expect(resolvedOrder.orderId).to.eq(intentHash)
-        // expect(resolvedOrder.maxSpent).to.deep.eq(onchainCrosschainOrderData.reward.nativeValue)
-        // expect(resolvedOrder.minReceived).to.eq(onchainCrosschainOrderData.creator)
-        // expect(resolvedOrder.fillInstructions).to.eq(
-        //   onchainCrosschainOrderData.creator,
-        // )
+        expect(resolvedOrder.maxSpent.length).to.eq(0)
+        expect(resolvedOrder.minReceived.length).to.eq(reward.tokens.length)
+        for (let i = 0; i < resolvedOrder.minReceived.length; i++) {
+          expect(resolvedOrder.minReceived[i].token).to.eq(
+            abiCoder.encode(['bytes32'], [reward.tokens[i].token]),
+          )
+          expect(resolvedOrder.minReceived[i].amount).to.eq(
+            reward.tokens[i].amount,
+          )
+          expect(resolvedOrder.minReceived[i].recipient).to.eq(
+            abiCoder.encode(['bytes32'], [ethers.ZeroAddress]),
+          )
+          expect(resolvedOrder.minReceived[i].chainId).to.eq(
+            onchainCrosschainOrderData.route.destination,
+          )
+        }
       })
     })
 
