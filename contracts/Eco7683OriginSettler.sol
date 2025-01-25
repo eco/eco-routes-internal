@@ -99,6 +99,66 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         emit Open(orderId, resolveFor(order, originFillerData));
     }
 
+    function resolve(
+        OnchainCrossChainOrder calldata order
+    ) public view override returns (ResolvedCrossChainOrder memory) {
+        OnchainCrosschainOrderData memory onchainCrosschainOrderData = abi
+            .decode(order.orderData, (OnchainCrosschainOrderData));
+        Output[] memory maxSpent = new Output[](0); //doesn't have a very useful meaning here since our protocol is not specifically built around swaps
+        uint256 tokenCount = onchainCrosschainOrderData.tokens.length;
+        Output[] memory minReceived = new Output[](tokenCount); //rewards are fixed
+
+        for (uint256 i = 0; i < tokenCount; i++) {
+            minReceived[i] = Output(
+                bytes32(
+                    bytes20(uint160(onchainCrosschainOrderData.tokens[i].token))
+                ),
+                onchainCrosschainOrderData.tokens[i].amount,
+                bytes32(bytes20(uint160(address(0)))), //filler is not known
+                onchainCrosschainOrderData.route.destination
+            );
+        }
+
+        uint256 callCount = onchainCrosschainOrderData.route.calls.length;
+        FillInstruction[] memory fillInstructions = new FillInstruction[](
+            callCount
+        );
+
+        for (uint256 j = 0; j < callCount; j++) {
+            fillInstructions[j] = FillInstruction(
+                uint64(onchainCrosschainOrderData.route.destination),
+                bytes32(
+                    bytes20(uint160(onchainCrosschainOrderData.route.inbox))
+                ),
+                abi.encode(onchainCrosschainOrderData.route.calls[j])
+            );
+        }
+
+        (bytes32 intentHash, , ) = IntentSource(INTENT_SOURCE).getIntentHash(
+            Intent(
+                onchainCrosschainOrderData.route,
+                Reward(
+                    onchainCrosschainOrderData.creator,
+                    onchainCrosschainOrderData.prover,
+                    order.fillDeadline,
+                    onchainCrosschainOrderData.nativeValue,
+                    onchainCrosschainOrderData.tokens
+                )
+            )
+        );
+        return
+            ResolvedCrossChainOrder(
+                onchainCrosschainOrderData.creator,
+                onchainCrosschainOrderData.route.source,
+                order.fillDeadline,
+                order.fillDeadline,
+                intentHash,
+                maxSpent,
+                minReceived,
+                fillInstructions
+            );
+    }
+
     function resolveFor(
         GaslessCrossChainOrder calldata order,
         bytes calldata originFillerData // i dont think we need this
@@ -156,66 +216,6 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                 order.user,
                 order.originChainId,
                 order.fillDeadline, // we do not use opendeadline
-                order.fillDeadline,
-                intentHash,
-                maxSpent,
-                minReceived,
-                fillInstructions
-            );
-    }
-
-    function resolve(
-        OnchainCrossChainOrder calldata order
-    ) public view override returns (ResolvedCrossChainOrder memory) {
-        OnchainCrosschainOrderData memory onchainCrosschainOrderData = abi
-            .decode(order.orderData, (OnchainCrosschainOrderData));
-        Output[] memory maxSpent = new Output[](0); //doesn't have a very useful meaning here since our protocol is not specifically built around swaps
-        uint256 tokenCount = onchainCrosschainOrderData.tokens.length;
-        Output[] memory minReceived = new Output[](tokenCount); //rewards are fixed
-
-        for (uint256 i = 0; i < tokenCount; i++) {
-            minReceived[i] = Output(
-                bytes32(
-                    bytes20(uint160(onchainCrosschainOrderData.tokens[i].token))
-                ),
-                onchainCrosschainOrderData.tokens[i].amount,
-                bytes32(bytes20(uint160(address(0)))), //filler is not known
-                onchainCrosschainOrderData.route.destination
-            );
-        }
-
-        uint256 callCount = onchainCrosschainOrderData.route.calls.length;
-        FillInstruction[] memory fillInstructions = new FillInstruction[](
-            callCount
-        );
-
-        for (uint256 j = 0; j < callCount; j++) {
-            fillInstructions[j] = FillInstruction(
-                uint64(onchainCrosschainOrderData.route.destination),
-                bytes32(
-                    bytes20(uint160(onchainCrosschainOrderData.route.inbox))
-                ),
-                abi.encode(onchainCrosschainOrderData.route.calls[j])
-            );
-        }
-
-        (bytes32 intentHash, , ) = IntentSource(INTENT_SOURCE).getIntentHash(
-            Intent(
-                onchainCrosschainOrderData.route,
-                Reward(
-                    onchainCrosschainOrderData.creator,
-                    onchainCrosschainOrderData.prover,
-                    order.fillDeadline,
-                    onchainCrosschainOrderData.nativeValue,
-                    onchainCrosschainOrderData.tokens
-                )
-            )
-        );
-        return
-            ResolvedCrossChainOrder(
-                onchainCrosschainOrderData.creator,
-                onchainCrosschainOrderData.route.source,
-                order.fillDeadline,
                 order.fillDeadline,
                 intentHash,
                 maxSpent,

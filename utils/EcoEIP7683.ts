@@ -50,7 +50,7 @@ const OnchainCrosschainOrderDataStruct = [
       { name: 'token', type: 'address' },
       { name: 'amount', type: 'uint256' },
     ],
-  }
+  },
 ]
 
 const GaslessCrosschainOrderDataStruct = [

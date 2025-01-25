@@ -25,6 +25,7 @@ import {
 import {
   OnchainCrossChainOrderStruct,
   GaslessCrossChainOrderStruct,
+  ResolvedCrossChainOrderStruct,
 } from '../typechain-types/contracts/Eco7683OriginSettler'
 import {
   GaslessCrosschainOrderData,
@@ -153,7 +154,7 @@ describe('Origin Settler Test', (): void => {
     )
   })
 
-  describe('intent creation', async () => {
+  describe('performs actions', async () => {
     beforeEach(async (): Promise<void> => {
       expiry = (await time.latest()) + 123
       chainId = 1
@@ -307,90 +308,118 @@ describe('Origin Settler Test', (): void => {
       signature = await creator.signTypedData(domain, types, values)
     })
 
-    it('creates via open', async () => {
-      const vaultAddress = await intentSource.intentVaultAddress({
-        route,
-        reward,
-      })
-
-      expect(
-        await intentSource.isIntentFunded({
+    describe('onchainCrosschainOrder', async () => {
+      it('creates via open', async () => {
+        const vaultAddress = await intentSource.intentVaultAddress({
           route,
-          reward: { ...reward, nativeValue: reward.nativeValue },
-        }),
-      ).to.be.false
+          reward,
+        })
 
-      await tokenA
-        .connect(creator)
-        .approve(await originSettler.getAddress(), mintAmount)
-      await tokenB
-        .connect(creator)
-        .approve(await originSettler.getAddress(), 2 * mintAmount)
+        expect(
+          await intentSource.isIntentFunded({
+            route,
+            reward: { ...reward, nativeValue: reward.nativeValue },
+          }),
+        ).to.be.false
 
-      await expect(
-        originSettler
+        await tokenA
           .connect(creator)
-          .open(onchainCrosschainOrder, { value: rewardNativeEth }),
-      )
-        .to.emit(intentSource, 'IntentCreated')
-        .withArgs(
-          intentHash,
-          salt,
-          Number((await intentSource.runner?.provider?.getNetwork())?.chainId),
-          chainId,
-          await inbox.getAddress(),
-          calls.map(Object.values),
-          await creator.getAddress(),
-          await prover.getAddress(),
-          expiry,
-          reward.nativeValue,
-          rewardTokens.map(Object.values),
+          .approve(await originSettler.getAddress(), mintAmount)
+        await tokenB
+          .connect(creator)
+          .approve(await originSettler.getAddress(), 2 * mintAmount)
+
+        await expect(
+          originSettler
+            .connect(creator)
+            .open(onchainCrosschainOrder, { value: rewardNativeEth }),
         )
-        .to.emit(originSettler, 'Open')
-      expect(
-        await intentSource.isIntentFunded({
-          route,
-          reward: { ...reward, nativeValue: reward.nativeValue },
-        }),
-      ).to.be.true
+          .to.emit(intentSource, 'IntentCreated')
+          .withArgs(
+            intentHash,
+            salt,
+            Number(
+              (await intentSource.runner?.provider?.getNetwork())?.chainId,
+            ),
+            chainId,
+            await inbox.getAddress(),
+            calls.map(Object.values),
+            await creator.getAddress(),
+            await prover.getAddress(),
+            expiry,
+            reward.nativeValue,
+            rewardTokens.map(Object.values),
+          )
+          .to.emit(originSettler, 'Open')
+        expect(
+          await intentSource.isIntentFunded({
+            route,
+            reward: { ...reward, nativeValue: reward.nativeValue },
+          }),
+        ).to.be.true
+      })
+      it.only('resolves', async () => {
+        const resolvedOrder: ResolvedCrossChainOrderStruct =
+          await originSettler.resolve(onchainCrosschainOrder)
+
+        expect(resolvedOrder.user).to.eq(onchainCrosschainOrderData.creator)
+        expect(resolvedOrder.originChainId).to.eq(
+          onchainCrosschainOrderData.route.source,
+        )
+        expect(resolvedOrder.openDeadline).to.eq(
+          onchainCrosschainOrder.fillDeadline,
+        )
+        expect(resolvedOrder.fillDeadline).to.eq(
+          onchainCrosschainOrder.fillDeadline,
+        )
+        expect(resolvedOrder.orderId).to.eq(intentHash)
+        // expect(resolvedOrder.maxSpent).to.deep.eq(onchainCrosschainOrderData.reward.nativeValue)
+        // expect(resolvedOrder.minReceived).to.eq(onchainCrosschainOrderData.creator)
+        // expect(resolvedOrder.fillInstructions).to.eq(
+        //   onchainCrosschainOrderData.creator,
+        // )
+      })
     })
 
-    it('creates via openFor', async () => {
-      const vaultAddress = await intentSource.intentVaultAddress({
-        route,
-        reward,
-      })
-
-      expect(
-        await intentSource.isIntentFunded({
+    describe('gaslessCrosschainOrder', async () => {
+      it('creates via openFor', async () => {
+        const vaultAddress = await intentSource.intentVaultAddress({
           route,
-          reward: { ...reward, nativeValue: reward.nativeValue },
-        }),
-      ).to.be.false
+          reward,
+        })
 
-      await tokenA
-        .connect(creator)
-        .approve(await originSettler.getAddress(), mintAmount)
-      await tokenB
-        .connect(creator)
-        .approve(await originSettler.getAddress(), 2 * mintAmount)
-
-      await expect(
-        originSettler
-          .connect(otherPerson)
-          .openFor(gaslessCrosschainOrder, signature, '0x', {
-            value: rewardNativeEth,
+        expect(
+          await intentSource.isIntentFunded({
+            route,
+            reward: { ...reward, nativeValue: reward.nativeValue },
           }),
-      )
-        .to.emit(intentSource, 'IntentCreated')
-        .and.to.emit(originSettler, 'Open')
+        ).to.be.false
 
-      expect(
-        await intentSource.isIntentFunded({
-          route,
-          reward: { ...reward, nativeValue: reward.nativeValue },
-        }),
-      ).to.be.true
+        await tokenA
+          .connect(creator)
+          .approve(await originSettler.getAddress(), mintAmount)
+        await tokenB
+          .connect(creator)
+          .approve(await originSettler.getAddress(), 2 * mintAmount)
+
+        await expect(
+          originSettler
+            .connect(otherPerson)
+            .openFor(gaslessCrosschainOrder, signature, '0x', {
+              value: rewardNativeEth,
+            }),
+        )
+          .to.emit(intentSource, 'IntentCreated')
+          .and.to.emit(originSettler, 'Open')
+
+        expect(
+          await intentSource.isIntentFunded({
+            route,
+            reward: { ...reward, nativeValue: reward.nativeValue },
+          }),
+        ).to.be.true
+      })
+      it('resolvesFor', async () => {})
     })
   })
 })
