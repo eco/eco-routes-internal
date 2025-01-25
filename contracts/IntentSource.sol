@@ -366,11 +366,6 @@ contract IntentSource is IIntentSource, Semver {
         uint256 rewardsLength = reward.tokens.length;
 
         if (vault.balance < reward.nativeValue) return false;
-<<<<<<< HEAD
-        
-=======
-
->>>>>>> main
         for (uint256 i = 0; i < rewardsLength; i++) {
             address token = reward.tokens[i].token;
             uint256 amount = reward.tokens[i].amount;

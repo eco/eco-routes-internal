@@ -445,7 +445,50 @@ describe('Origin Settler Test', (): void => {
           }),
         ).to.be.true
       })
-      it('resolvesFor', async () => {})
+      it('resolvesFor gaslessCrosschainOrder', async () => {
+        const resolvedOrder: ResolvedCrossChainOrderStruct =
+          await originSettler.resolveFor(gaslessCrosschainOrder, '0x')
+        expect(resolvedOrder.user).to.eq(gaslessCrosschainOrder.user)
+        expect(resolvedOrder.originChainId).to.eq(
+          gaslessCrosschainOrder.originChainId,
+        )
+        expect(resolvedOrder.openDeadline).to.eq(
+          gaslessCrosschainOrder.openDeadline,
+        )
+        expect(resolvedOrder.fillDeadline).to.eq(
+          gaslessCrosschainOrder.fillDeadline,
+        )
+        expect(resolvedOrder.orderId).to.eq(intentHash)
+        expect(resolvedOrder.maxSpent.length).to.eq(0)
+        expect(resolvedOrder.minReceived.length).to.eq(
+          reward.tokens.length + (reward.nativeValue > 0 ? 1 : 0),
+        )
+        for (let i = 0; i < resolvedOrder.minReceived.length - 1; i++) {
+          expect(resolvedOrder.minReceived[i].token).to.eq(
+            ethers.zeroPadBytes(reward.tokens[i].token, 32),
+          )
+          expect(resolvedOrder.minReceived[i].amount).to.eq(
+            reward.tokens[i].amount,
+          )
+          expect(resolvedOrder.minReceived[i].recipient).to.eq(
+            ethers.zeroPadBytes(ethers.ZeroAddress, 32),
+          )
+          expect(resolvedOrder.minReceived[i].chainId).to.eq(
+            gaslessCrosschainOrderData.destination,
+          )
+        }
+        const i = resolvedOrder.minReceived.length - 1
+        expect(resolvedOrder.minReceived[i].token).to.eq(
+          ethers.zeroPadBytes(ethers.ZeroAddress, 32),
+        )
+        expect(resolvedOrder.minReceived[i].amount).to.eq(reward.nativeValue)
+        expect(resolvedOrder.minReceived[i].recipient).to.eq(
+          ethers.zeroPadBytes(ethers.ZeroAddress, 32),
+        )
+        expect(resolvedOrder.minReceived[i].chainId).to.eq(
+          gaslessCrosschainOrderData.destination,
+        )
+      })
     })
   })
 })

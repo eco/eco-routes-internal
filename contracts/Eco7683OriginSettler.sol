@@ -12,7 +12,6 @@ import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "hardhat/console.sol";
 contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
     using ECDSA for bytes32;
     using SafeERC20 for IERC20;
