@@ -20,6 +20,12 @@ export type GaslessCrosschainOrderData = {
   tokens: TokenAmount[]
 }
 
+export type OnchainCrosschainOrder = {
+  fillDeadline: number
+  orderDataType: string
+  orderData: OnchainCrosschainOrderData
+}
+
 const OnchainCrosschainOrderDataStruct = [
   {
     name: 'route',
@@ -77,6 +83,12 @@ const GaslessCrosschainOrderDataStruct = [
   },
 ]
 
+const OnchainCrosschainOrderStruct = [
+  { name: 'fillDeadline', type: 'uint32' },
+  { name: 'orderDataType', type: 'bytes32' },
+  { name: 'orderData', type: 'bytes' },
+]
+
 export async function encodeOnchainCrosschainOrderData(
   onchainCrosschainOrderData: OnchainCrosschainOrderData,
 ) {
@@ -104,5 +116,20 @@ export async function encodeGaslessCrosschainOrderData(
       },
     ],
     [gaslessCrosschainOrderData],
+  )
+}
+
+export async function encodeOnchainCrosschainOrder(
+  onchainCrosschainOrder: OnchainCrosschainOrder,
+) {
+  const abiCoder = AbiCoder.defaultAbiCoder()
+  return abiCoder.encode(
+    [
+      {
+        type: 'tuple',
+        components: OnchainCrosschainOrderStruct,
+      },
+    ],
+    [onchainCrosschainOrder],
   )
 }

@@ -46,7 +46,7 @@ contract TestMailbox {
             process(_messageBody);
         }
 
-        if (msg.value != fee) {
+        if (msg.value < fee) {
             revert("no");
         }
 
@@ -72,7 +72,7 @@ contract TestMailbox {
             process(_messageBody);
         }
 
-        if (msg.value != fee) {
+        if (msg.value < fee) {
             revert("no");
         }
 

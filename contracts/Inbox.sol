@@ -7,6 +7,7 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IInbox} from "./interfaces/IInbox.sol";
 import {Intent, Route, Call} from "./types/Intent.sol";
 import {Semver} from "./libs/Semver.sol";
+import "hardhat/console.sol";
 
 /**
  * @title Inbox
@@ -143,19 +144,22 @@ contract Inbox is IInbox, Ownable, Semver {
             _metadata,
             _postDispatchHook
         );
-        if (msg.value < fee) {
-            revert InsufficientFee(fee);
-        }
         bytes[] memory results = _fulfill(
             _route,
             _rewardHash,
             _claimant,
             _expectedHash
         );
-        if (msg.value > fee) {
-            (bool success, ) = payable(msg.sender).call{value: msg.value - fee}(
-                ""
-            );
+        uint256 nativeBalance = address(this).balance;
+        if (nativeBalance < fee) {
+            revert InsufficientFee(fee);
+        }
+        if (nativeBalance > fee) {
+            console.logUint(msg.value);
+            console.logUint(fee);
+            (bool success, ) = payable(msg.sender).call{
+                value: nativeBalance - fee
+            }("");
             if (!success) {
                 revert NativeTransferFailed();
             }
@@ -266,7 +270,7 @@ contract Inbox is IInbox, Ownable, Semver {
             _postDispatchHook
         );
         if (msg.value < fee) {
-            revert InsufficientFee(fee );
+            revert InsufficientFee(fee);
         }
         if (msg.value > fee) {
             (bool success, ) = payable(msg.sender).call{value: msg.value - fee}(
@@ -400,9 +404,11 @@ contract Inbox is IInbox, Ownable, Semver {
         }
 
         bytes32 routeHash = keccak256(abi.encode(_route));
+        console.logBytes32(_rewardHash);
         bytes32 intentHash = keccak256(
             abi.encodePacked(routeHash, _rewardHash)
         );
+        console.logBytes32(intentHash);
 
         if (_route.inbox != address(this)) {
             revert InvalidInbox(_route.inbox);

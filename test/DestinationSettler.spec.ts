@@ -1,13 +1,20 @@
 import { SignerWithAddress } from '@nomicfoundation/hardhat-ethers/signers'
 import { expect } from 'chai'
 import { ethers } from 'hardhat'
-import { TestERC20, Inbox, TestMailbox, TestProver } from '../typechain-types'
+import {
+  TestERC20,
+  Inbox,
+  TestMailbox,
+  TestProver,
+  IProver,
+  Eco7683DestinationSettler,
+} from '../typechain-types'
 import {
   time,
   loadFixture,
 } from '@nomicfoundation/hardhat-toolbox/network-helpers'
 import { encodeTransfer, encodeTransferNative } from '../utils/encode'
-import { keccak256, BytesLike } from 'ethers'
+import { keccak256, BytesLike, AbiCoder, parseEther } from 'ethers'
 import {
   encodeReward,
   encodeRoute,
@@ -21,7 +28,9 @@ import { OnchainCrossChainOrderStruct } from '../typechain-types/contracts/Eco76
 import {
   OnchainCrosschainOrderData,
   encodeOnchainCrosschainOrderData,
+  encodeOnchainCrosschainOrder,
 } from '../utils/EcoEIP7683'
+import { encode } from 'punycode'
 
 describe('Inbox Test', (): void => {
   let inbox: Inbox
@@ -33,15 +42,21 @@ describe('Inbox Test', (): void => {
   let route: Route
   let reward: Reward
   let intent: Intent
+  let routeHash: BytesLike
   let rewardHash: string
   let intentHash: string
   let prover: TestProver
+  let mailbox: TestMailbox
+  let calls: Call[]
   let onchainCrosschainOrder: OnchainCrossChainOrderStruct
   let onchainCrosschainOrderData: OnchainCrosschainOrderData
+  let destinationSettler: Eco7683DestinationSettler
+  let fillerData: BytesLike
   const salt = ethers.encodeBytes32String('0x987')
   let erc20Address: string
   const timeDelta = 1000
   const mintAmount = 1000
+  const nativeAmount = parseEther('0.1')
   const sourceChainID = 123
   const onchainCrosschainOrderDataTypehash: BytesLike =
     '0xb6bc9eb3454e4ec88a42b6355c90dc6c1d654f0d544ba0ef3161593210a01a28'
@@ -51,6 +66,7 @@ describe('Inbox Test', (): void => {
     mailbox: TestMailbox
     prover: TestProver
     erc20: TestERC20
+    destinationSettler: Eco7683DestinationSettler
     owner: SignerWithAddress
     creator: SignerWithAddress
     solver: SignerWithAddress
@@ -61,11 +77,13 @@ describe('Inbox Test', (): void => {
     ).deploy(ethers.ZeroAddress)
     const [owner, creator, solver, dstAddr] = await ethers.getSigners()
     const inboxFactory = await ethers.getContractFactory('Inbox')
-    const inbox = await inboxFactory.deploy(owner.address, false, [
-      solver.address,
-    ])
+    const inbox = await inboxFactory.deploy(owner.address, true, [])
+    await inbox.connect(owner).setMailbox(await mailbox.getAddress())
     const prover = await (
       await ethers.getContractFactory('TestProver')
+    ).deploy()
+    const destinationSettler = await (
+      await ethers.getContractFactory('Eco7683DestinationSettler')
     ).deploy()
     // deploy ERC20 test
     const erc20Factory = await ethers.getContractFactory('TestERC20')
@@ -77,15 +95,16 @@ describe('Inbox Test', (): void => {
       mailbox,
       prover,
       erc20,
+      destinationSettler,
       owner,
       creator,
       solver,
       dstAddr,
     }
   }
-
-  async function createIntentData(
+  async function createIntentDataNative(
     amount: number,
+    _nativeAmount: bigint,
     timeDelta: number,
   ): Promise<{
     calls: Call[]
@@ -97,80 +116,17 @@ describe('Inbox Test', (): void => {
     intentHash: string
   }> {
     erc20Address = await erc20.getAddress()
-    const _calldata = await encodeTransfer(dstAddr.address, amount)
     const _timestamp = (await time.latest()) + timeDelta
+
+    const _calldata1 = await encodeTransfer(creator.address, amount)
 
     const _calls: Call[] = [
       {
-        target: erc20Address,
-        data: _calldata,
-        value: 0,
+        target: creator.address,
+        data: _calldata1,
+        value: _nativeAmount,
       },
     ]
-    const _route = {
-      salt,
-      source: sourceChainID,
-      destination: Number((await owner.provider.getNetwork()).chainId),
-      inbox: await inbox.getAddress(),
-      calls: _calls,
-    }
-    const _routeHash = keccak256(encodeRoute(_route))
-
-    const _reward = {
-      creator: creator.address,
-      prover: solver.address,
-      deadline: _timestamp,
-      nativeValue: 0n,
-      tokens: [
-        {
-          token: erc20Address,
-          amount: amount,
-        },
-      ],
-    }
-
-    const _rewardHash = keccak256(encodeReward(_reward))
-
-    const _intent = {
-      route: _route,
-      reward: _reward,
-    }
-
-    const _intentHash = keccak256(
-      ethers.solidityPacked(['bytes32', 'bytes32'], [_routeHash, _rewardHash]),
-    )
-
-    return {
-      calls: _calls,
-      route: _route,
-      reward: _reward,
-      intent: _intent,
-      routeHash: _routeHash,
-      rewardHash: _rewardHash,
-      intentHash: _intentHash,
-    }
-  }
-  async function createIntentDataNative(
-    amount: number,
-    timeDelta: number,
-  ): Promise<{
-    calls: Call[]
-    route: Route
-    reward: Reward
-    intent: Intent
-    routeHash: string
-    rewardHash: string
-    intentHash: string
-  }> {
-    const _calldata = await encodeTransferNative(dstAddr.address, amount)
-    const _calls: Call[] = [
-      {
-        target: await inbox.getAddress(),
-        data: _calldata,
-        value: 0,
-      },
-    ]
-    const _timestamp = (await time.latest()) + timeDelta
 
     const _route: Route = {
       salt,
@@ -180,11 +136,16 @@ describe('Inbox Test', (): void => {
       calls: _calls,
     }
     const _reward: Reward = {
-      creator: solver.address,
-      prover: solver.address,
+      creator: creator.address,
+      prover: await prover.getAddress(),
       deadline: _timestamp,
-      nativeValue: BigInt(amount),
-      tokens: [],
+      nativeValue: BigInt(0),
+      tokens: [
+        {
+          token: erc20Address,
+          amount: amount,
+        },
+      ],
     }
     const _intent: Intent = {
       route: _route,
@@ -207,10 +168,19 @@ describe('Inbox Test', (): void => {
   }
 
   beforeEach(async (): Promise<void> => {
-    ;({ inbox, mailbox, prover, erc20, owner, creator, solver, dstAddr } =
-      await loadFixture(deployInboxFixture))
+    ;({
+      inbox,
+      mailbox,
+      prover,
+      erc20,
+      destinationSettler,
+      owner,
+      creator,
+      solver,
+      dstAddr,
+    } = await loadFixture(deployInboxFixture))
     ;({ calls, route, reward, intent, routeHash, rewardHash, intentHash } =
-      await createIntentData(mintAmount, timeDelta))
+      await createIntentDataNative(mintAmount, nativeAmount, timeDelta))
 
     onchainCrosschainOrderData = {
       route: route,
@@ -232,9 +202,53 @@ describe('Inbox Test', (): void => {
   it('successfully calls storage prover fulfill', async (): Promise<void> => {
     expect(await inbox.fulfilled(intentHash)).to.equal(ethers.ZeroAddress)
     expect(await erc20.balanceOf(solver.address)).to.equal(mintAmount)
-    expect(await erc20.balanceOf(dstAddr.address)).to.equal(0)
 
-    // transfer the tokens to the inbox so it can process the transaction
-    await erc20.connect(solver).transfer(await inbox.getAddress(), mintAmount)
+    // transfer the tokens to the settler so it can process the transaction
+    await erc20
+      .connect(solver)
+      .transfer(await destinationSettler.getAddress(), mintAmount)
+    const onchainCrosschainOrderEncoded = await encodeOnchainCrosschainOrder(
+      onchainCrosschainOrder,
+    )
+    fillerData = AbiCoder.defaultAbiCoder().encode(
+      ['uint256', 'address'],
+      [0, solver.address],
+    )
+    console.log({ intentHash })
+    expect(
+      await destinationSettler
+        .connect(solver)
+        .fill(intentHash, onchainCrosschainOrderEncoded, fillerData, {
+          value: nativeAmount,
+        }),
+    )
+      .to.emit(inbox, 'ToBeProven')
+      .withArgs(intentHash, route.source, solver.address)
+  })
+
+  it('successfully calls hyper instant fulfill', async (): Promise<void> => {
+    expect(await inbox.fulfilled(intentHash)).to.equal(ethers.ZeroAddress)
+    expect(await erc20.balanceOf(solver.address)).to.equal(mintAmount)
+
+    // transfer the tokens to the settler so it can process the transaction
+    await erc20
+      .connect(solver)
+      .transfer(await destinationSettler.getAddress(), mintAmount)
+    const onchainCrosschainOrderEncoded = await encodeOnchainCrosschainOrder(
+      onchainCrosschainOrder,
+    )
+    fillerData = AbiCoder.defaultAbiCoder().encode(
+      ['uint256', 'address', 'address', 'bytes'],
+      ['1', solver.address, ethers.ZeroAddress, '0x'],
+    )
+    expect(
+      await destinationSettler
+        .connect(solver)
+        .fill(intentHash, onchainCrosschainOrderEncoded, fillerData, {
+          value: nativeAmount + BigInt(120000), // add some extra to pay for hyperlane gas
+        }),
+    )
+      .to.emit(inbox, 'ToBeProven')
+      .withArgs(intentHash, route.source, solver.address)
   })
 })
