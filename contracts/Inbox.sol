@@ -266,7 +266,7 @@ contract Inbox is IInbox, Ownable, Semver {
             _postDispatchHook
         );
         if (msg.value < fee) {
-            revert InsufficientFee(fee);
+            revert InsufficientFee(fee );
         }
         if (msg.value > fee) {
             (bool success, ) = payable(msg.sender).call{value: msg.value - fee}(

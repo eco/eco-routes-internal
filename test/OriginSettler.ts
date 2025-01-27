@@ -65,6 +65,8 @@ describe('Origin Settler Test', (): void => {
 
   const onchainCrosschainOrderTypehash: BytesLike =
     '0x70c61a52e3a0f99e3cf285eec63637cf3ddbaa3ff1bc113db9afab85d3ce6941'
+  const onchainCrosschainOrderDataTypehash: BytesLike =
+    '0xb6bc9eb3454e4ec88a42b6355c90dc6c1d654f0d544ba0ef3161593210a01a28'
   const gaslessCrosschainOrderTypehash: BytesLike =
     '0x0dc54db9269648aac2dbf0a24ec877f6604de7a39d70a932e517955973048850'
   const gaslessCrosschainOrderDataTypehash: BytesLike =
@@ -194,7 +196,7 @@ describe('Origin Settler Test', (): void => {
 
       onchainCrosschainOrder = {
         fillDeadline: expiry,
-        orderDataType: onchainCrosschainOrderTypehash,
+        orderDataType: onchainCrosschainOrderDataTypehash,
         orderData: await encodeOnchainCrosschainOrderData(
           onchainCrosschainOrderData,
         ),
