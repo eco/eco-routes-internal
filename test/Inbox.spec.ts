@@ -6,7 +6,7 @@ import {
   time,
   loadFixture,
 } from '@nomicfoundation/hardhat-toolbox/network-helpers'
-import { encodeTransfer, encodeTransferNative } from '../utils/encode'
+import { encodeTransfer } from '../utils/encode'
 import { keccak256, toBeHex } from 'ethers'
 import {
   encodeReward,
@@ -138,62 +138,6 @@ describe('Inbox Test', (): void => {
       intentHash: _intentHash,
     }
   }
-  async function createIntentDataNative(
-    amount: number,
-    timeDelta: number,
-  ): Promise<{
-    calls: Call[]
-    route: Route
-    reward: Reward
-    intent: Intent
-    routeHash: string
-    rewardHash: string
-    intentHash: string
-  }> {
-    const _calldata = await encodeTransferNative(dstAddr.address, amount)
-    const _calls: Call[] = [
-      {
-        target: await inbox.getAddress(),
-        data: _calldata,
-        value: 0,
-      },
-    ]
-    const _timestamp = (await time.latest()) + timeDelta
-
-    const _route: Route = {
-      salt,
-      source: sourceChainID,
-      destination: Number((await owner.provider.getNetwork()).chainId),
-      inbox: await inbox.getAddress(),
-      calls: _calls,
-    }
-    const _reward: Reward = {
-      creator: solver.address,
-      prover: solver.address,
-      deadline: _timestamp,
-      nativeValue: BigInt(amount),
-      tokens: [],
-    }
-    const _intent: Intent = {
-      route: _route,
-      reward: _reward,
-    }
-    const {
-      routeHash: _routeHash,
-      rewardHash: _rewardHash,
-      intentHash: _intentHash,
-    } = hashIntent(_intent)
-    return {
-      calls: _calls,
-      route: _route,
-      reward: _reward,
-      intent: _intent,
-      routeHash: _routeHash,
-      rewardHash: _rewardHash,
-      intentHash: _intentHash,
-    }
-  }
-
   beforeEach(async (): Promise<void> => {
     ;({ inbox, mailbox, erc20, owner, solver, dstAddr } =
       await loadFixture(deployInboxFixture))
@@ -248,11 +192,6 @@ describe('Inbox Test', (): void => {
       expect(await inbox.mailbox()).to.eq(await mailbox.getAddress())
       await inbox.connect(owner).setMailbox(solver.address)
       expect(await inbox.mailbox()).to.eq(await mailbox.getAddress())
-    })
-    it('doesnt let anybody call transferNative', async () => {
-      await expect(
-        inbox.connect(solver).transferNative(solver.address, 1),
-      ).to.be.revertedWithCustomError(inbox, 'UnauthorizedTransferNative')
     })
   })
 
@@ -383,40 +322,6 @@ describe('Inbox Test', (): void => {
       // check balances
       expect(await erc20.balanceOf(solver.address)).to.equal(0)
       expect(await erc20.balanceOf(dstAddr.address)).to.equal(mintAmount)
-    })
-
-    it('should succeed with transferring native token', async () => {
-      expect(await inbox.fulfilled(intentHash)).to.equal(ethers.ZeroAddress)
-      const initialNativeBalance = await ethers.provider.getBalance(
-        dstAddr.address,
-      )
-
-      const nativeToTransfer = ethers.parseEther('0.1')
-      ;({ calls, route, reward, intent, routeHash, rewardHash, intentHash } =
-        await createIntentDataNative(nativeToTransfer, timeDelta))
-
-      // transfer the tokens to the inbox so it can process the transaction
-
-      await solver.sendTransaction({
-        to: await inbox.getAddress(),
-        value: nativeToTransfer,
-      })
-      await expect(
-        inbox
-          .connect(solver)
-          .fulfillStorage(route, rewardHash, dstAddr.address, intentHash),
-      )
-        .to.emit(inbox, 'Fulfillment')
-        .withArgs(intentHash, sourceChainID, dstAddr.address)
-        .to.emit(inbox, 'ToBeProven')
-        .withArgs(intentHash, sourceChainID, dstAddr.address)
-      // should update the fulfilled hash
-      expect(await inbox.fulfilled(intentHash)).to.equal(dstAddr.address)
-
-      // check balances
-      expect(await ethers.provider.getBalance(dstAddr.address)).to.equal(
-        initialNativeBalance + nativeToTransfer,
-      )
     })
 
     it('should revert if the intent has already been fulfilled', async () => {

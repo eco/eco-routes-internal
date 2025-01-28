@@ -6,31 +6,21 @@ import {
   Inbox,
   TestMailbox,
   TestProver,
-  IProver,
   Eco7683DestinationSettler,
 } from '../typechain-types'
 import {
   time,
   loadFixture,
 } from '@nomicfoundation/hardhat-toolbox/network-helpers'
-import { encodeTransfer, encodeTransferNative } from '../utils/encode'
-import { keccak256, BytesLike, AbiCoder, parseEther } from 'ethers'
-import {
-  encodeReward,
-  encodeRoute,
-  hashIntent,
-  Call,
-  Route,
-  Reward,
-  Intent,
-} from '../utils/intent'
+import { encodeTransfer } from '../utils/encode'
+import { BytesLike, AbiCoder, parseEther } from 'ethers'
+import { hashIntent, Call, Route, Reward, Intent } from '../utils/intent'
 import { OnchainCrossChainOrderStruct } from '../typechain-types/contracts/Eco7683OriginSettler'
 import {
   OnchainCrosschainOrderData,
   encodeOnchainCrosschainOrderData,
   encodeOnchainCrosschainOrder,
 } from '../utils/EcoEIP7683'
-import { encode } from 'punycode'
 
 describe('Inbox Test', (): void => {
   let inbox: Inbox
@@ -38,16 +28,11 @@ describe('Inbox Test', (): void => {
   let owner: SignerWithAddress
   let creator: SignerWithAddress
   let solver: SignerWithAddress
-  let dstAddr: SignerWithAddress
   let route: Route
   let reward: Reward
   let intent: Intent
-  let routeHash: BytesLike
-  let rewardHash: string
   let intentHash: string
   let prover: TestProver
-  let mailbox: TestMailbox
-  let calls: Call[]
   let onchainCrosschainOrder: OnchainCrossChainOrderStruct
   let onchainCrosschainOrderData: OnchainCrosschainOrderData
   let destinationSettler: Eco7683DestinationSettler
@@ -63,14 +48,12 @@ describe('Inbox Test', (): void => {
 
   async function deployInboxFixture(): Promise<{
     inbox: Inbox
-    mailbox: TestMailbox
     prover: TestProver
     erc20: TestERC20
     destinationSettler: Eco7683DestinationSettler
     owner: SignerWithAddress
     creator: SignerWithAddress
     solver: SignerWithAddress
-    dstAddr: SignerWithAddress
   }> {
     const mailbox = await (
       await ethers.getContractFactory('TestMailbox')
@@ -92,14 +75,12 @@ describe('Inbox Test', (): void => {
 
     return {
       inbox,
-      mailbox,
       prover,
       erc20,
       destinationSettler,
       owner,
       creator,
       solver,
-      dstAddr,
     }
   }
   async function createIntentDataNative(
@@ -107,12 +88,9 @@ describe('Inbox Test', (): void => {
     _nativeAmount: bigint,
     timeDelta: number,
   ): Promise<{
-    calls: Call[]
     route: Route
     reward: Reward
     intent: Intent
-    routeHash: string
-    rewardHash: string
     intentHash: string
   }> {
     erc20Address = await erc20.getAddress()
@@ -157,30 +135,21 @@ describe('Inbox Test', (): void => {
       intentHash: _intentHash,
     } = hashIntent(_intent)
     return {
-      calls: _calls,
       route: _route,
       reward: _reward,
       intent: _intent,
-      routeHash: _routeHash,
-      rewardHash: _rewardHash,
       intentHash: _intentHash,
     }
   }
 
   beforeEach(async (): Promise<void> => {
-    ;({
-      inbox,
-      mailbox,
-      prover,
-      erc20,
-      destinationSettler,
-      owner,
-      creator,
-      solver,
-      dstAddr,
-    } = await loadFixture(deployInboxFixture))
-    ;({ calls, route, reward, intent, routeHash, rewardHash, intentHash } =
-      await createIntentDataNative(mintAmount, nativeAmount, timeDelta))
+    ;({ inbox, prover, erc20, destinationSettler, owner, creator, solver } =
+      await loadFixture(deployInboxFixture))
+    ;({ route, reward, intent, intentHash } = await createIntentDataNative(
+      mintAmount,
+      nativeAmount,
+      timeDelta,
+    ))
 
     onchainCrosschainOrderData = {
       route: route,
@@ -214,7 +183,6 @@ describe('Inbox Test', (): void => {
       ['uint256', 'address'],
       [0, solver.address],
     )
-    console.log({ intentHash })
     expect(
       await destinationSettler
         .connect(solver)

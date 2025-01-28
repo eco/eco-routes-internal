@@ -332,22 +332,6 @@ contract Inbox is IInbox, Ownable, Semver {
     }
 
     /**
-     * @notice Enables native token transfers on the destination chain
-     * @dev Can only be called by the contract itself
-     * @param _to Recipient address
-     * @param _amount Amount of native tokens to send
-     */
-    function transferNative(address payable _to, uint256 _amount) public {
-        if (msg.sender != address(this)) {
-            revert UnauthorizedTransferNative();
-        }
-        (bool success, ) = _to.call{value: _amount}("");
-        if (!success) {
-            revert NativeTransferFailed();
-        }
-    }
-
-    /**
      * @notice Sets the mailbox address
      * @dev Can only be called once during deployment
      * @param _mailbox Address of the Hyperlane mailbox

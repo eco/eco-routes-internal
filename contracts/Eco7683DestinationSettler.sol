@@ -17,23 +17,33 @@ contract Eco7683DestinationSettler is IDestinationSettler, Semver {
     using ECDSA for bytes32;
 
     /**
-     * @notice Thrown when the prover does not have a valid proofType
+     * @notice Emitted when an intent is fulfilled using Hyperlane instant proving
+     * @param _orderId Hash of the fulfilled intent
+     * @param _solver Address that fulfilled intent
      */
+    event orderFilled(bytes32 _orderId, address _solver);
+
+    // address of local hyperlane mailbox
     error BadProver();
 
     constructor() Semver() {}
 
-    /// @notice Fills a single leg of a particular order on the destination chain
-    /// @param orderId Unique order identifier for this order
-    /// @param originData Data emitted on the origin to parameterize the fill
-    /// @param fillerData Data provided by the filler to inform the fill or express their preferences
+    /**
+     * @notice Fills a single leg of a particular order on the destination chain
+     * @dev _originData is of type OnchainCrossChainOrder
+     * @dev _fillerData is encoded bytes consisting of the uint256 prover type and the address claimant if the prover type is Storage (0)
+     * and the address claimant, the address postDispatchHook, and the bytes metadata if the prover type is Hyperlane (1)
+     * @param _orderId Unique order identifier for this order
+     * @param _originData Data emitted on the origin to parameterize the fill
+     * @param _fillerData Data provided by the filler to inform the fill or express their preferences
+     */
     function fill(
-        bytes32 orderId,
-        bytes calldata originData,
-        bytes calldata fillerData
+        bytes32 _orderId,
+        bytes calldata _originData,
+        bytes calldata _fillerData
     ) external payable {
         OnchainCrossChainOrder memory order = abi.decode(
-            originData,
+            _originData,
             (OnchainCrossChainOrder)
         );
         OnchainCrosschainOrderData memory onchainCrosschainOrderData = abi
@@ -51,20 +61,20 @@ contract Eco7683DestinationSettler is IDestinationSettler, Semver {
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
         Inbox inbox = Inbox(payable(intent.route.inbox));
         IProver.ProofType proofType = abi.decode(
-            fillerData,
+            _fillerData,
             (IProver.ProofType)
         );
 
         if (proofType == IProver.ProofType.Storage) {
             (, address claimant) = abi.decode(
-                fillerData,
+                _fillerData,
                 (IProver.ProofType, address)
             );
             inbox.fulfillStorage{value: msg.value}(
                 intent.route,
                 rewardHash,
                 claimant,
-                orderId
+                _orderId
             );
         } else if (proofType == IProver.ProofType.Hyperlane) {
             (
@@ -73,14 +83,14 @@ contract Eco7683DestinationSettler is IDestinationSettler, Semver {
                 address postDispatchHook,
                 bytes memory metadata
             ) = abi.decode(
-                    fillerData,
+                    _fillerData,
                     (IProver.ProofType, address, address, bytes)
                 );
             inbox.fulfillHyperInstantWithRelayer{value: msg.value}(
                 intent.route,
                 rewardHash,
                 claimant,
-                orderId,
+                _orderId,
                 onchainCrosschainOrderData.prover,
                 metadata,
                 postDispatchHook
