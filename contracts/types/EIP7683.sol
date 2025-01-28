@@ -93,14 +93,10 @@ struct FillInstruction {
     bytes originData;
 }
 
-abstract contract EIP7683 {
-    bytes32 public constant GASLESS_CROSSCHAIN_ORDER_TYPEHASH =
-        keccak256(
-            "GaslessCrossChainOrder(address originSettler,address user,uint256 nonce,uint256 originChainId,uint32 openDeadline,uint32 fillDeadline,bytes32 orderDataType,bytes orderData)"
-        );
+bytes32 constant GASLESS_CROSSCHAIN_ORDER_TYPEHASH = keccak256(
+    "GaslessCrossChainOrder(address originSettler,address user,uint256 nonce,uint256 originChainId,uint32 openDeadline,uint32 fillDeadline,bytes32 orderDataType,bytes orderData)"
+);
 
-    bytes32 public constant ONCHAIN_CROSSCHAIN_ORDER_TYPEHASH =
-        keccak256(
-            "OnchainCrossChainOrder(uint32 fillDeadline,bytes32 orderDataType,bytes orderData)"
-        );
-}
+bytes32 constant ONCHAIN_CROSSCHAIN_ORDER_TYPEHASH = keccak256(
+    "OnchainCrossChainOrder(uint32 fillDeadline,bytes32 orderDataType,bytes orderData)"
+);

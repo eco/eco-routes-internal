@@ -3,10 +3,16 @@
 pragma solidity ^0.8.26;
 
 import {TokenAmount, Route, Call} from "./Intent.sol";
+/**
+ * @title EcoEIP7683
+ * @dev EIP7683 orderData subtypes designed for Eco Protocol
+ */
 
-/// @title Eco Intent Order Data
-/// @notice subtype of orderData
-/// @notice contains everything which, when combined with other aspects of order data, is sufficient to publish an intent via Eco Protocol
+/**
+ * @notice contains everything which, when combined with other aspects of GaslessCrossChainOrder
+ * is sufficient to publish an intent via Eco Protocol
+ * @dev the orderData field of GaslessCrossChainOrder should be decoded as GaslessCrosschainOrderData
+ */
 struct OnchainCrosschainOrderData {
     // Route data
     Route route;
@@ -19,7 +25,11 @@ struct OnchainCrosschainOrderData {
     // addresses and amounts of reward tokens
     TokenAmount[] tokens;
 }
-
+/**
+ * @notice contains everything which, when combined with other aspects of GaslessCrossChainOrder
+ * is sufficient to publish an intent via Eco Protocol
+ * @dev the orderData field of GaslessCrossChainOrder should be decoded as GaslessCrosschainOrderData
+ */
 struct GaslessCrosschainOrderData {
     // ID of chain where the intent was created
     uint256 destination;
@@ -35,13 +45,10 @@ struct GaslessCrosschainOrderData {
     TokenAmount[] tokens;
 }
 
-abstract contract EcoEIP7683 {
-    bytes32 public constant ONCHAIN_CROSSCHAIN_ORDER_DATA_TYPEHASH =
-        keccak256(
-            "EcoOnchainGaslessCrosschainOrderData(Route route,address creator,address prover,uint256 nativeValue,TokenAmount[] tokens)Route(uint256 source,uint256 destination,address inbox,Call[] calls)TokenAmount(address token,uint256 amount)Call(address target,bytes data,uint256 value)"
-        );
-    bytes32 public constant GASLESS_CROSSCHAIN_ORDER_DATA_TYPEHASH =
-        keccak256(
-            "EcoGaslessCrosschainOrderData(uint256 destination,address inbox,Call[] calls,address prover,uint256 nativeValue,TokenAmount[] tokens)TokenAmount(address token,uint256 amount)Call(address target,bytes data,uint256 value)"
-        );
-}
+//EIP712 typehashes
+bytes32 constant ONCHAIN_CROSSCHAIN_ORDER_DATA_TYPEHASH = keccak256(
+    "EcoOnchainGaslessCrosschainOrderData(Route route,address creator,address prover,uint256 nativeValue,TokenAmount[] tokens)Route(uint256 source,uint256 destination,address inbox,Call[] calls)TokenAmount(address token,uint256 amount)Call(address target,bytes data,uint256 value)"
+);
+bytes32 constant GASLESS_CROSSCHAIN_ORDER_DATA_TYPEHASH = keccak256(
+    "EcoGaslessCrosschainOrderData(uint256 destination,address inbox,Call[] calls,address prover,uint256 nativeValue,TokenAmount[] tokens)TokenAmount(address token,uint256 amount)Call(address target,bytes data,uint256 value)"
+);
