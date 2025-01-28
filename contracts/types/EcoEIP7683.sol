@@ -11,37 +11,37 @@ import {TokenAmount, Route, Call} from "./Intent.sol";
 /**
  * @notice contains everything which, when combined with other aspects of GaslessCrossChainOrder
  * is sufficient to publish an intent via Eco Protocol
- * @dev the orderData field of GaslessCrossChainOrder should be decoded as GaslessCrosschainOrderData
+ * @dev the orderData field of GaslessCrossChainOrder should be decoded as GaslessCrosschainOrderData\
+ * @param route the route data
+ * @param creator the address of the intent creator
+ * @param prover the address of the prover contract this intent will be proven against
+ * @param nativeValue the amount of native token offered as a reward
+ * @param tokens the addresses and amounts of reward tokens
  */
 struct OnchainCrosschainOrderData {
-    // Route data
     Route route;
-    // creator of the intent
     address creator;
-    // address of the prover this intent will be checked against
     address prover;
-    // native tokens offered as reward
     uint256 nativeValue;
-    // addresses and amounts of reward tokens
     TokenAmount[] tokens;
 }
 /**
  * @notice contains everything which, when combined with other aspects of GaslessCrossChainOrder
  * is sufficient to publish an intent via Eco Protocol
  * @dev the orderData field of GaslessCrossChainOrder should be decoded as GaslessCrosschainOrderData
+ * @param destination the ID of the chain where the intent was created
+ * @param inbox the inbox contract on the destination chain that will fulfill the intent
+ * @param calls the call instructions to be called during intent fulfillment
+ * @param prover the address of the prover contract this intent will be proven against
+ * @param nativeValue the amount of native token offered as a reward
+ * @param tokens the addresses and amounts of reward tokens
  */
 struct GaslessCrosschainOrderData {
-    // ID of chain where the intent was created
     uint256 destination;
-    // The inbox contract on the destination chain will be the msg.sender
     address inbox;
-    // instructions
     Call[] calls;
-    // address of the prover this intent will be checked against
     address prover;
-    // native tokens offered as reward
     uint256 nativeValue;
-    // addresses and amounts of reward tokens
     TokenAmount[] tokens;
 }
 
