@@ -63,12 +63,8 @@ describe('Origin Settler Test', (): void => {
   const name = 'Eco 7683 Origin Settler'
   const version = '1.5.0'
 
-  const onchainCrosschainOrderTypehash: BytesLike =
-    '0x70c61a52e3a0f99e3cf285eec63637cf3ddbaa3ff1bc113db9afab85d3ce6941'
   const onchainCrosschainOrderDataTypehash: BytesLike =
     '0xb6bc9eb3454e4ec88a42b6355c90dc6c1d654f0d544ba0ef3161593210a01a28'
-  const gaslessCrosschainOrderTypehash: BytesLike =
-    '0x0dc54db9269648aac2dbf0a24ec877f6604de7a39d70a932e517955973048850'
   const gaslessCrosschainOrderDataTypehash: BytesLike =
     '0x58c324802ce1459a5182655ed022248fa0d67bc8ecdc1e70c632377791453c20'
 
@@ -138,8 +134,7 @@ describe('Origin Settler Test', (): void => {
     // fund the creator and approve it to create an intent
     await mintAndApprove()
   })
-  {
-  }
+
   it('constructs', async () => {
     expect(await originSettler.INTENT_SOURCE()).to.be.eq(
       await intentSource.getAddress(),
@@ -165,13 +160,13 @@ describe('Origin Settler Test', (): void => {
         '0x0000000000000000000000000000000000000000000000000000000000000001'
       nonce = 1
       route = {
-        salt: salt,
+        salt,
         source: Number(
           (await originSettler.runner?.provider?.getNetwork())?.chainId,
         ),
         destination: chainId,
         inbox: await inbox.getAddress(),
-        calls: calls,
+        calls,
       }
       reward = {
         creator: creator.address,
@@ -187,7 +182,7 @@ describe('Origin Settler Test', (): void => {
       )
 
       onchainCrosschainOrderData = {
-        route: route,
+        route,
         creator: creator.address,
         prover: await prover.getAddress(),
         nativeValue: reward.nativeValue,
@@ -204,7 +199,7 @@ describe('Origin Settler Test', (): void => {
       gaslessCrosschainOrderData = {
         destination: chainId,
         inbox: await inbox.getAddress(),
-        calls: calls,
+        calls,
         prover: await prover.getAddress(),
         nativeValue: reward.nativeValue,
         tokens: reward.tokens,
@@ -212,7 +207,7 @@ describe('Origin Settler Test', (): void => {
       gaslessCrosschainOrder = {
         originSettler: await originSettler.getAddress(),
         user: creator.address,
-        nonce: nonce,
+        nonce,
         originChainId: Number(
           (await originSettler.runner?.provider?.getNetwork())?.chainId,
         ),
@@ -248,7 +243,7 @@ describe('Origin Settler Test', (): void => {
       const values = {
         originSettler: await originSettler.getAddress(),
         user: creator.address,
-        nonce: nonce,
+        nonce,
         originChainId: Number(
           (await originSettler.runner?.provider?.getNetwork())?.chainId,
         ),

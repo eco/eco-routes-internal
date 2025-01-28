@@ -1,5 +1,4 @@
-import { ethers } from 'hardhat'
-import { getCreate2Address, keccak256, solidityPacked, AbiCoder } from 'ethers'
+import { AbiCoder } from 'ethers'
 
 import { Route, Call, TokenAmount } from './intent'
 
