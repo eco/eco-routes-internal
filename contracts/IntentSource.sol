@@ -140,7 +140,7 @@ contract IntentSource is IIntentSource, Semver {
                 : msg.value;
 
             payable(vault).transfer(nativeAmount);
-            
+
             uint256 currentBalance = address(this).balance;
 
             if (currentBalance > nativeAmount) {
@@ -228,7 +228,7 @@ contract IntentSource is IIntentSource, Semver {
                 }
 
                 payable(vault).transfer(reward.nativeValue);
-                
+
                 uint256 currentBalance = address(this).balance;
 
                 if (currentBalance > reward.nativeValue) {
