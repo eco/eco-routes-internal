@@ -28,27 +28,33 @@ interface IL1Block is ISemver {
     /// @notice The versioned hash to authenticate the batcher by.
     function batcherHash() external view returns (bytes32);
 
-    /// @notice The overhead value applied to the L1 portion of the transaction fee.
-    /// @custom:legacy
+    /**
+     * @notice The overhead value applied to the L1 portion of the transaction fee.
+     * @custom:legacy
+     */
     function l1FeeOverhead() external view returns (uint256);
 
-    /// @notice The scalar value applied to the L1 portion of the transaction fee.
-    /// @custom:legacy
+    /**
+     * @notice The scalar value applied to the L1 portion of the transaction fee.
+     * @custom:legacy
+     */
     function l1FeeScalar() external view returns (uint256);
 
     /// @notice The latest L1 blob base fee.
     function blobBaseFee() external view returns (uint256);
 
-    /// @custom:legacy
-    /// @notice Updates the L1 block values.
-    /// @param _number         L1 blocknumber.
-    /// @param _timestamp      L1 timestamp.
-    /// @param _basefee        L1 basefee.
-    /// @param _hash           L1 blockhash.
-    /// @param _sequenceNumber Number of L2 blocks since epoch start.
-    /// @param _batcherHash    Versioned hash to authenticate batcher by.
-    /// @param _l1FeeOverhead  L1 fee overhead.
-    /// @param _l1FeeScalar    L1 fee scalar.
+    /**
+     * @notice Updates the L1 block values.
+     * @custom:legacy
+     * @param _number         L1 blocknumber.
+     * @param _timestamp      L1 timestamp.
+     * @param _basefee        L1 basefee.
+     * @param _hash           L1 blockhash.
+     * @param _sequenceNumber Number of L2 blocks since epoch start.
+     * @param _batcherHash    Versioned hash to authenticate batcher by.
+     * @param _l1FeeOverhead  L1 fee overhead.
+     * @param _l1FeeScalar    L1 fee scalar.
+     */
     function setL1BlockValues(
         uint64 _number,
         uint64 _timestamp,

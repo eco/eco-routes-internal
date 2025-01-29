@@ -22,13 +22,13 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
     using ECDSA for bytes32;
     using SafeERC20 for IERC20;
 
-    // typehash for gasless crosschain _order
+    /// @notice typehash for gasless crosschain _order
     bytes32 public GASLESS_CROSSCHAIN_ORDER_TYPEHASH =
         keccak256(
             "GaslessCrossChainOrder(address originSettler,address user,uint256 nonce,uint256 originChainId,uint32 openDeadline,uint32 fillDeadline,bytes32 orderDataType,bytes32 orderDataHash)"
         );
 
-    // address of IntentSource contract where intents are actually published
+    /// @notice address of IntentSource contract where intents are actually published
     address public immutable INTENT_SOURCE;
 
     /**
@@ -276,7 +276,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
             );
     }
 
-    // helper method for signature verification
+    /// @notice helper method for signature verification
     function _verifyOpenFor(
         GaslessCrossChainOrder calldata _order,
         bytes calldata _signature
@@ -304,7 +304,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         return signer == _order.user;
     }
 
-    // helper method that actually opens the intent
+    /// @notice helper method that actually opens the intent
     function _openEcoIntent(
         Intent memory _intent,
         address _user
@@ -334,7 +334,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         return IntentSource(INTENT_SOURCE).publishIntent(_intent, false);
     }
 
-    // EIP712 domain separator
+    /// @notice EIP712 domain separator
     function domainSeparatorV4() public view returns (bytes32) {
         return _domainSeparatorV4();
     }
