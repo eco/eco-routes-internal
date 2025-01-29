@@ -29,7 +29,7 @@ import {
   OnchainCrosschainOrderData,
   encodeGaslessCrosschainOrderData,
   encodeOnchainCrosschainOrderData,
-} from '../utils/EcoEIP7683'
+} from '../utils/EcoERC7683'
 
 describe('Origin Settler Test', (): void => {
   let originSettler: Eco7683OriginSettler

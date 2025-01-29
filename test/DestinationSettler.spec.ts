@@ -20,7 +20,7 @@ import {
   OnchainCrosschainOrderData,
   encodeOnchainCrosschainOrderData,
   encodeOnchainCrosschainOrder,
-} from '../utils/EcoEIP7683'
+} from '../utils/EcoERC7683'
 
 describe('Inbox Test', (): void => {
   let inbox: Inbox

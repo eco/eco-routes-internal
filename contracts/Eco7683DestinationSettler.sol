@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {OnchainCrossChainOrder, ResolvedCrossChainOrder, GaslessCrossChainOrder, Output, FillInstruction} from "./types/EIP7683.sol";
-import {IOriginSettler} from "./interfaces/EIP7683/IOriginSettler.sol";
-import {IDestinationSettler} from "./interfaces/EIP7683/IDestinationSettler.sol";
+import {OnchainCrossChainOrder, ResolvedCrossChainOrder, GaslessCrossChainOrder, Output, FillInstruction} from "./types/ERC7683.sol";
+import {IOriginSettler} from "./interfaces/ERC7683/IOriginSettler.sol";
+import {IDestinationSettler} from "./interfaces/ERC7683/IDestinationSettler.sol";
 import {Intent, Reward, Route, TokenAmount} from "./types/Intent.sol";
-import {OnchainCrosschainOrderData} from "./types/EcoEIP7683.sol";
+import {OnchainCrosschainOrderData} from "./types/EcoERC7683.sol";
 import {IntentSource} from "./IntentSource.sol";
 import {Inbox} from "./Inbox.sol";
 import {IProver} from "./interfaces/IProver.sol";

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import "../../types/EIP7683.sol";
+import "../../types/ERC7683.sol";
 
 /**
  * @title IOriginSettler

@@ -4,8 +4,8 @@ pragma solidity ^0.8.26;
 
 import {TokenAmount, Route, Call} from "./Intent.sol";
 /**
- * @title EcoEIP7683
- * @dev EIP7683 orderData subtypes designed for Eco Protocol
+ * @title EcoERC7683
+ * @dev ERC7683 orderData subtypes designed for Eco Protocol
  */
 
 /**
