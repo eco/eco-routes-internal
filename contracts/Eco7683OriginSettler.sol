@@ -132,13 +132,29 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
     ) public view override returns (ResolvedCrossChainOrder memory) {
         OnchainCrosschainOrderData memory onchainCrosschainOrderData = abi
             .decode(_order.orderData, (OnchainCrosschainOrderData));
-        Output[] memory maxSpent = new Output[](0); //doesn't have a very useful meaning here since our protocol is not specifically built around swaps
-        uint256 tokenCount = onchainCrosschainOrderData.tokens.length;
+        uint256 approvalTokenCount = onchainCrosschainOrderData
+            .route
+            .ERC20approvals
+            .length;
+        Output[] memory maxSpent = new Output[](approvalTokenCount);
+        for (uint256 i = 0; i < approvalTokenCount; i++) {
+            TokenAmount memory approval = onchainCrosschainOrderData
+                .route
+                .ERC20approvals[i];
+            maxSpent[i] = Output(
+                bytes32(bytes20(uint160(approval.token))),
+                approval.amount,
+                bytes32(bytes20(uint160(address(0)))), //filler is not known
+                onchainCrosschainOrderData.route.destination
+            );
+        }
+        uint256 rewardTokenCount = onchainCrosschainOrderData.tokens.length;
         Output[] memory minReceived = new Output[](
-            tokenCount + (onchainCrosschainOrderData.nativeValue > 0 ? 1 : 0)
+            rewardTokenCount +
+                (onchainCrosschainOrderData.nativeValue > 0 ? 1 : 0)
         ); //rewards are fixed
 
-        for (uint256 i = 0; i < tokenCount; i++) {
+        for (uint256 i = 0; i < rewardTokenCount; i++) {
             minReceived[i] = Output(
                 bytes32(
                     bytes20(uint160(onchainCrosschainOrderData.tokens[i].token))
@@ -149,7 +165,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
             );
         }
         if (onchainCrosschainOrderData.nativeValue > 0) {
-            minReceived[tokenCount] = Output(
+            minReceived[rewardTokenCount] = Output(
                 bytes32(bytes20(uint160(address(0)))),
                 onchainCrosschainOrderData.nativeValue,
                 bytes32(bytes20(uint160(address(0)))),
@@ -208,13 +224,27 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
     ) public view override returns (ResolvedCrossChainOrder memory) {
         GaslessCrosschainOrderData memory gaslessCrosschainOrderData = abi
             .decode(_order.orderData, (GaslessCrosschainOrderData));
-        Output[] memory maxSpent = new Output[](0); //doesn't have a very useful meaning here since our protocol is not specifically built around swaps
-        uint256 tokenCount = gaslessCrosschainOrderData.tokens.length;
+        uint256 approvalTokenCount = gaslessCrosschainOrderData
+            .ERC20approvals
+            .length;
+        Output[] memory maxSpent = new Output[](approvalTokenCount);
+        for (uint256 i = 0; i < approvalTokenCount; i++) {
+            TokenAmount memory approval = gaslessCrosschainOrderData
+                .ERC20approvals[i];
+            maxSpent[i] = Output(
+                bytes32(bytes20(uint160(approval.token))),
+                approval.amount,
+                bytes32(bytes20(uint160(address(0)))), //filler is not known
+                gaslessCrosschainOrderData.destination
+            );
+        }
+        uint256 rewardTokenCount = gaslessCrosschainOrderData.tokens.length;
         Output[] memory minReceived = new Output[](
-            tokenCount + (gaslessCrosschainOrderData.nativeValue > 0 ? 1 : 0)
+            rewardTokenCount +
+                (gaslessCrosschainOrderData.nativeValue > 0 ? 1 : 0)
         ); //rewards are fixed
 
-        for (uint256 i = 0; i < tokenCount; i++) {
+        for (uint256 i = 0; i < rewardTokenCount; i++) {
             minReceived[i] = Output(
                 bytes32(
                     bytes20(uint160(gaslessCrosschainOrderData.tokens[i].token))
@@ -225,7 +255,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
             );
         }
         if (gaslessCrosschainOrderData.nativeValue > 0) {
-            minReceived[tokenCount] = Output(
+            minReceived[rewardTokenCount] = Output(
                 bytes32(bytes20(uint160(address(0)))),
                 gaslessCrosschainOrderData.nativeValue,
                 bytes32(bytes20(uint160(address(0)))),
