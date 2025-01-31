@@ -661,7 +661,9 @@ describe('Inbox Test', (): void => {
                 ),
               },
             ),
-        ).to.not.be.reverted
+        )
+          .to.emit(inbox, 'BatchSent')
+          .withArgs(intentHash, sourceChainID)
         expect(await mailbox.destinationDomain()).to.eq(sourceChainID)
         expect(await mailbox.recipientAddress()).to.eq(
           ethers.zeroPadValue(await mockHyperProver.getAddress(), 32),

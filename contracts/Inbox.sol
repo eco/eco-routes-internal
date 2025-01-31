@@ -254,6 +254,9 @@ contract Inbox is IInbox, Ownable, Semver {
             }
             claimants[i] = claimant;
         }
+
+        emit BatchSent(_intentHashes, _sourceChainID);
+
         bytes memory messageBody = abi.encode(_intentHashes, claimants);
         bytes32 _prover32 = _prover.addressToBytes32();
         uint256 fee = fetchFee(
