@@ -55,7 +55,7 @@ contract Eco7683DestinationSettler is IDestinationSettler, Semver {
                 onchainCrosschainOrderData.prover,
                 order.fillDeadline,
                 onchainCrosschainOrderData.nativeValue,
-                onchainCrosschainOrderData.tokens
+                onchainCrosschainOrderData.rewardTokens
             )
         );
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));

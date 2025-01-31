@@ -69,7 +69,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                 onchainCrosschainOrderData.prover,
                 _order.fillDeadline,
                 onchainCrosschainOrderData.nativeValue,
-                onchainCrosschainOrderData.tokens
+                onchainCrosschainOrderData.rewardTokens
             )
         );
 
@@ -114,7 +114,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                 gaslessCrosschainOrderData.prover,
                 _order.fillDeadline,
                 gaslessCrosschainOrderData.nativeValue,
-                gaslessCrosschainOrderData.tokens
+                gaslessCrosschainOrderData.rewardTokens
             )
         );
 
@@ -134,13 +134,13 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
             .decode(_order.orderData, (OnchainCrosschainOrderData));
         uint256 requiredTokenCount = onchainCrosschainOrderData
             .route
-            .requiredTokens
+            .tokens
             .length;
         Output[] memory maxSpent = new Output[](requiredTokenCount);
         for (uint256 i = 0; i < requiredTokenCount; i++) {
             TokenAmount memory approval = onchainCrosschainOrderData
                 .route
-                .requiredTokens[i];
+                .tokens[i];
             maxSpent[i] = Output(
                 bytes32(bytes20(uint160(approval.token))),
                 approval.amount,
@@ -148,7 +148,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                 onchainCrosschainOrderData.route.destination
             );
         }
-        uint256 rewardTokenCount = onchainCrosschainOrderData.tokens.length;
+        uint256 rewardTokenCount = onchainCrosschainOrderData.rewardTokens.length;
         Output[] memory minReceived = new Output[](
             rewardTokenCount +
                 (onchainCrosschainOrderData.nativeValue > 0 ? 1 : 0)
@@ -157,9 +157,9 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         for (uint256 i = 0; i < rewardTokenCount; i++) {
             minReceived[i] = Output(
                 bytes32(
-                    bytes20(uint160(onchainCrosschainOrderData.tokens[i].token))
+                    bytes20(uint160(onchainCrosschainOrderData.rewardTokens[i].token))
                 ),
-                onchainCrosschainOrderData.tokens[i].amount,
+                onchainCrosschainOrderData.rewardTokens[i].amount,
                 bytes32(bytes20(uint160(address(0)))), //filler is not known
                 onchainCrosschainOrderData.route.destination
             );
@@ -196,7 +196,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                     onchainCrosschainOrderData.prover,
                     _order.fillDeadline,
                     onchainCrosschainOrderData.nativeValue,
-                    onchainCrosschainOrderData.tokens
+                    onchainCrosschainOrderData.rewardTokens
                 )
             )
         );
@@ -224,21 +224,18 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
     ) public view override returns (ResolvedCrossChainOrder memory) {
         GaslessCrosschainOrderData memory gaslessCrosschainOrderData = abi
             .decode(_order.orderData, (GaslessCrosschainOrderData));
-        uint256 requiredTokenCount = gaslessCrosschainOrderData
-            .requiredTokens
-            .length;
+        uint256 requiredTokenCount = gaslessCrosschainOrderData.requiredTokens.length;
         Output[] memory maxSpent = new Output[](requiredTokenCount);
         for (uint256 i = 0; i < requiredTokenCount; i++) {
-            TokenAmount memory approval = gaslessCrosschainOrderData
-                .requiredTokens[i];
+            TokenAmount memory requirement = gaslessCrosschainOrderData.requiredTokens[i];
             maxSpent[i] = Output(
-                bytes32(bytes20(uint160(approval.token))),
-                approval.amount,
+                bytes32(bytes20(uint160(requirement.token))),
+                requirement.amount,
                 bytes32(bytes20(uint160(address(0)))), //filler is not known
                 gaslessCrosschainOrderData.destination
             );
         }
-        uint256 rewardTokenCount = gaslessCrosschainOrderData.tokens.length;
+        uint256 rewardTokenCount = gaslessCrosschainOrderData.rewardTokens.length;
         Output[] memory minReceived = new Output[](
             rewardTokenCount +
                 (gaslessCrosschainOrderData.nativeValue > 0 ? 1 : 0)
@@ -247,9 +244,9 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         for (uint256 i = 0; i < rewardTokenCount; i++) {
             minReceived[i] = Output(
                 bytes32(
-                    bytes20(uint160(gaslessCrosschainOrderData.tokens[i].token))
+                    bytes20(uint160(gaslessCrosschainOrderData.rewardTokens[i].token))
                 ),
-                gaslessCrosschainOrderData.tokens[i].amount,
+                gaslessCrosschainOrderData.rewardTokens[i].amount,
                 bytes32(bytes20(uint160(address(0)))), //filler is not known
                 gaslessCrosschainOrderData.destination
             );
@@ -291,7 +288,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                     gaslessCrosschainOrderData.prover,
                     _order.fillDeadline,
                     gaslessCrosschainOrderData.nativeValue,
-                    gaslessCrosschainOrderData.tokens
+                    gaslessCrosschainOrderData.rewardTokens
                 )
             )
         );
