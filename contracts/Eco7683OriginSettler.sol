@@ -106,7 +106,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                 _order.originChainId,
                 gaslessCrosschainOrderData.destination,
                 gaslessCrosschainOrderData.inbox,
-                gaslessCrosschainOrderData.ERC20approvals,
+                gaslessCrosschainOrderData.requiredTokens,
                 gaslessCrosschainOrderData.calls
             ),
             Reward(
@@ -132,15 +132,15 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
     ) public view override returns (ResolvedCrossChainOrder memory) {
         OnchainCrosschainOrderData memory onchainCrosschainOrderData = abi
             .decode(_order.orderData, (OnchainCrosschainOrderData));
-        uint256 approvalTokenCount = onchainCrosschainOrderData
+        uint256 requiredTokenCount = onchainCrosschainOrderData
             .route
-            .ERC20approvals
+            .requiredTokens
             .length;
-        Output[] memory maxSpent = new Output[](approvalTokenCount);
-        for (uint256 i = 0; i < approvalTokenCount; i++) {
+        Output[] memory maxSpent = new Output[](requiredTokenCount);
+        for (uint256 i = 0; i < requiredTokenCount; i++) {
             TokenAmount memory approval = onchainCrosschainOrderData
                 .route
-                .ERC20approvals[i];
+                .requiredTokens[i];
             maxSpent[i] = Output(
                 bytes32(bytes20(uint160(approval.token))),
                 approval.amount,
@@ -224,13 +224,13 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
     ) public view override returns (ResolvedCrossChainOrder memory) {
         GaslessCrosschainOrderData memory gaslessCrosschainOrderData = abi
             .decode(_order.orderData, (GaslessCrosschainOrderData));
-        uint256 approvalTokenCount = gaslessCrosschainOrderData
-            .ERC20approvals
+        uint256 requiredTokenCount = gaslessCrosschainOrderData
+            .requiredTokens
             .length;
-        Output[] memory maxSpent = new Output[](approvalTokenCount);
-        for (uint256 i = 0; i < approvalTokenCount; i++) {
+        Output[] memory maxSpent = new Output[](requiredTokenCount);
+        for (uint256 i = 0; i < requiredTokenCount; i++) {
             TokenAmount memory approval = gaslessCrosschainOrderData
-                .ERC20approvals[i];
+                .requiredTokens[i];
             maxSpent[i] = Output(
                 bytes32(bytes20(uint160(approval.token))),
                 approval.amount,
@@ -283,7 +283,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                     _order.originChainId,
                     gaslessCrosschainOrderData.destination,
                     gaslessCrosschainOrderData.inbox,
-                    gaslessCrosschainOrderData.ERC20approvals,
+                    gaslessCrosschainOrderData.requiredTokens,
                     gaslessCrosschainOrderData.calls
                 ),
                 Reward(

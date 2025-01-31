@@ -33,7 +33,7 @@ struct TokenAmount {
  * @param source Chain ID where the intent originated
  * @param destination Target chain ID where the calls should be executed
  * @param inbox Address of the inbox contract on the destination chain that receives messages
- * @param ERC20approvals Array of token approvals required for execution of calls on destination chain
+ * @param requiredTokens Array of token approvals required for execution of calls on destination chain
  * @param calls Array of contract calls to execute on the destination chain in sequence
  */
 struct Route {
@@ -41,7 +41,7 @@ struct Route {
     uint256 source;
     uint256 destination;
     address inbox;
-    TokenAmount[] ERC20approvals;
+    TokenAmount[] requiredTokens;
     Call[] calls;
 }
 

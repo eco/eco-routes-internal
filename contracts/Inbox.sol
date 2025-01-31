@@ -406,8 +406,8 @@ contract Inbox is IInbox, Ownable, Semver {
         emit Fulfillment(_expectedHash, _route.source, _claimant);
 
         // Transfer ERC20 tokens to the inbox
-        for (uint256 i = 0; i < _route.ERC20approvals.length; i++) {
-            TokenAmount memory approval = _route.ERC20approvals[i];
+        for (uint256 i = 0; i < _route.requiredTokens.length; i++) {
+            TokenAmount memory approval = _route.requiredTokens[i];
             IERC20(approval.token).safeTransferFrom(
                 msg.sender,
                 address(this),
