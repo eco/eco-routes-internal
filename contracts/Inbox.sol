@@ -134,6 +134,13 @@ contract Inbox is IInbox, Ownable, Semver {
 
         emit HyperInstantFulfillment(_expectedHash, _route.source, _claimant);
 
+        bytes[] memory results = _fulfill(
+            _route,
+            _rewardHash,
+            _claimant,
+            _expectedHash
+        );
+
         uint256 fee = fetchFee(
             _route.source,
             _prover32,
@@ -141,12 +148,7 @@ contract Inbox is IInbox, Ownable, Semver {
             _metadata,
             _postDispatchHook
         );
-        bytes[] memory results = _fulfill(
-            _route,
-            _rewardHash,
-            _claimant,
-            _expectedHash
-        );
+
         uint256 currentBalance = address(this).balance;
         if (currentBalance < fee) {
             revert InsufficientFee(fee);
