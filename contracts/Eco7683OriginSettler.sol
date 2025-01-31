@@ -106,6 +106,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                 _order.originChainId,
                 gaslessCrosschainOrderData.destination,
                 gaslessCrosschainOrderData.inbox,
+                gaslessCrosschainOrderData.ERC20approvals,
                 gaslessCrosschainOrderData.calls
             ),
             Reward(
@@ -252,6 +253,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                     _order.originChainId,
                     gaslessCrosschainOrderData.destination,
                     gaslessCrosschainOrderData.inbox,
+                    gaslessCrosschainOrderData.ERC20approvals,
                     gaslessCrosschainOrderData.calls
                 ),
                 Reward(

@@ -209,6 +209,7 @@ contract IntentSource is IIntentSource, Semver {
             route.source,
             route.destination,
             route.inbox,
+            route.ERC20approvals,
             route.calls,
             reward.creator,
             reward.prover,
