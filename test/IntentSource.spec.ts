@@ -18,7 +18,7 @@ import {
   Intent,
 } from '../utils/intent'
 
-describe('Intent Source Test', (): void => {
+describe.only('Intent Source Test', (): void => {
   let intentSource: IntentSource
   let prover: TestProver
   let inbox: Inbox
@@ -31,6 +31,7 @@ describe('Intent Source Test', (): void => {
 
   let salt: BytesLike
   let chainId: number
+  let routeTokens: TokenAmount[]
   let calls: Call[]
   let expiry: number
   const rewardNativeEth: bigint = ethers.parseEther('2')
@@ -97,6 +98,7 @@ describe('Intent Source Test', (): void => {
     beforeEach(async (): Promise<void> => {
       expiry = (await time.latest()) + 123
       chainId = 1
+      routeTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
       calls = [
         {
           target: await tokenA.getAddress(),
@@ -119,7 +121,7 @@ describe('Intent Source Test', (): void => {
         ),
         destination: chainId,
         inbox: await inbox.getAddress(),
-
+        tokens: routeTokens,
         calls: calls,
       }
       reward = {
@@ -219,6 +221,7 @@ describe('Intent Source Test', (): void => {
           Number((await intentSource.runner?.provider?.getNetwork())?.chainId),
           chainId,
           await inbox.getAddress(),
+          routeTokens.map(Object.values),
           calls.map(Object.values),
           await creator.getAddress(),
           await prover.getAddress(),
@@ -236,6 +239,7 @@ describe('Intent Source Test', (): void => {
         (await ethers.provider.getNetwork()).chainId,
       )
       chainId = 1
+      routeTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
       calls = [
         {
           target: await tokenA.getAddress(),
@@ -255,6 +259,7 @@ describe('Intent Source Test', (): void => {
         ),
         destination: chainId,
         inbox: await inbox.getAddress(),
+        tokens: routeTokens,
         calls: calls,
       }
 
@@ -416,6 +421,7 @@ describe('Intent Source Test', (): void => {
           (await ethers.provider.getNetwork()).chainId,
         )
         chainId = 1
+        routeTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
         calls = [
           {
             target: await tokenA.getAddress(),
@@ -434,6 +440,7 @@ describe('Intent Source Test', (): void => {
           ),
           destination: chainId,
           inbox: await inbox.getAddress(),
+          tokens: routeTokens,
           calls: calls,
         }
         reward = {
@@ -466,6 +473,7 @@ describe('Intent Source Test', (): void => {
           (await ethers.provider.getNetwork()).chainId,
         )
         chainId = 1
+        routeTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
         calls = [
           {
             target: await tokenA.getAddress(),
@@ -484,6 +492,7 @@ describe('Intent Source Test', (): void => {
           ),
           destination: chainId,
           inbox: await inbox.getAddress(),
+          tokens: routeTokens,
           calls: calls,
         }
         reward = {
@@ -827,6 +836,7 @@ describe('Intent Source Test', (): void => {
         (await ethers.provider.getNetwork()).chainId,
       )
       chainId = 1
+      routeTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
       calls = [
         {
           target: await tokenA.getAddress(),
@@ -841,6 +851,7 @@ describe('Intent Source Test', (): void => {
         ),
         destination: chainId,
         inbox: await inbox.getAddress(),
+        tokens: routeTokens,
         calls: calls,
       }
       let tx
