@@ -7,6 +7,7 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IInbox} from "./interfaces/IInbox.sol";
 import {Intent, Route, Call} from "./types/Intent.sol";
 import {Semver} from "./libs/Semver.sol";
+import {MessageEncoder} from "./libs/MessageEncoder.sol";
 
 /**
  * @title Inbox
@@ -14,7 +15,7 @@ import {Semver} from "./libs/Semver.sol";
  * @dev Validates intent hash authenticity and executes calldata. Enables provers
  * to claim rewards on the source chain by checking the fulfilled mapping
  */
-contract Inbox is IInbox, Ownable, Semver {
+contract Inbox is IInbox, Ownable, Semver, MessageEncoder {
     using TypeCasts for address;
 
     // Mapping of intent hash on the src chain to its fulfillment
@@ -130,6 +131,10 @@ contract Inbox is IInbox, Ownable, Semver {
         claimants[0] = _claimant;
 
         bytes memory messageBody = abi.encode(hashes, claimants);
+        bytes memory message = _encodeMessage(
+            MessageType.STANDARD,
+            messageBody
+        );
         bytes32 _prover32 = _prover.addressToBytes32();
 
         emit HyperInstantFulfillment(_expectedHash, _route.source, _claimant);
@@ -137,7 +142,7 @@ contract Inbox is IInbox, Ownable, Semver {
         uint256 fee = fetchFee(
             _route.source,
             _prover32,
-            messageBody,
+            message,
             _metadata,
             _postDispatchHook
         );
@@ -163,13 +168,13 @@ contract Inbox is IInbox, Ownable, Semver {
             IMailbox(mailbox).dispatch{value: fee}(
                 uint32(_route.source),
                 _prover32,
-                messageBody
+                message
             );
         } else {
             IMailbox(mailbox).dispatch{value: fee}(
                 uint32(_route.source),
                 _prover32,
-                messageBody,
+                message,
                 _metadata,
                 IPostDispatchHook(_postDispatchHook)
             );
@@ -253,11 +258,79 @@ contract Inbox is IInbox, Ownable, Semver {
             claimants[i] = claimant;
         }
         bytes memory messageBody = abi.encode(_intentHashes, claimants);
-        bytes32 _prover32 = _prover.addressToBytes32();
-        uint256 fee = fetchFee(
+        bytes memory message = _encodeMessage(
+            MessageType.STANDARD,
+            messageBody
+        );
+
+        _dispatchMessage(
             _sourceChainID,
-            _prover32,
-            messageBody,
+            _prover,
+            message,
+            _metadata,
+            _postDispatchHook
+        );
+    }
+
+    function sendCompressedBatch(
+        uint256 _sourceChainID,
+        address _prover,
+        bytes32[] calldata _intentHashes
+    ) external payable {
+        sendCompressedBatchWithRelayer(
+            _sourceChainID,
+            _prover,
+            _intentHashes,
+            bytes(""),
+            address(0)
+        );
+    }
+
+    function sendCompressedBatchWithRelayer(
+        uint256 _sourceChainID,
+        address _prover,
+        bytes32[] calldata _intentHashes,
+        bytes memory _metadata,
+        address _postDispatchHook
+    ) public payable {
+        uint256 size = _intentHashes.length;
+        address[] memory claimants = new address[](size);
+        for (uint256 i = 0; i < size; i++) {
+            address claimant = fulfilled[_intentHashes[i]];
+            if (claimant == address(0)) {
+                revert IntentNotFulfilled(_intentHashes[i]);
+            }
+            claimants[i] = claimant;
+        }
+        bytes memory messageBody = abi.encode(_intentHashes, claimants);
+        bytes32 rootHash = keccak256(messageBody);
+        bytes memory rootHashBytes = abi.encodePacked(rootHash);
+        bytes memory message = _encodeMessage(
+            MessageType.COMPRESSED,
+            rootHashBytes
+        );
+
+        _dispatchMessage(
+            _sourceChainID,
+            _prover,
+            message,
+            _metadata,
+            _postDispatchHook
+        );
+    }
+
+    function _dispatchMessage(
+        uint256 _targetChainID,
+        address _target,
+        bytes memory _messageBody,
+        bytes memory _metadata,
+        address _postDispatchHook
+    ) internal {
+        bytes32 target32 = _target.addressToBytes32();
+        uint256 fee = fetchFee(
+            _targetChainID,
+            target32,
+            _messageBody,
             _metadata,
             _postDispatchHook
         );
@@ -274,15 +347,15 @@ contract Inbox is IInbox, Ownable, Semver {
         }
         if (_postDispatchHook == address(0)) {
             IMailbox(mailbox).dispatch{value: fee}(
-                uint32(_sourceChainID),
-                _prover32,
-                messageBody
+                uint32(_targetChainID),
+                target32,
+                _messageBody
             );
         } else {
             IMailbox(mailbox).dispatch{value: fee}(
-                uint32(_sourceChainID),
-                _prover32,
-                messageBody,
+                uint32(_targetChainID),
+                target32,
+                _messageBody,
                 _metadata,
                 IPostDispatchHook(_postDispatchHook)
             );
