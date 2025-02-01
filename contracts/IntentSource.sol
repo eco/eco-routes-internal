@@ -154,7 +154,7 @@ contract IntentSource is IIntentSource, Semver {
 
         uint256 callsLength = permitCalls.length;
 
-        for (uint256 i = 0; i < callsLength; i++) {
+        for (uint256 i = 0; i < callsLength; ++i) {
             Call calldata call = permitCalls[i];
 
             (bool success, ) = call.target.call(call.data);
@@ -239,7 +239,7 @@ contract IntentSource is IIntentSource, Semver {
                 }
             }
 
-            for (uint256 i = 0; i < rewardsLength; i++) {
+            for (uint256 i = 0; i < rewardsLength; ++i) {
                 IERC20(reward.tokens[i].token).safeTransferFrom(
                     msg.sender,
                     vault,
@@ -316,7 +316,7 @@ contract IntentSource is IIntentSource, Semver {
             revert ArrayLengthMismatch();
         }
 
-        for (uint256 i = 0; i < length; i++) {
+        for (uint256 i = 0; i < length; ++i) {
             withdrawRewards(routeHashes[i], rewards[i]);
         }
     }
@@ -367,7 +367,7 @@ contract IntentSource is IIntentSource, Semver {
         uint256 rewardsLength = reward.tokens.length;
 
         if (vault.balance < reward.nativeValue) return false;
-        for (uint256 i = 0; i < rewardsLength; i++) {
+        for (uint256 i = 0; i < rewardsLength; ++i) {
             address token = reward.tokens[i].token;
             uint256 amount = reward.tokens[i].amount;
             uint256 balance = IERC20(token).balanceOf(vault);

@@ -119,7 +119,7 @@ interface IIntentSource is ISemver {
      * @param source Source chain ID
      * @param destination Destination chain ID
      * @param inbox Address of inbox contract on destination chain
-     * @param requiredTokens Array of tokens required for execution of calls on destination chain
+     * @param routeTokens Array of tokens required for execution of calls on destination chain
      * @param calls Array of instruction calls to execute
      * @param creator Address that created the intent
      * @param prover Address of prover contract for validation
@@ -133,7 +133,7 @@ interface IIntentSource is ISemver {
         uint256 source,
         uint256 destination,
         address inbox,
-        TokenAmount[] requiredTokens,
+        TokenAmount[] routeTokens,
         Call[] calls,
         address indexed creator,
         address indexed prover,

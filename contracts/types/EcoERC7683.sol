@@ -39,7 +39,7 @@ struct OnchainCrosschainOrderData {
 struct GaslessCrosschainOrderData {
     uint256 destination;
     address inbox;
-    TokenAmount[] requiredTokens;
+    TokenAmount[] routeTokens;
     Call[] calls;
     address prover;
     uint256 nativeValue;

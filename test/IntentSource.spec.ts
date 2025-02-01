@@ -119,6 +119,7 @@ describe('Intent Source Test', (): void => {
         ),
         destination: chainId,
         inbox: await inbox.getAddress(),
+
         calls: calls,
       }
       reward = {
@@ -592,7 +593,7 @@ describe('Intent Source Test', (): void => {
         let salt = route.salt
         const routeHashes: BytesLike[] = []
         const rewards: Reward[] = []
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < 3; ++i) {
           route = {
             ...route,
             salt: (salt = keccak256(salt)),
@@ -620,7 +621,7 @@ describe('Intent Source Test', (): void => {
 
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(0)
 
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < 3; ++i) {
           await prover
             .connect(creator)
             .addProvenIntent(hashes[i], await claimant.getAddress())
@@ -638,7 +639,7 @@ describe('Intent Source Test', (): void => {
         let salt = route.salt
         const routeHashes: BytesLike[] = []
         const rewards: Reward[] = []
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < 3; ++i) {
           route = {
             ...route,
             salt: (salt = keccak256(salt)),
@@ -659,7 +660,7 @@ describe('Intent Source Test', (): void => {
             .publishIntent({ route, reward: rewards.at(-1)! }, true)
           tx = await tx.wait()
         }
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < 3; ++i) {
           route = {
             ...route,
             salt: (salt = keccak256(salt)),
@@ -691,7 +692,7 @@ describe('Intent Source Test', (): void => {
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(0)
         expect(await tokenB.balanceOf(await claimant.getAddress())).to.eq(0)
 
-        for (let i = 0; i < 6; i++) {
+        for (let i = 0; i < 6; ++i) {
           await prover
             .connect(creator)
             .addProvenIntent(hashes[i], await claimant.getAddress())
@@ -712,7 +713,7 @@ describe('Intent Source Test', (): void => {
         let salt = route.salt
         const routeHashes: BytesLike[] = []
         const rewards: Reward[] = []
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < 3; ++i) {
           route = {
             ...route,
             salt: (salt = keccak256(salt)),
@@ -737,7 +738,7 @@ describe('Intent Source Test', (): void => {
           )
           tx = await tx.wait()
         }
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < 3; ++i) {
           route = {
             ...route,
             salt: (salt = keccak256(salt)),
@@ -765,7 +766,7 @@ describe('Intent Source Test', (): void => {
           )
           tx = await tx.wait()
         }
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < 3; ++i) {
           route = {
             ...route,
             salt: (salt = keccak256(salt)),
@@ -798,7 +799,7 @@ describe('Intent Source Test', (): void => {
           await claimant.getAddress(),
         )
 
-        for (let i = 0; i < 9; i++) {
+        for (let i = 0; i < 9; ++i) {
           await prover
             .connect(creator)
             .addProvenIntent(hashes[i], await claimant.getAddress())
@@ -845,7 +846,7 @@ describe('Intent Source Test', (): void => {
       let tx
       let routeHashes: BytesLike[] = []
       let rewards: Reward[] = []
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 5; ++i) {
         route = {
           ...route,
           salt: (salt = keccak256(salt)),
@@ -873,7 +874,7 @@ describe('Intent Source Test', (): void => {
         )
         tx = await tx.wait()
       }
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 5; ++i) {
         route = {
           ...route,
           salt: (salt = keccak256(salt)),
@@ -917,7 +918,7 @@ describe('Intent Source Test', (): void => {
         await claimant.getAddress(),
       )
 
-      for (let i = 0; i < hashes.length; i++) {
+      for (let i = 0; i < hashes.length; ++i) {
         await prover
           .connect(creator)
           .addProvenIntent(hashes[i], await claimant.getAddress())
