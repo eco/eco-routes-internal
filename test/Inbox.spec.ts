@@ -19,7 +19,7 @@ import {
   TokenAmount,
 } from '../utils/intent'
 
-describe.only('Inbox Test', (): void => {
+describe('Inbox Test', (): void => {
   let inbox: Inbox
   let mailbox: TestMailbox
   let erc20: TestERC20
