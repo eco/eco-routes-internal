@@ -45,6 +45,7 @@ describe('Origin Settler Test', (): void => {
   let salt: BytesLike
   let nonce: number
   let chainId: number
+  let routeTokens: TokenAmount[]
   let calls: Call[]
   let expiry: number
   const rewardNativeEth: bigint = ethers.parseEther('2')
@@ -145,6 +146,7 @@ describe('Origin Settler Test', (): void => {
     beforeEach(async (): Promise<void> => {
       expiry = (await time.latest()) + 123
       chainId = 1
+      routeTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
       calls = [
         {
           target: await tokenA.getAddress(),
@@ -166,6 +168,7 @@ describe('Origin Settler Test', (): void => {
         ),
         destination: chainId,
         inbox: await inbox.getAddress(),
+        tokens: routeTokens,
         calls,
       }
       reward = {
@@ -199,15 +202,16 @@ describe('Origin Settler Test', (): void => {
       gaslessCrosschainOrderData = {
         destination: chainId,
         inbox: await inbox.getAddress(),
-        calls,
+        routeTokens: routeTokens,
+        calls: calls,
         prover: await prover.getAddress(),
         nativeValue: reward.nativeValue,
-        tokens: reward.tokens,
+        rewardTokens: reward.tokens,
       }
       gaslessCrosschainOrder = {
         originSettler: await originSettler.getAddress(),
         user: creator.address,
-        nonce,
+        nonce: nonce,
         originChainId: Number(
           (await originSettler.runner?.provider?.getNetwork())?.chainId,
         ),
@@ -287,6 +291,7 @@ describe('Origin Settler Test', (): void => {
             ),
             chainId,
             await inbox.getAddress(),
+            routeTokens.map(Object.values),
             calls.map(Object.values),
             await creator.getAddress(),
             await prover.getAddress(),
@@ -317,7 +322,20 @@ describe('Origin Settler Test', (): void => {
           onchainCrosschainOrder.fillDeadline,
         )
         expect(resolvedOrder.orderId).to.eq(intentHash)
-        expect(resolvedOrder.maxSpent.length).to.eq(0)
+        expect(resolvedOrder.maxSpent.length).to.eq(routeTokens.length)
+        for (let i = 0; i < resolvedOrder.maxSpent.length; i++) {
+          expect(resolvedOrder.maxSpent[i].token).to.eq(
+            ethers.zeroPadBytes(route.tokens[i].token, 32),
+          )
+          expect(resolvedOrder.maxSpent[i].amount).to.eq(route.tokens[i].amount)
+          expect(resolvedOrder.maxSpent[i].recipient).to.eq(
+            ethers.zeroPadBytes(ethers.ZeroAddress, 32),
+          )
+          expect(resolvedOrder.maxSpent[i].chainId).to.eq(
+            onchainCrosschainOrderData.route.destination,
+          )
+        }
+
         expect(resolvedOrder.minReceived.length).to.eq(
           reward.tokens.length + (reward.nativeValue > 0 ? 1 : 0),
         )
@@ -396,7 +414,19 @@ describe('Origin Settler Test', (): void => {
           gaslessCrosschainOrder.fillDeadline,
         )
         expect(resolvedOrder.orderId).to.eq(intentHash)
-        expect(resolvedOrder.maxSpent.length).to.eq(0)
+        expect(resolvedOrder.maxSpent.length).to.eq(routeTokens.length)
+        for (let i = 0; i < resolvedOrder.maxSpent.length; i++) {
+          expect(resolvedOrder.maxSpent[i].token).to.eq(
+            ethers.zeroPadBytes(route.tokens[i].token, 32),
+          )
+          expect(resolvedOrder.maxSpent[i].amount).to.eq(route.tokens[i].amount)
+          expect(resolvedOrder.maxSpent[i].recipient).to.eq(
+            ethers.zeroPadBytes(ethers.ZeroAddress, 32),
+          )
+          expect(resolvedOrder.maxSpent[i].chainId).to.eq(
+            onchainCrosschainOrderData.route.destination,
+          )
+        }
         expect(resolvedOrder.minReceived.length).to.eq(
           reward.tokens.length + (reward.nativeValue > 0 ? 1 : 0),
         )

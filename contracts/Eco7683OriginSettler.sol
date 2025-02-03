@@ -93,10 +93,8 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         if (!_verifyOpenFor(_order, _signature)) {
             revert BadSignature();
         }
-
         GaslessCrosschainOrderData memory gaslessCrosschainOrderData = abi
             .decode(_order.orderData, (GaslessCrosschainOrderData));
-
         if (_order.originChainId != block.chainid) {
             revert OriginChainIDMismatch();
         }

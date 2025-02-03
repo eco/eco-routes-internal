@@ -13,10 +13,11 @@ export type OnchainCrosschainOrderData = {
 export type GaslessCrosschainOrderData = {
   destination: number
   inbox: string
+  routeTokens: TokenAmount[]
   calls: Call[]
   prover: string
   nativeValue: bigint
-  tokens: TokenAmount[]
+  rewardTokens: TokenAmount[]
 }
 
 export type OnchainCrosschainOrder = {
@@ -70,6 +71,14 @@ const GaslessCrosschainOrderDataStruct = [
   { name: 'destination', type: 'uint256' },
   { name: 'inbox', type: 'address' },
   {
+    name: 'routeTokens',
+    type: 'tuple[]',
+    components: [
+      { name: 'token', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+  },
+  {
     name: 'calls',
     type: 'tuple[]',
     components: [
@@ -81,7 +90,7 @@ const GaslessCrosschainOrderDataStruct = [
   { name: 'prover', type: 'address' },
   { name: 'nativeValue', type: 'uint256' },
   {
-    name: 'tokens',
+    name: 'rewardTokens',
     type: 'tuple[]',
     components: [
       { name: 'token', type: 'address' },
