@@ -11,10 +11,16 @@ import {IntentSource} from "./IntentSource.sol";
 import {Inbox} from "./Inbox.sol";
 import {IProver} from "./interfaces/IProver.sol";
 import {Semver} from "./libs/Semver.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 contract Eco7683DestinationSettler is IDestinationSettler, Semver {
     using ECDSA for bytes32;
+
+    uint256 constant MAX_UINT256 =
+        uint256(
+            0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+        );
 
     /**
      * @notice Emitted when an intent is fulfilled using Hyperlane instant proving
@@ -64,7 +70,7 @@ contract Eco7683DestinationSettler is IDestinationSettler, Semver {
             _fillerData,
             (IProver.ProofType)
         );
-
+        doApprovals(address(inbox), intent.route.tokens);
         if (proofType == IProver.ProofType.Storage) {
             (, address claimant) = abi.decode(
                 _fillerData,
@@ -97,6 +103,18 @@ contract Eco7683DestinationSettler is IDestinationSettler, Semver {
             );
         } else {
             revert BadProver();
+        }
+    }
+
+    function doApprovals(
+        address _inbox,
+        TokenAmount[] memory _tokens
+    ) internal {
+        for (uint256 i = 0; i < _tokens.length; i++) {
+            IERC20 token = IERC20(_tokens[i].token);
+            if (token.allowance(address(this), _inbox) < MAX_UINT256) {
+                token.approve(_inbox, MAX_UINT256);
+            }
         }
     }
 

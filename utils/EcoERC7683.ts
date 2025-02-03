@@ -35,6 +35,14 @@ const OnchainCrosschainOrderDataStruct = [
       { name: 'destination', type: 'uint256' },
       { name: 'inbox', type: 'uint256' },
       {
+        name: 'tokens',
+        type: 'tuple[]',
+        components: [
+          { name: 'token', type: 'address' },
+          { name: 'amount', type: 'uint256' },
+        ],
+      },
+      {
         name: 'calls',
         type: 'tuple[]',
         components: [
