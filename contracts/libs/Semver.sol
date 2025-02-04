@@ -5,6 +5,6 @@ import {ISemver} from "../interfaces/ISemver.sol";
 
 abstract contract Semver is ISemver {
     function version() external pure returns (string memory) {
-        return "1.6.12-e84c91d";
+        return "1.7.10-6d4471d";
     }
 }

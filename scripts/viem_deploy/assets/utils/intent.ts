@@ -167,19 +167,6 @@ export function decodeIntent(intent: Hex): IntentType {
 }
 
 /**
- * Encodes a transferNative function call
- * @param to the address to send to
- * @param value the amount to send
- */
-export function encodeTransferNative(to: Hex, value: bigint): Hex {
-  return encodeFunctionData({
-    abi: InboxAbi,
-    functionName: 'transferNative',
-    args: [to, value],
-  })
-}
-
-/**
  * Hashes the route of an intent
  * @param route the route to hash
  * @returns
