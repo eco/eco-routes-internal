@@ -6,7 +6,7 @@ import "../prover/BaseProver.sol";
 
 contract TestProver is BaseProver {
     function version() external pure returns (string memory) {
-        return "1.5.23-e80e631";
+        return "1.6.12-e84c91d";
     }
 
     function addProvenIntent(bytes32 _hash, address _claimant) public {
