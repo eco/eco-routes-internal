@@ -4,8 +4,11 @@ pragma solidity ^0.8.26;
 import {IMailbox, IPostDispatchHook} from "@hyperlane-xyz/core/contracts/interfaces/IMailbox.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+
 import {IInbox} from "./interfaces/IInbox.sol";
-import {Intent, Route, Call} from "./types/Intent.sol";
+import {Intent, Route, Call, TokenAmount} from "./types/Intent.sol";
 import {Semver} from "./libs/Semver.sol";
 
 /**
@@ -16,6 +19,7 @@ import {Semver} from "./libs/Semver.sol";
  */
 contract Inbox is IInbox, Ownable, Semver {
     using TypeCasts for address;
+    using SafeERC20 for IERC20;
 
     // Mapping of intent hash on the src chain to its fulfillment
     mapping(bytes32 => address) public fulfilled;
@@ -42,7 +46,7 @@ contract Inbox is IInbox, Ownable, Semver {
         address[] memory _solvers
     ) Ownable(_owner) {
         isSolvingPublic = _isSolvingPublic;
-        for (uint256 i = 0; i < _solvers.length; i++) {
+        for (uint256 i = 0; i < _solvers.length; ++i) {
             solverWhitelist[_solvers[i]] = true;
             emit SolverWhitelistChanged(_solvers[i], true);
         }
@@ -246,7 +250,7 @@ contract Inbox is IInbox, Ownable, Semver {
     ) public payable {
         uint256 size = _intentHashes.length;
         address[] memory claimants = new address[](size);
-        for (uint256 i = 0; i < size; i++) {
+        for (uint256 i = 0; i < size; ++i) {
             address claimant = fulfilled[_intentHashes[i]];
             if (claimant == address(0)) {
                 revert IntentNotFulfilled(_intentHashes[i]);
@@ -405,10 +409,21 @@ contract Inbox is IInbox, Ownable, Semver {
         fulfilled[intentHash] = _claimant;
         emit Fulfillment(_expectedHash, _route.source, _claimant);
 
+        uint256 routeTokenCount = _route.tokens.length;
+        // Transfer ERC20 tokens to the inbox
+        for (uint256 i = 0; i < routeTokenCount; ++i) {
+            TokenAmount memory approval = _route.tokens[i];
+            IERC20(approval.token).safeTransferFrom(
+                msg.sender,
+                address(this),
+                approval.amount
+            );
+        }
+
         // Store the results of the calls
         bytes[] memory results = new bytes[](_route.calls.length);
 
-        for (uint256 i = 0; i < _route.calls.length; i++) {
+        for (uint256 i = 0; i < _route.calls.length; ++i) {
             Call calldata call = _route.calls[i];
             if (call.target == mailbox) {
                 // no executing calls on the mailbox

@@ -122,7 +122,7 @@ describe('HyperProver Test', (): void => {
       const calldata = await encodeTransfer(await claimant.getAddress(), amount)
       const timeStamp = (await time.latest()) + 1000
       const salt = ethers.encodeBytes32String('0x987')
-
+      const routeTokens = [{ token: await token.getAddress(), amount: amount }]
       const route = {
         salt: salt,
         source: sourceChainID,
@@ -130,6 +130,7 @@ describe('HyperProver Test', (): void => {
           (await hyperProver.runner?.provider?.getNetwork())?.chainId,
         ),
         inbox: await inbox.getAddress(),
+        tokens: routeTokens,
         calls: [
           {
             target: await token.getAddress(),
@@ -154,7 +155,7 @@ describe('HyperProver Test', (): void => {
         intentHash,
         await hyperProver.getAddress(),
       ]
-      await token.connect(solver).transfer(await inbox.getAddress(), amount)
+      await token.connect(solver).approve(await inbox.getAddress(), amount)
 
       expect(await hyperProver.provenIntents(intentHash)).to.eq(
         ethers.ZeroAddress,
@@ -260,6 +261,9 @@ describe('HyperProver Test', (): void => {
       const calldata = await encodeTransfer(await claimant.getAddress(), amount)
       const timeStamp = (await time.latest()) + 1000
       let salt = ethers.encodeBytes32String('0x987')
+      const routeTokens: TokenAmount[] = [
+        { token: await token.getAddress(), amount: amount },
+      ]
       const route = {
         salt: salt,
         source: sourceChainID,
@@ -267,6 +271,7 @@ describe('HyperProver Test', (): void => {
           (await hyperProver.runner?.provider?.getNetwork())?.chainId,
         ),
         inbox: await inbox.getAddress(),
+        tokens: routeTokens,
         calls: [
           {
             target: await token.getAddress(),
@@ -280,7 +285,7 @@ describe('HyperProver Test', (): void => {
         prover: await hyperProver.getAddress(),
         deadline: timeStamp + 1000,
         nativeValue: 1n,
-        tokens: [],
+        tokens: [] as TokenAmount[],
       }
 
       const { intentHash: intentHash0, rewardHash: rewardHash0 } = hashIntent({
@@ -295,7 +300,7 @@ describe('HyperProver Test', (): void => {
         intentHash0,
         await hyperProver.getAddress(),
       ]
-      await token.connect(solver).transfer(await inbox.getAddress(), amount)
+      await token.connect(solver).approve(await inbox.getAddress(), amount)
 
       expect(await hyperProver.provenIntents(intentHash0)).to.eq(
         ethers.ZeroAddress,
@@ -318,6 +323,7 @@ describe('HyperProver Test', (): void => {
           (await hyperProver.runner?.provider?.getNetwork())?.chainId,
         ),
         inbox: await inbox.getAddress(),
+        tokens: routeTokens,
         calls: [
           {
             target: await token.getAddress(),
@@ -346,7 +352,7 @@ describe('HyperProver Test', (): void => {
         await hyperProver.getAddress(),
       ]
 
-      await token.connect(solver).transfer(await inbox.getAddress(), amount)
+      await token.connect(solver).approve(await inbox.getAddress(), amount)
 
       await expect(inbox.connect(solver).fulfillHyperBatched(...fulfillData1))
         .to.emit(inbox, `AddToBatch`)

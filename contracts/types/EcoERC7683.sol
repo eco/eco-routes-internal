@@ -23,7 +23,7 @@ struct OnchainCrosschainOrderData {
     address creator;
     address prover;
     uint256 nativeValue;
-    TokenAmount[] tokens;
+    TokenAmount[] rewardTokens;
 }
 /**
  * @notice contains everything which, when combined with other aspects of GaslessCrossChainOrder
@@ -39,10 +39,11 @@ struct OnchainCrosschainOrderData {
 struct GaslessCrosschainOrderData {
     uint256 destination;
     address inbox;
+    TokenAmount[] routeTokens;
     Call[] calls;
     address prover;
     uint256 nativeValue;
-    TokenAmount[] tokens;
+    TokenAmount[] rewardTokens;
 }
 
 //EIP712 typehashes

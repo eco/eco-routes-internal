@@ -17,6 +17,7 @@ export type Route = {
   source: number
   destination: number
   inbox: string
+  tokens: TokenAmount[]
   calls: Call[]
 }
 
@@ -38,6 +39,14 @@ const RouteStruct = [
   { name: 'source', type: 'uint256' },
   { name: 'destination', type: 'uint256' },
   { name: 'inbox', type: 'address' },
+  {
+    name: 'tokens',
+    type: 'tuple[]',
+    components: [
+      { name: 'token', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+  },
   {
     name: 'calls',
     type: 'tuple[]',

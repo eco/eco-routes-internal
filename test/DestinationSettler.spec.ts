@@ -22,7 +22,7 @@ import {
   encodeOnchainCrosschainOrder,
 } from '../utils/EcoERC7683'
 
-describe('Inbox Test', (): void => {
+describe('Destination Settler Test', (): void => {
   let inbox: Inbox
   let erc20: TestERC20
   let owner: SignerWithAddress
@@ -97,7 +97,9 @@ describe('Inbox Test', (): void => {
     const _timestamp = (await time.latest()) + timeDelta
 
     const _calldata1 = await encodeTransfer(creator.address, amount)
-
+    const routeTokens = [
+      { token: await erc20.getAddress(), amount: mintAmount },
+    ]
     const _calls: Call[] = [
       {
         target: creator.address,
@@ -111,6 +113,7 @@ describe('Inbox Test', (): void => {
       source: sourceChainID,
       destination: Number((await owner.provider.getNetwork()).chainId),
       inbox: await inbox.getAddress(),
+      tokens: routeTokens,
       calls: _calls,
     }
     const _reward: Reward = {

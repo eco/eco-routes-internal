@@ -16,6 +16,7 @@ import {
   Route,
   Reward,
   Intent,
+  TokenAmount,
 } from '../utils/intent'
 
 describe('Inbox Test', (): void => {
@@ -32,6 +33,7 @@ describe('Inbox Test', (): void => {
   let rewardHash: string
   let intentHash: string
   let otherHash: string
+  let routeTokens: TokenAmount[]
   let calls: Call[]
   let otherCalls: Call[]
   let mockHyperProver: TestProver
@@ -61,6 +63,7 @@ describe('Inbox Test', (): void => {
     const erc20Factory = await ethers.getContractFactory('TestERC20')
     const erc20 = await erc20Factory.deploy('eco', 'eco')
     await erc20.mint(solver.address, mintAmount)
+    await erc20.mint(owner.address, mintAmount)
 
     return {
       inbox,
@@ -87,7 +90,7 @@ describe('Inbox Test', (): void => {
     erc20Address = await erc20.getAddress()
     const _calldata = await encodeTransfer(dstAddr.address, amount)
     const _timestamp = (await time.latest()) + timeDelta
-
+    routeTokens = [{ token: await erc20.getAddress(), amount: amount }]
     const _calls: Call[] = [
       {
         target: erc20Address,
@@ -100,6 +103,7 @@ describe('Inbox Test', (): void => {
       source: sourceChainID,
       destination: Number((await owner.provider.getNetwork()).chainId),
       inbox: await inbox.getAddress(),
+      tokens: routeTokens,
       calls: _calls,
     }
     const _routeHash = keccak256(encodeRoute(_route))
@@ -247,11 +251,31 @@ describe('Inbox Test', (): void => {
           .fulfillStorage(route, rewardHash, ethers.ZeroAddress, intentHash),
       ).to.be.revertedWithCustomError(inbox, 'ZeroClaimant')
     })
-    it('should revert if the call fails', async () => {
+    it('should revert if the solver has not approved tokens for transfer', async () => {
       await expect(
         inbox
           .connect(solver)
           .fulfillStorage(route, rewardHash, dstAddr.address, intentHash),
+      ).to.be.revertedWithCustomError(erc20, 'ERC20InsufficientAllowance')
+    })
+    it('should revert if the call fails', async () => {
+      await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
+
+      const _route = {
+        ...route,
+        calls: [
+          {
+            target: await erc20.getAddress(),
+            data: await encodeTransfer(dstAddr.address, mintAmount * 100),
+            value: 0,
+          },
+        ],
+      }
+      const _intentHash = hashIntent({ route: _route, reward }).intentHash
+      await expect(
+        inbox
+          .connect(solver)
+          .fulfillStorage(_route, rewardHash, dstAddr.address, _intentHash),
       ).to.be.revertedWithCustomError(inbox, 'IntentCallFailed')
     })
     it('should revert if one of the targets is the mailbox', async () => {
@@ -267,6 +291,7 @@ describe('Inbox Test', (): void => {
         ],
       }
       const _intentHash = hashIntent({ route: _route, reward }).intentHash
+      await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
       await expect(
         inbox
           .connect(solver)
@@ -276,7 +301,7 @@ describe('Inbox Test', (): void => {
     it('should not revert when called by a whitelisted solver', async () => {
       expect(await inbox.solverWhitelist(solver)).to.be.true
 
-      await erc20.connect(solver).transfer(await inbox.getAddress(), mintAmount)
+      await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
 
       await expect(
         inbox
@@ -289,7 +314,7 @@ describe('Inbox Test', (): void => {
       await inbox.connect(owner).makeSolvingPublic()
       expect(await inbox.isSolvingPublic()).to.be.true
 
-      await erc20.connect(solver).transfer(await inbox.getAddress(), mintAmount)
+      await erc20.connect(owner).approve(await inbox.getAddress(), mintAmount)
 
       await expect(
         inbox
@@ -304,7 +329,7 @@ describe('Inbox Test', (): void => {
       expect(await erc20.balanceOf(dstAddr.address)).to.equal(0)
 
       // transfer the tokens to the inbox so it can process the transaction
-      await erc20.connect(solver).transfer(await inbox.getAddress(), mintAmount)
+      await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
 
       // should emit an event
       await expect(
@@ -326,7 +351,7 @@ describe('Inbox Test', (): void => {
 
     it('should revert if the intent has already been fulfilled', async () => {
       // transfer the tokens to the inbox so it can process the transaction
-      await erc20.connect(solver).transfer(await inbox.getAddress(), mintAmount)
+      await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
 
       // should emit an event
       await expect(
@@ -352,7 +377,7 @@ describe('Inbox Test', (): void => {
       await inbox.connect(owner).setMailbox(await mailbox.getAddress())
       expect(await mailbox.dispatched()).to.be.false
 
-      await erc20.connect(solver).transfer(await inbox.getAddress(), mintAmount)
+      await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
     })
     it('fetches the fee', async () => {
       expect(
@@ -751,7 +776,7 @@ describe('Inbox Test', (): void => {
         await erc20.mint(solver.address, newTokenAmount)
         await erc20
           .connect(solver)
-          .transfer(await inbox.getAddress(), newTokenAmount)
+          .approve(await inbox.getAddress(), newTokenAmount)
 
         await inbox
           .connect(solver)
