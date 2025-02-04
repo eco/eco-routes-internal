@@ -4,6 +4,7 @@ import {
   base,
   baseSepolia,
   arbitrum,
+  arbitrumSepolia,
 } from '@alchemy/aa-core'
 import { Chain, mantle } from 'viem/chains'
 
@@ -18,7 +19,7 @@ export const mainnetDep: Chain[] = [
 
 // Test chains
 export const sepoliaDep: Chain[] = [
-  // arbitrumSepolia,
+  arbitrumSepolia,
   baseSepolia,
   // mantleSepoliaTestnet,
   optimismSepolia,
