@@ -31,6 +31,7 @@ describe('Intent Source Test', (): void => {
 
   let salt: BytesLike
   let chainId: number
+  let routeTokens: TokenAmount[]
   let calls: Call[]
   let expiry: number
   const rewardNativeEth: bigint = ethers.parseEther('2')
@@ -97,6 +98,7 @@ describe('Intent Source Test', (): void => {
     beforeEach(async (): Promise<void> => {
       expiry = (await time.latest()) + 123
       chainId = 1
+      routeTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
       calls = [
         {
           target: await tokenA.getAddress(),
@@ -119,6 +121,7 @@ describe('Intent Source Test', (): void => {
         ),
         destination: chainId,
         inbox: await inbox.getAddress(),
+        tokens: routeTokens,
         calls: calls,
       }
       reward = {
@@ -218,6 +221,7 @@ describe('Intent Source Test', (): void => {
           Number((await intentSource.runner?.provider?.getNetwork())?.chainId),
           chainId,
           await inbox.getAddress(),
+          routeTokens.map(Object.values),
           calls.map(Object.values),
           await creator.getAddress(),
           await prover.getAddress(),
@@ -235,6 +239,7 @@ describe('Intent Source Test', (): void => {
         (await ethers.provider.getNetwork()).chainId,
       )
       chainId = 1
+      routeTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
       calls = [
         {
           target: await tokenA.getAddress(),
@@ -254,6 +259,7 @@ describe('Intent Source Test', (): void => {
         ),
         destination: chainId,
         inbox: await inbox.getAddress(),
+        tokens: routeTokens,
         calls: calls,
       }
 
@@ -415,6 +421,7 @@ describe('Intent Source Test', (): void => {
           (await ethers.provider.getNetwork()).chainId,
         )
         chainId = 1
+        routeTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
         calls = [
           {
             target: await tokenA.getAddress(),
@@ -433,6 +440,7 @@ describe('Intent Source Test', (): void => {
           ),
           destination: chainId,
           inbox: await inbox.getAddress(),
+          tokens: routeTokens,
           calls: calls,
         }
         reward = {
@@ -465,6 +473,7 @@ describe('Intent Source Test', (): void => {
           (await ethers.provider.getNetwork()).chainId,
         )
         chainId = 1
+        routeTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
         calls = [
           {
             target: await tokenA.getAddress(),
@@ -483,6 +492,7 @@ describe('Intent Source Test', (): void => {
           ),
           destination: chainId,
           inbox: await inbox.getAddress(),
+          tokens: routeTokens,
           calls: calls,
         }
         reward = {
@@ -592,7 +602,7 @@ describe('Intent Source Test', (): void => {
         let salt = route.salt
         const routeHashes: BytesLike[] = []
         const rewards: Reward[] = []
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < 3; ++i) {
           route = {
             ...route,
             salt: (salt = keccak256(salt)),
@@ -620,7 +630,7 @@ describe('Intent Source Test', (): void => {
 
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(0)
 
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < 3; ++i) {
           await prover
             .connect(creator)
             .addProvenIntent(hashes[i], await claimant.getAddress())
@@ -638,7 +648,7 @@ describe('Intent Source Test', (): void => {
         let salt = route.salt
         const routeHashes: BytesLike[] = []
         const rewards: Reward[] = []
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < 3; ++i) {
           route = {
             ...route,
             salt: (salt = keccak256(salt)),
@@ -659,7 +669,7 @@ describe('Intent Source Test', (): void => {
             .publishIntent({ route, reward: rewards.at(-1)! }, true)
           tx = await tx.wait()
         }
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < 3; ++i) {
           route = {
             ...route,
             salt: (salt = keccak256(salt)),
@@ -691,7 +701,7 @@ describe('Intent Source Test', (): void => {
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(0)
         expect(await tokenB.balanceOf(await claimant.getAddress())).to.eq(0)
 
-        for (let i = 0; i < 6; i++) {
+        for (let i = 0; i < 6; ++i) {
           await prover
             .connect(creator)
             .addProvenIntent(hashes[i], await claimant.getAddress())
@@ -712,7 +722,7 @@ describe('Intent Source Test', (): void => {
         let salt = route.salt
         const routeHashes: BytesLike[] = []
         const rewards: Reward[] = []
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < 3; ++i) {
           route = {
             ...route,
             salt: (salt = keccak256(salt)),
@@ -737,7 +747,7 @@ describe('Intent Source Test', (): void => {
           )
           tx = await tx.wait()
         }
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < 3; ++i) {
           route = {
             ...route,
             salt: (salt = keccak256(salt)),
@@ -765,7 +775,7 @@ describe('Intent Source Test', (): void => {
           )
           tx = await tx.wait()
         }
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < 3; ++i) {
           route = {
             ...route,
             salt: (salt = keccak256(salt)),
@@ -798,7 +808,7 @@ describe('Intent Source Test', (): void => {
           await claimant.getAddress(),
         )
 
-        for (let i = 0; i < 9; i++) {
+        for (let i = 0; i < 9; ++i) {
           await prover
             .connect(creator)
             .addProvenIntent(hashes[i], await claimant.getAddress())
@@ -826,6 +836,7 @@ describe('Intent Source Test', (): void => {
         (await ethers.provider.getNetwork()).chainId,
       )
       chainId = 1
+      routeTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
       calls = [
         {
           target: await tokenA.getAddress(),
@@ -840,12 +851,13 @@ describe('Intent Source Test', (): void => {
         ),
         destination: chainId,
         inbox: await inbox.getAddress(),
+        tokens: routeTokens,
         calls: calls,
       }
       let tx
       let routeHashes: BytesLike[] = []
       let rewards: Reward[] = []
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 5; ++i) {
         route = {
           ...route,
           salt: (salt = keccak256(salt)),
@@ -873,7 +885,7 @@ describe('Intent Source Test', (): void => {
         )
         tx = await tx.wait()
       }
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 5; ++i) {
         route = {
           ...route,
           salt: (salt = keccak256(salt)),
@@ -917,7 +929,7 @@ describe('Intent Source Test', (): void => {
         await claimant.getAddress(),
       )
 
-      for (let i = 0; i < hashes.length; i++) {
+      for (let i = 0; i < hashes.length; ++i) {
         await prover
           .connect(creator)
           .addProvenIntent(hashes[i], await claimant.getAddress())

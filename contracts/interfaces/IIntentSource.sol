@@ -119,12 +119,13 @@ interface IIntentSource is ISemver {
      * @param source Source chain ID
      * @param destination Destination chain ID
      * @param inbox Address of inbox contract on destination chain
+     * @param routeTokens Array of tokens required for execution of calls on destination chain
      * @param calls Array of instruction calls to execute
      * @param creator Address that created the intent
      * @param prover Address of prover contract for validation
      * @param deadline Timestamp by which intent must be fulfilled for reward claim
      * @param nativeValue Amount of native tokens offered as reward
-     * @param tokens Array of ERC20 tokens and amounts offered as rewards
+     * @param rewardTokens Array of ERC20 tokens and amounts offered as rewards
      */
     event IntentCreated(
         bytes32 indexed hash,
@@ -132,12 +133,13 @@ interface IIntentSource is ISemver {
         uint256 source,
         uint256 destination,
         address inbox,
+        TokenAmount[] routeTokens,
         Call[] calls,
         address indexed creator,
         address indexed prover,
         uint256 deadline,
         uint256 nativeValue,
-        TokenAmount[] tokens
+        TokenAmount[] rewardTokens
     );
 
     /**
