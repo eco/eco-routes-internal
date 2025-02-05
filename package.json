@@ -171,6 +171,6 @@
     "@hyperlane-xyz/sdk": "^5.1.0",
     "@openzeppelin/contracts": "^5.0.2",
     "@openzeppelin/contracts-upgradeable": "^5.0.2",
-    "viem": "^2.22.12"
+    "viem": "^2.22.21"
   }
 }
