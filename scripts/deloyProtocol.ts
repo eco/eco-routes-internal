@@ -84,7 +84,7 @@ export async function deployProtocol(
 
   const singletonDeployer = (await ethers.getContractAt(
     'Deployer',
-    '0xfc91Ac2e87Cc661B674DAcF0fB443a5bA5bcD0a3',
+    '0xce0042B868300000d44A59004Da54A005ffdcf9f',
   )) as any as Deployer
 
   console.log('gasLimit:', deployNetwork.gasLimit)
@@ -93,9 +93,9 @@ export async function deployProtocol(
   console.log(`** Deploying contracts to ${networkName + pre} network **`)
   console.log(`***************************************************`)
 
-  if (isZeroAddress(protocolDeploy.proverAddress)) {
-    await deployProver(salt, deployNetwork, singletonDeployer, proverConfig)
-  }
+  // if (isZeroAddress(protocolDeploy.proverAddress)) {
+  //   await deployProver(salt, deployNetwork, singletonDeployer, proverConfig)
+  // }
 
   if (isZeroAddress(protocolDeploy.intentSourceAddress)) {
     protocolDeploy.intentSourceAddress = (await deployIntentSource(
@@ -178,17 +178,17 @@ export async function deployIntentSource(
   singletonDeployer: Deployer,
 ) {
   const contractName = 'IntentSource'
-  const intentSourceFactory = await ethers.getContractFactory(contractName)
   const args = [deployNetwork.intentSource.counter]
-  const intentSourceTx = (await retryFunction(async () => {
-    return await intentSourceFactory.getDeployTransaction(args[0], args[1])
-  }, ethers.provider)) as unknown as ContractTransactionResponse
+  const intentSourceFactory = await ethers.getContractFactory(contractName)
+  const intentSourceTx = await intentSourceFactory.getDeployTransaction(args[0])
 
-  await retryFunction(async () => {
-    return await singletonDeployer.deploy(intentSourceTx.data, deploySalt, {
-      gasLimit: deployNetwork.gasLimit,
+  const deployTx = await singletonDeployer.deploy(
+    intentSourceTx.data,
+    deploySalt,
+    { gasLimit: deployNetwork.gasLimit },
+  )
+
     })
-  }, ethers.provider)
 
   const intentSourceAddress = ethers.getCreate2Address(
     singletonFactoryAddress,
