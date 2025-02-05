@@ -5,8 +5,7 @@ import {
   baseSepolia,
   arbitrum,
 } from '@alchemy/aa-core'
-import { Chain } from 'viem/chains'
-// import { abstractTestnet,  mainnet, mantle , abstract} from 'viem/chains'
+import { Chain, mainnet, abstract, polygon } from 'viem/chains'
 
 // Mainnet chains
 export const mainnetDep: Chain[] = [
@@ -14,9 +13,9 @@ export const mainnetDep: Chain[] = [
   base,
   // mantle,
   optimism,
-  // polygon,
-  // mainnet,
-  // abstract,
+  polygon,
+  mainnet,
+  abstract,
 ] as any
 
 // Test chains
