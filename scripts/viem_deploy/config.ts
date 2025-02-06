@@ -4,6 +4,12 @@ export const ViemDeployConfig: Record<
   number,
   { hyperlaneMailboxAddress: Hex }
 > = {
+  1: {
+    hyperlaneMailboxAddress: '0xc005dc82818d67AF737725bD4bf75435d065D239',
+  }, // mainnet
+  11155111: {
+    hyperlaneMailboxAddress: '0xfFAEF09B3cd11D9b20d1a19bECca54EEC2884766',
+  }, // sepolia
   10: {
     hyperlaneMailboxAddress: '0xd4C1905BB1D26BC93DAC913e13CaCC278CdCC80D',
   }, // optimism
@@ -34,5 +40,10 @@ export const ViemDeployConfig: Record<
   80002: {
     hyperlaneMailboxAddress: '0x54148470292C24345fb828B003461a9444414517',
   }, // polygon amoy
-  // abstract?
+  2741: {
+    hyperlaneMailboxAddress: '0x9BbDf86b272d224323136E15594fdCe487F40ce7',
+  }, // abstract
+  11124: {
+    hyperlaneMailboxAddress: '0x28f448885bEaaF662f8A9A6c9aF20fAd17A5a1DC',
+  }, // abstract testnet
 }

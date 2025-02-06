@@ -5,7 +5,14 @@ import {
   baseSepolia,
   arbitrum,
 } from '@alchemy/aa-core'
-import { Chain, mantle, polygon, polygonAmoy } from 'viem/chains'
+import {
+  abstractTestnet,
+  Chain,
+  mantle,
+  polygon,
+  polygonAmoy,
+  sepolia,
+} from 'viem/chains'
 
 // Mainnet chains
 export const mainnetDep: Chain[] = [
@@ -25,11 +32,12 @@ export const sepoliaDep: Chain[] = [
   // mantleSepoliaTestnet,
   optimismSepolia,
   polygonAmoy,
-  // abstractTestnet
+  sepolia,
+  abstractTestnet,
 ] as any
 
 /**
  * The chains to deploy from {@link ProtocolDeploy}
  */
-export const DeployChains = [mainnetDep].flat() as Chain[]
-// export const DeployChains = [sepoliaDep, mainnetDep].flat() as Chain[]
+// export const DeployChains = [mainnetDep].flat() as Chain[]
+export const DeployChains = [sepoliaDep, mainnetDep].flat() as Chain[]
