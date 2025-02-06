@@ -44,6 +44,7 @@ export const sepoliaDep: Chain[] = [
 
 /**
  * The chains to deploy from {@link ProtocolDeploy}
+ * Deployer 0xB963326B9969f841361E6B6605d7304f40f6b414
  */
 // export const DeployChains = [mainnetDep].flat() as Chain[]
 export const DeployChains = [sepoliaDep, mainnetDep].flat() as Chain[]
