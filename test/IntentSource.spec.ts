@@ -3,7 +3,7 @@ import { expect } from 'chai'
 import { ethers } from 'hardhat'
 import { TestERC20, IntentSource, TestProver, Inbox } from '../typechain-types'
 import { time, loadFixture } from '@nomicfoundation/hardhat-network-helpers'
-import { keccak256, BytesLike, ZeroAddress, EtherscanProvider } from 'ethers'
+import { keccak256, BytesLike, ZeroAddress } from 'ethers'
 import { encodeIdentifier, encodeTransfer } from '../utils/encode'
 import {
   encodeReward,
@@ -359,11 +359,11 @@ describe('Intent Source Test', (): void => {
         ).to.be.revertedWithCustomError(intentSource, 'RewardsAlreadyWithdrawn')
       })
       it('allows refund if already claimed', async () => {
-        expect(
+        await expect(
           intentSource.connect(otherPerson).withdrawRewards(routeHash, reward),
         )
           .to.emit(intentSource, 'Withdrawal')
-          .withArgs(intentHash, reward.creator)
+          .withArgs(intentHash, await claimant.getAddress())
 
         await expect(
           intentSource
