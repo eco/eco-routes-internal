@@ -69,7 +69,6 @@ export class ProtocolDeploy {
   // The salts to use for deploying the contracts, if emtpy it will generate random salts
   private salts?: SaltsType
 
-
   // The clients for the chains. Initialize once use multiple times
   private clients: {
     [key: string]: DeployWallletType
@@ -141,9 +140,14 @@ export class ProtocolDeploy {
     console.log('Deploying contracts with the account:', this.account.address)
 
     console.log('Deploying with base salt : ' + JSON.stringify(salt))
-    // await this.deployProver(chain, salt, opts)
-    await this.deployIntentSource(chain, salt, opts)
-    await this.deployInbox(chain, salt, true, opts)
+    try {
+      // await this.deployProver(chain, salt, opts)
+      await this.deployIntentSource(chain, salt, opts)
+      await this.deployInbox(chain, salt, true, opts)
+    } catch (e) {
+      console.error(`Failed to deploy contracts on ${chain.name}:`, e)
+      console.error('Moving onto next chain...')
+    }
   }
 
   /**
@@ -313,16 +317,20 @@ export class ProtocolDeploy {
 
       const deployerContract = this.getDepoyerContract(opts)
 
-      const hasDeployedAddress = await this.getDeployedAddress(client, deployerContract, encodedDeployData, salt)
+      const hasDeployedAddress = await this.getDeployedAddress(
+        client,
+        deployerContract,
+        encodedDeployData,
+        salt,
+      )
       let deployedAddress: Hex
       if (!hasDeployedAddress) {
-        const { request, result } =
-          await client.simulateContract({
-            address: deployerContract.address,
-            abi: deployerContract.abi,
-            functionName: 'deploy',
-            args: [encodedDeployData, salt],
-          })
+        const { request, result } = await client.simulateContract({
+          address: deployerContract.address,
+          abi: deployerContract.abi,
+          functionName: 'deploy',
+          args: [encodedDeployData, salt],
+        })
 
         await waitForNonceUpdate(
           client as any,
@@ -355,17 +363,23 @@ export class ProtocolDeploy {
         `Chain: ${chain.name}, ${name} address updated in addresses.json`,
       )
       // Verify the contract on Etherscan
-      console.log(`Verifying ${name} on Etherscan...`)
-      this.queueVerify.add(async () =>
-        verifyContract({
-          chainId: chain.id,
-          codeformat: 'solidity-standard-json-input',
-          constructorArguements: args,
-          contractname: name,
-          contractaddress: deployedAddress,
-          contractFilePath: `${parameters.path}/${name}.sol`,
-        }),
-      )
+      if (!hasDeployedAddress) {
+        console.log(`Verifying ${name} on Etherscan...`)
+        this.queueVerify.add(async () =>
+          verifyContract({
+            chainId: chain.id,
+            codeformat: 'solidity-standard-json-input',
+            constructorArguements: args,
+            contractname: name,
+            contractaddress: deployedAddress,
+            contractFilePath: `${parameters.path}/${name}.sol`,
+          }),
+        )
+      } else {
+        console.log(
+          `Skipping verification of ${name} on Etherscan since contract was previously deployed...`,
+        )
+      }
 
       return deployedAddress
     } catch (error) {
@@ -386,19 +400,26 @@ export class ProtocolDeploy {
       }
     }
   }
-  async getDeployedAddress(client: DeployWallletType, deployerContract: any, encodedDeployData: Hex, salt: Hex) {
-    const { request, result: deployedAddress } =
-      await client.simulateContract({
-        address: deployerContract.address,
-        abi: deployerContract.abi,
-        functionName: 'deployedAddress',
-        args: [encodedDeployData, this.account.address, salt],
-      })
-    const bytecode = await client.getCode({ address: deployedAddress as unknown as Hex })
+
+  async getDeployedAddress(
+    client: DeployWallletType,
+    deployerContract: any,
+    encodedDeployData: Hex,
+    salt: Hex,
+  ) {
+    const { result: deployedAddress } = await client.simulateContract({
+      address: deployerContract.address,
+      abi: deployerContract.abi,
+      functionName: 'deployedAddress',
+      args: [encodedDeployData, this.account.address, salt],
+    })
+    const bytecode = await client.getCode({
+      address: deployedAddress as unknown as Hex,
+    })
 
     // If bytecode is empty, there's no contract deployed
     const contractDeployed = !!bytecode && bytecode !== '0x'
-    return contractDeployed ? deployedAddress as unknown as Hex : null
+    return contractDeployed ? (deployedAddress as unknown as Hex) : null
   }
 
   /**

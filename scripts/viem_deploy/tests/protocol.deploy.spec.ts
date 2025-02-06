@@ -231,7 +231,10 @@ describe('ProtocolDeployment Tests', () => {
       let mockDep: any
       let request = { dploy: 'stuff' }
       let result = '0x1234'
+      const mockDepAddress = '0x1abc34'
       const networkConfig = { pre: false, chainId: 11155420 }
+
+      const mockGetDeployedAddress = jest.fn().mockReturnValue(null)
       beforeEach(() => {
         mockGetDeployChainConfig.mockReturnValue(networkConfig)
         mockWaitForNonceUpdate.mockImplementation(
@@ -247,6 +250,8 @@ describe('ProtocolDeployment Tests', () => {
         mockSimulateContract.mockResolvedValue({ request, result })
         mockStorageProverSupported.mockReturnValue(true)
         mockEncodeDeployData.mockReturnValue(encoded)
+
+        pd.getDeployedAddress = mockGetDeployedAddress
       })
 
       afterEach(() => {
@@ -312,6 +317,26 @@ describe('ProtocolDeployment Tests', () => {
         })
       })
 
+      it('should not deploy if contract is already deployed', async () => {
+        mockGetDeployedAddress.mockReturnValue(mockDepAddress)
+        await pd.deployAndVerifyContract(c, s, params)
+        expect(mockSimulateContract).toHaveBeenCalledTimes(0)
+        expect(mockWriteContract).toHaveBeenCalledTimes(0)
+        expect(mockWaitForTransactionReceipt).toHaveBeenCalledTimes(0)
+        expect(mockAddJsonAddress).toHaveBeenCalledWith(
+          networkConfig,
+          params.name,
+          mockDepAddress,
+        )
+      })
+
+      it('should not verify if contract is already deployed', async () => {
+        mockGetDeployedAddress.mockReturnValue(mockDepAddress)
+        await pd.deployAndVerifyContract(c, s, params)
+        expect(mockVerifyContract).toHaveBeenCalledTimes(0)
+        expect(mockAdd).toHaveBeenCalledTimes(0)
+      })
+
       it('should save json deploy address to file', async () => {
         await pd.deployAndVerifyContract(c, s, params)
         expect(mockAddJsonAddress).toHaveBeenCalledTimes(1)
@@ -326,6 +351,7 @@ describe('ProtocolDeployment Tests', () => {
         mockAdd.mockImplementation(async (fn) => {
           await fn()
         })
+        mockGetDeployedAddress.mockReturnValue(null)
         await pd.deployAndVerifyContract(c, s, params)
         expect(mockAdd).toHaveBeenCalledTimes(1)
         expect(mockVerifyContract).toHaveBeenCalledTimes(1)
