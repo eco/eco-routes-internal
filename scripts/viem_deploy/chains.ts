@@ -5,7 +5,18 @@ import {
   baseSepolia,
   arbitrum,
 } from '@alchemy/aa-core'
-import { Chain, mantle, polygon, polygonAmoy, sepolia } from 'viem/chains'
+import {
+  abstract,
+  abstractTestnet,
+  arbitrumSepolia,
+  Chain,
+  mainnet,
+  mantle,
+  mantleSepoliaTestnet,
+  polygon,
+  polygonAmoy,
+  sepolia,
+} from 'viem/chains'
 
 // Mainnet chains
 export const mainnetDep: Chain[] = [
@@ -14,19 +25,21 @@ export const mainnetDep: Chain[] = [
   mantle,
   optimism,
   polygon,
-  // mainnet,
-  // abstract,
+  mainnet,
+  abstract,
 ] as any
 
 // Test chains
 export const sepoliaDep: Chain[] = [
-  // arbitrumSepolia,
+  //problamatic
+  arbitrumSepolia,
+  mantleSepoliaTestnet,
+  abstractTestnet,
+  //working 
   baseSepolia,
-  // mantleSepoliaTestnet,
   optimismSepolia,
   polygonAmoy,
   sepolia,
-  // abstractTestnet,
 ] as any
 
 /**
