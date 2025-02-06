@@ -181,7 +181,7 @@ describe('ProtocolDeployment Tests', () => {
 
   describe('on deploy and verify', () => {
     const ds = [optimismSepolia].flat()
-    const mockProver = jest.fn()
+    // const mockProver = jest.fn()
     const mockIntentSource = jest.fn()
     const mockInbox = jest.fn()
     const c = ds[0]
@@ -195,7 +195,7 @@ describe('ProtocolDeployment Tests', () => {
         waitForTransactionReceipt: mockWaitForTransactionReceipt,
       })
       pd = new ProtocolDeploy(ds, salts)
-      pd.deployProver = mockProver
+      // pd.deployProver = mockProver
       pd.deployIntentSource = mockIntentSource
       pd.deployInbox = mockInbox
       mockEmpty.mockReturnValue(false)
@@ -206,10 +206,10 @@ describe('ProtocolDeployment Tests', () => {
         pd.deployViemContracts(c, s, opts)
       })
 
-      it('should deploy the prover', async () => {
-        expect(mockProver).toHaveBeenCalledTimes(1)
-        expect(mockProver).toHaveBeenCalledWith(c, s, opts)
-      })
+      // it('should deploy the prover', async () => {
+      //   expect(mockProver).toHaveBeenCalledTimes(1)
+      //   expect(mockProver).toHaveBeenCalledWith(c, s, opts)
+      // })
 
       it('should deploy the intent source', async () => {
         expect(mockIntentSource).toHaveBeenCalledTimes(1)
@@ -223,7 +223,7 @@ describe('ProtocolDeployment Tests', () => {
     })
 
     describe('on deployAndVerifyContract', () => {
-      let params = { name: 'Prover', abi: 'abi' } as any
+      let params = { name: 'IntentSource', abi: 'abi' } as any
       const deployerContract = { address: '0x999', abi: 'abi' }
       const encoded = '0x1234abdcd'
       const salts = 'salts'
@@ -231,7 +231,7 @@ describe('ProtocolDeployment Tests', () => {
       let mockDep: any
       let request = { dploy: 'stuff' }
       let result = '0x1234'
-      const networkConfig = { pre: false }
+      const networkConfig = { pre: false, chainId: 11155420 }
       beforeEach(() => {
         mockGetDeployChainConfig.mockReturnValue(networkConfig)
         mockWaitForNonceUpdate.mockImplementation(

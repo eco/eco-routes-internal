@@ -89,7 +89,7 @@ export class ProtocolDeploy {
       const val = getClient(chain, this.account)
       this.clients[chain.id] = val
     }
-    // this.salts = salts
+    this.salts = salts
     createFile(jsonFilePath)
   }
 
