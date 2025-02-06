@@ -25,20 +25,16 @@ import {
   jsonFilePath,
   saveDeploySalts,
   SaltsType,
+  JsonConfig,
 } from '../deploy/addresses'
-import { DeployNetwork } from '../deloyProtocol'
 import { DeployChains } from './chains'
 import * as dotenv from 'dotenv'
-import {
-  getDeployChainConfig,
-  storageProverSupported,
-  waitForNonceUpdate,
-  waitMs,
-} from '../utils'
+import { storageProverSupported, waitForNonceUpdate, waitMs } from '../utils'
 import { verifyContract } from './verify'
 // eslint-disable-next-line node/no-missing-import
 import PQueue from 'p-queue'
 import { isEmpty } from 'lodash'
+import { ViemDeployConfig } from './config'
 
 dotenv.config()
 
@@ -93,7 +89,7 @@ export class ProtocolDeploy {
       const val = getClient(chain, this.account)
       this.clients[chain.id] = val
     }
-    this.salts = salts
+    // this.salts = salts
     createFile(jsonFilePath)
   }
 
@@ -144,7 +140,7 @@ export class ProtocolDeploy {
     console.log('Deploying contracts with the account:', this.account.address)
 
     console.log('Deploying with base salt : ' + JSON.stringify(salt))
-    await this.deployProver(chain, salt, opts)
+    // await this.deployProver(chain, salt, opts)
     await this.deployIntentSource(chain, salt, opts)
     await this.deployInbox(chain, salt, true, opts)
   }
@@ -156,14 +152,14 @@ export class ProtocolDeploy {
    * @param salt the origin salt to use
    * @param opts deploy options
    */
-  async deployProver(chain: Chain, salt: Hex, opts?: DeployOpts) {
-    await this.deployAndVerifyContract(
-      chain,
-      salt,
-      getConstructorArgs(chain, 'Prover'),
-      opts,
-    )
-  }
+  // async deployProver(chain: Chain, salt: Hex, opts?: DeployOpts) {
+  //   await this.deployAndVerifyContract(
+  //     chain,
+  //     salt,
+  //     getConstructorArgs(chain, 'Prover'),
+  //     opts,
+  //   )
+  // }
 
   /**
    * Deploys the intent source contract.
@@ -194,7 +190,7 @@ export class ProtocolDeploy {
     deployHyper: boolean,
     opts: DeployOpts = { retry: true },
   ) {
-    const config = getDeployChainConfig(chain)
+    const config = ViemDeployConfig[chain.id]
     const ownerAndSolver = this.account.address
 
     const params = {
@@ -265,7 +261,7 @@ export class ProtocolDeploy {
     inboxAddress: Hex,
     opts?: DeployOpts,
   ) {
-    const config = getDeployChainConfig(chain)
+    const config = ViemDeployConfig[chain.id]
     const params = {
       ...getConstructorArgs(chain, 'HyperProver'),
       args: [config.hyperlaneMailboxAddress, inboxAddress],
@@ -338,9 +334,12 @@ export class ProtocolDeploy {
       console.log(
         `Chain: ${chain.name}, ${name} deployed at: ${deployedAddress}`,
       )
-      const networkConfig = getDeployChainConfig(chain) as DeployNetwork
-      networkConfig.pre = opts.pre || false
-      addJsonAddress(networkConfig, `${name}`, deployedAddress)
+
+      const jsonConfig: JsonConfig = {
+        chainId: chain.id,
+        pre: opts.pre || false,
+      }
+      addJsonAddress(jsonConfig, `${name}`, deployedAddress)
       console.log(
         `Chain: ${chain.name}, ${name} address updated in addresses.json`,
       )
