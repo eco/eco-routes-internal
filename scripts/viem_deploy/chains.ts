@@ -1,9 +1,9 @@
 import { optimism, optimismSepolia, base, baseSepolia } from '@alchemy/aa-core'
-import { arbitrum, Chain, polygon } from 'viem/chains'
+import { Chain, polygon } from 'viem/chains'
 
 // Mainnet chains
 export const mainnetDep: Chain[] = [
-  arbitrum,
+  // arbitrum,
   base,
   // mantle,
   optimism,
