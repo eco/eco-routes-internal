@@ -60,11 +60,6 @@ interface IIntentSource is ISemver {
     error NativeRewardTransferFailed();
 
     /**
-     * @notice Thrown when a permit call to a contract fails
-     */
-    error PermitCallFailed();
-
-    /**
      * @notice Thrown when attempting to publish an intent that already exists
      * @param intentHash Hash of the intent that already exists in the system
      */
@@ -220,14 +215,12 @@ interface IIntentSource is ISemver {
      * @param routeHash Hash of the route component
      * @param reward Reward structure containing distribution details
      * @param fundingAddress Address to fund the intent from
-     * @param permitCalls Array of permit calls to approve token transfers
      * @param recoverToken Address of the token to recover if sent to the vault
      */
     function fundIntent(
         bytes32 routeHash,
         Reward calldata reward,
         address fundingAddress,
-        Call[] calldata permitCalls,
         address recoverToken
     ) external payable;
 
