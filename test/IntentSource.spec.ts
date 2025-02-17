@@ -156,6 +156,22 @@ describe('Intent Source Test', (): void => {
 
       expect(contractVaultAddress).to.eq(predictedVaultAddress)
     })
+
+    it('fails to publish if trying to fund on wrong chain', async () => {
+      route = {
+        salt: salt,
+        source: 12345,
+        destination: chainId,
+        inbox: await inbox.getAddress(),
+        tokens: routeTokens,
+        calls: calls,
+      }
+
+      await expect(
+        intentSource.connect(creator).publishIntent({ route, reward }, true),
+      ).to.be.revertedWithCustomError(intentSource, 'WrongSourceChain')
+    })
+
     it('creates properly with erc20 rewards', async () => {
       await intentSource.connect(creator).publishIntent({ route, reward }, true)
 
