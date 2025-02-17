@@ -18,7 +18,7 @@ import {IntentVault} from "./IntentVault.sol";
  * @dev Used to create intents and withdraw associated rewards. Works in conjunction with
  *      an inbox contract on the destination chain. Verifies intent fulfillment through
  *      a prover contract on the source chain
- * @dev This contract shouldn't not hold any funds or hold ony roles for other contracts,
+ * @dev This contract should not hold any funds or hold any roles for other contracts,
  *      as it executes arbitrary calls to other contracts when funding intents.
  */
 contract IntentSource is IIntentSource, Semver {
@@ -80,7 +80,7 @@ contract IntentSource is IIntentSource, Semver {
 
     /**
      * @notice Calculates the deterministic address of the intent funder
-     * @param intent Intent to calculate vault address for
+     * @param intent Intent to calculate funder address for
      * @return Address of the intent funder
      */
     function intentFunderAddress(
@@ -308,7 +308,7 @@ contract IntentSource is IIntentSource, Semver {
     }
 
     /**
-     * @notice Batch withdraws multiple intents with the same claimant
+     * @notice Batch withdraws multiple intents
      * @param routeHashes Array of route hashes for the intents
      * @param rewards Array of reward structures for the intents
      */
@@ -392,7 +392,7 @@ contract IntentSource is IIntentSource, Semver {
      * @param vault Address of the intent vault
      * @param routeHash Hash of the route component
      * @param reward Reward structure
-     * @return The calculated vault address
+     * @return The calculated funder address
      */
     function _getIntentFunderAddress(
         address vault,
