@@ -18,7 +18,7 @@ import {IntentVault} from "./IntentVault.sol";
  * @dev Used to create intents and withdraw associated rewards. Works in conjunction with
  *      an inbox contract on the destination chain. Verifies intent fulfillment through
  *      a prover contract on the source chain
- * @dev This contract shouldn't not hold any funds or hold ony roles for other contracts,
+ * @dev This contract should not hold any funds or hold any roles for other contracts,
  *      as it executes arbitrary calls to other contracts when funding intents.
  */
 contract IntentSource is IIntentSource, Semver {
@@ -89,7 +89,7 @@ contract IntentSource is IIntentSource, Semver {
 
     /**
      * @notice Calculates the deterministic address of the intent funder
-     * @param intent Intent to calculate vault address for
+     * @param intent Intent to calculate funder address for
      * @return Address of the intent funder
      */
     function intentFunderAddress(
@@ -123,14 +123,12 @@ contract IntentSource is IIntentSource, Semver {
      * @param routeHash Hash of the route component
      * @param reward Reward structure containing distribution details
      * @param fundingAddress Address to fund the intent from
-     * @param permitCalls Array of permit calls to approve token transfers
      * @param recoverToken Optional token address for handling incorrect vault transfers
      */
     function fundIntent(
         bytes32 routeHash,
         Reward calldata reward,
         address fundingAddress,
-        Call[] calldata permitCalls,
         address recoverToken
     ) external payable {
         bytes32 rewardHash = keccak256(abi.encode(reward));
@@ -149,27 +147,16 @@ contract IntentSource is IIntentSource, Semver {
                 : msg.value;
 
             payable(vault).transfer(nativeAmount);
-
-            if (msg.value > nativeAmount) {
-                (bool success, ) = payable(msg.sender).call{
-                    value: msg.value - nativeAmount
-                }("");
-
-                if (!success) {
-                    revert NativeRewardTransferFailed();
-                }
-            }
         }
+        uint256 currentBalance = address(this).balance;
 
-        uint256 callsLength = permitCalls.length;
-
-        for (uint256 i = 0; i < callsLength; i++) {
-            Call calldata call = permitCalls[i];
-
-            (bool success, ) = call.target.call(call.data);
+        if (currentBalance > 0) {
+            (bool success, ) = payable(msg.sender).call{value: currentBalance}(
+                ""
+            );
 
             if (!success) {
-                revert PermitCallFailed();
+                revert NativeRewardTransferFailed();
             }
         }
 
@@ -208,7 +195,7 @@ contract IntentSource is IIntentSource, Semver {
 
         (intentHash, routeHash, ) = getIntentHash(intent);
 
-        if (claims[intentHash].status != uint8(ClaimStatus.Initiated)) {
+        if (claims[intentHash].status != uint8(ClaimStatus.Initial)) {
             revert IntentAlreadyExists(intentHash);
         }
 
@@ -218,6 +205,7 @@ contract IntentSource is IIntentSource, Semver {
             route.source,
             route.destination,
             route.inbox,
+            route.tokens,
             route.calls,
             reward.creator,
             reward.prover,
@@ -229,6 +217,9 @@ contract IntentSource is IIntentSource, Semver {
         address vault = _getIntentVaultAddress(intentHash, routeHash, reward);
 
         if (fund && !_isIntentFunded(intent, vault)) {
+            if (route.source != block.chainid) {
+                revert WrongSourceChain();
+            }
             if (reward.nativeValue > 0) {
                 if (msg.value < reward.nativeValue) {
                     revert InsufficientNativeReward();
@@ -236,9 +227,11 @@ contract IntentSource is IIntentSource, Semver {
 
                 payable(vault).transfer(reward.nativeValue);
 
-                if (msg.value > reward.nativeValue) {
+                uint256 currentBalance = address(this).balance;
+
+                if (currentBalance > 0) {
                     (bool success, ) = payable(msg.sender).call{
-                        value: msg.value - reward.nativeValue
+                        value: currentBalance
                     }("");
 
                     if (!success) {
@@ -247,7 +240,7 @@ contract IntentSource is IIntentSource, Semver {
                 }
             }
 
-            for (uint256 i = 0; i < rewardsLength; i++) {
+            for (uint256 i = 0; i < rewardsLength; ++i) {
                 IERC20(reward.tokens[i].token).safeTransferFrom(
                     msg.sender,
                     vault,
@@ -289,7 +282,7 @@ contract IntentSource is IIntentSource, Semver {
         // Claim the rewards if the intent has not been claimed
         if (
             claimant != address(0) &&
-            claims[intentHash].status == uint8(ClaimStatus.Initiated)
+            claims[intentHash].status == uint8(ClaimStatus.Initial)
         ) {
             claims[intentHash].claimant = claimant;
 
@@ -310,7 +303,7 @@ contract IntentSource is IIntentSource, Semver {
     }
 
     /**
-     * @notice Batch withdraws multiple intents with the same claimant
+     * @notice Batch withdraws multiple intents
      * @param routeHashes Array of route hashes for the intents
      * @param rewards Array of reward structures for the intents
      */
@@ -324,7 +317,7 @@ contract IntentSource is IIntentSource, Semver {
             revert ArrayLengthMismatch();
         }
 
-        for (uint256 i = 0; i < length; i++) {
+        for (uint256 i = 0; i < length; ++i) {
             withdrawRewards(routeHashes[i], rewards[i]);
         }
     }
@@ -351,7 +344,7 @@ contract IntentSource is IIntentSource, Semver {
 
         new IntentVault{salt: routeHash}(intentHash, reward);
 
-        if (claims[intentHash].status == uint8(ClaimStatus.Initiated)) {
+        if (claims[intentHash].status == uint8(ClaimStatus.Initial)) {
             claims[intentHash].status = uint8(ClaimStatus.Refunded);
         }
 
@@ -374,8 +367,10 @@ contract IntentSource is IIntentSource, Semver {
         Reward calldata reward = intent.reward;
         uint256 rewardsLength = reward.tokens.length;
 
+        if (intent.route.source != block.chainid) return false;
         if (vault.balance < reward.nativeValue) return false;
-        for (uint256 i = 0; i < rewardsLength; i++) {
+
+        for (uint256 i = 0; i < rewardsLength; ++i) {
             address token = reward.tokens[i].token;
             uint256 amount = reward.tokens[i].amount;
             uint256 balance = IERC20(token).balanceOf(vault);
@@ -392,7 +387,7 @@ contract IntentSource is IIntentSource, Semver {
      * @param vault Address of the intent vault
      * @param routeHash Hash of the route component
      * @param reward Reward structure
-     * @return The calculated vault address
+     * @return The calculated funder address
      */
     function _getIntentFunderAddress(
         address vault,

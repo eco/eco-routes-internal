@@ -13,7 +13,8 @@ export function extractAbiStruct<
   if (!obj) {
     throw ExtractAbiStructFailed(structName)
   }
-  return obj
+  // @ts-expect-error components is always present for structs
+  return obj['components'] as AbiReturn
 }
 /**
  * Recursively extracts the ABI struct with the given name

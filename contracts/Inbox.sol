@@ -2,10 +2,14 @@
 pragma solidity ^0.8.26;
 
 import {IMailbox, IPostDispatchHook} from "@hyperlane-xyz/core/contracts/interfaces/IMailbox.sol";
+import {Eco7683DestinationSettler} from "./Eco7683DestinationSettler.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+
 import {IInbox} from "./interfaces/IInbox.sol";
-import {Intent, Route, Call} from "./types/Intent.sol";
+import {Intent, Route, Call, TokenAmount} from "./types/Intent.sol";
 import {Semver} from "./libs/Semver.sol";
 
 /**
@@ -14,10 +18,9 @@ import {Semver} from "./libs/Semver.sol";
  * @dev Validates intent hash authenticity and executes calldata. Enables provers
  * to claim rewards on the source chain by checking the fulfilled mapping
  */
-contract Inbox is IInbox, Ownable, Semver {
+contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
     using TypeCasts for address;
-
-    uint256 public constant MAX_BATCH_SIZE = 10;
+    using SafeERC20 for IERC20;
 
     // Mapping of intent hash on the src chain to its fulfillment
     mapping(bytes32 => address) public fulfilled;
@@ -33,7 +36,6 @@ contract Inbox is IInbox, Ownable, Semver {
 
     /**
      * @notice Initializes the Inbox contract
-     * @dev Privileged functions are designed to only allow one-time changes
      * @param _owner Address with access to privileged functions
      * @param _isSolvingPublic Whether solving is public at start
      * @param _solvers Initial whitelist of solvers (only relevant if solving is not public)
@@ -44,7 +46,7 @@ contract Inbox is IInbox, Ownable, Semver {
         address[] memory _solvers
     ) Ownable(_owner) {
         isSolvingPublic = _isSolvingPublic;
-        for (uint256 i = 0; i < _solvers.length; i++) {
+        for (uint256 i = 0; i < _solvers.length; ++i) {
             solverWhitelist[_solvers[i]] = true;
             emit SolverWhitelistChanged(_solvers[i], true);
         }
@@ -59,11 +61,16 @@ contract Inbox is IInbox, Ownable, Semver {
      * @return Array of execution results from each call
      */
     function fulfillStorage(
-        Route calldata _route,
+        Route memory _route,
         bytes32 _rewardHash,
         address _claimant,
         bytes32 _expectedHash
-    ) external payable returns (bytes[] memory) {
+    )
+        public
+        payable
+        override(IInbox, Eco7683DestinationSettler)
+        returns (bytes[] memory)
+    {
         bytes[] memory result = _fulfill(
             _route,
             _rewardHash,
@@ -87,7 +94,7 @@ contract Inbox is IInbox, Ownable, Semver {
      * @return Array of execution results from each call
      */
     function fulfillHyperInstant(
-        Route calldata _route,
+        Route memory _route,
         bytes32 _rewardHash,
         address _claimant,
         bytes32 _expectedHash,
@@ -118,14 +125,19 @@ contract Inbox is IInbox, Ownable, Semver {
      * @return Array of execution results from each call
      */
     function fulfillHyperInstantWithRelayer(
-        Route calldata _route,
+        Route memory _route,
         bytes32 _rewardHash,
         address _claimant,
         bytes32 _expectedHash,
         address _prover,
         bytes memory _metadata,
         address _postDispatchHook
-    ) public payable returns (bytes[] memory) {
+    )
+        public
+        payable
+        override(IInbox, Eco7683DestinationSettler)
+        returns (bytes[] memory)
+    {
         bytes32[] memory hashes = new bytes32[](1);
         address[] memory claimants = new address[](1);
         hashes[0] = _expectedHash;
@@ -149,13 +161,14 @@ contract Inbox is IInbox, Ownable, Semver {
             _claimant,
             _expectedHash
         );
-        uint256 nativeBalance = address(this).balance;
-        if (nativeBalance < fee) {
+
+        uint256 currentBalance = address(this).balance;
+        if (currentBalance < fee) {
             revert InsufficientFee(fee);
         }
-        if (nativeBalance > fee) {
+        if (currentBalance > fee) {
             (bool success, ) = payable(msg.sender).call{
-                value: nativeBalance - fee
+                value: currentBalance - fee
             }("");
             if (!success) {
                 revert NativeTransferFailed();
@@ -246,17 +259,17 @@ contract Inbox is IInbox, Ownable, Semver {
         address _postDispatchHook
     ) public payable {
         uint256 size = _intentHashes.length;
-        if (size > MAX_BATCH_SIZE) {
-            revert BatchTooLarge();
-        }
         address[] memory claimants = new address[](size);
-        for (uint256 i = 0; i < size; i++) {
+        for (uint256 i = 0; i < size; ++i) {
             address claimant = fulfilled[_intentHashes[i]];
             if (claimant == address(0)) {
                 revert IntentNotFulfilled(_intentHashes[i]);
             }
             claimants[i] = claimant;
         }
+
+        emit BatchSent(_intentHashes, _sourceChainID);
+
         bytes memory messageBody = abi.encode(_intentHashes, claimants);
         bytes32 _prover32 = _prover.addressToBytes32();
         uint256 fee = fetchFee(
@@ -330,7 +343,7 @@ contract Inbox is IInbox, Ownable, Semver {
 
     /**
      * @notice Sets the mailbox address
-     * @dev Can only be called once during deployment
+     * @dev Can only be called when mailbox is not set
      * @param _mailbox Address of the Hyperlane mailbox
      */
     function setMailbox(address _mailbox) public onlyOwner {
@@ -375,11 +388,15 @@ contract Inbox is IInbox, Ownable, Semver {
      * @return Array of execution results
      */
     function _fulfill(
-        Route calldata _route,
+        Route memory _route,
         bytes32 _rewardHash,
         address _claimant,
         bytes32 _expectedHash
     ) internal returns (bytes[] memory) {
+        if (_route.destination != block.chainid) {
+            revert WrongChain(_route.destination);
+        }
+
         if (!isSolvingPublic && !solverWhitelist[msg.sender]) {
             revert UnauthorizedSolveAttempt(msg.sender);
         }
@@ -406,11 +423,22 @@ contract Inbox is IInbox, Ownable, Semver {
         fulfilled[intentHash] = _claimant;
         emit Fulfillment(_expectedHash, _route.source, _claimant);
 
+        uint256 routeTokenCount = _route.tokens.length;
+        // Transfer ERC20 tokens to the inbox
+        for (uint256 i = 0; i < routeTokenCount; ++i) {
+            TokenAmount memory approval = _route.tokens[i];
+            IERC20(approval.token).safeTransferFrom(
+                msg.sender,
+                address(this),
+                approval.amount
+            );
+        }
+
         // Store the results of the calls
         bytes[] memory results = new bytes[](_route.calls.length);
 
-        for (uint256 i = 0; i < _route.calls.length; i++) {
-            Call calldata call = _route.calls[i];
+        for (uint256 i = 0; i < _route.calls.length; ++i) {
+            Call memory call = _route.calls[i];
             if (call.target == mailbox) {
                 // no executing calls on the mailbox
                 revert CallToMailbox();

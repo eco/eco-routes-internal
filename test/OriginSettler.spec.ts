@@ -9,7 +9,7 @@ import {
   Eco7683OriginSettler,
 } from '../typechain-types'
 import { time, loadFixture } from '@nomicfoundation/hardhat-network-helpers'
-import { keccak256, BytesLike } from 'ethers'
+import { keccak256, BytesLike, Provider } from 'ethers'
 import { encodeTransfer } from '../utils/encode'
 import {
   encodeReward,
@@ -18,6 +18,8 @@ import {
   TokenAmount,
   Route,
   Reward,
+  Intent,
+  encodeIntent,
 } from '../utils/intent'
 import {
   OnchainCrossChainOrderStruct,
@@ -45,12 +47,15 @@ describe('Origin Settler Test', (): void => {
   let salt: BytesLike
   let nonce: number
   let chainId: number
+  let routeTokens: TokenAmount[]
   let calls: Call[]
-  let expiry: number
+  let expiry_open: number
+  let expiry_fill: number
   const rewardNativeEth: bigint = ethers.parseEther('2')
   let rewardTokens: TokenAmount[]
   let route: Route
   let reward: Reward
+  let intent: Intent
   let routeHash: BytesLike
   let rewardHash: BytesLike
   let intentHash: BytesLike
@@ -64,9 +69,9 @@ describe('Origin Settler Test', (): void => {
   const version = '1.5.0'
 
   const onchainCrosschainOrderDataTypehash: BytesLike =
-    '0xb6bc9eb3454e4ec88a42b6355c90dc6c1d654f0d544ba0ef3161593210a01a28'
+    '0x5dd63cf8abd3430c6387c87b7d2af2290ba415b12c3f6fbc10af65f9aee8ec38'
   const gaslessCrosschainOrderDataTypehash: BytesLike =
-    '0x58c324802ce1459a5182655ed022248fa0d67bc8ecdc1e70c632377791453c20'
+    '0x834338e3ed54385a3fac8309f6f326a71fc399ffb7d77d7366c1e1b7c9feac6f'
 
   async function deploySourceFixture(): Promise<{
     originSettler: Eco7683OriginSettler
@@ -143,8 +148,10 @@ describe('Origin Settler Test', (): void => {
 
   describe('performs actions', async () => {
     beforeEach(async (): Promise<void> => {
-      expiry = (await time.latest()) + 123
+      expiry_open = (await time.latest()) + 12345
+      expiry_fill = expiry_open + 12345
       chainId = 1
+      routeTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
       calls = [
         {
           target: await tokenA.getAddress(),
@@ -166,15 +173,17 @@ describe('Origin Settler Test', (): void => {
         ),
         destination: chainId,
         inbox: await inbox.getAddress(),
+        tokens: routeTokens,
         calls,
       }
       reward = {
         creator: creator.address,
         prover: await prover.getAddress(),
-        deadline: expiry,
+        deadline: expiry_fill,
         nativeValue: rewardNativeEth,
         tokens: rewardTokens,
       }
+      intent = { route: route, reward: reward }
       routeHash = keccak256(encodeRoute(route))
       rewardHash = keccak256(encodeReward(reward))
       intentHash = keccak256(
@@ -190,7 +199,7 @@ describe('Origin Settler Test', (): void => {
       }
 
       onchainCrosschainOrder = {
-        fillDeadline: expiry,
+        fillDeadline: expiry_fill,
         orderDataType: onchainCrosschainOrderDataTypehash,
         orderData: await encodeOnchainCrosschainOrderData(
           onchainCrosschainOrderData,
@@ -199,20 +208,21 @@ describe('Origin Settler Test', (): void => {
       gaslessCrosschainOrderData = {
         destination: chainId,
         inbox: await inbox.getAddress(),
-        calls,
+        routeTokens: routeTokens,
+        calls: calls,
         prover: await prover.getAddress(),
         nativeValue: reward.nativeValue,
-        tokens: reward.tokens,
+        rewardTokens: reward.tokens,
       }
       gaslessCrosschainOrder = {
         originSettler: await originSettler.getAddress(),
         user: creator.address,
-        nonce,
+        nonce: nonce,
         originChainId: Number(
           (await originSettler.runner?.provider?.getNetwork())?.chainId,
         ),
-        openDeadline: expiry,
-        fillDeadline: expiry,
+        openDeadline: expiry_open,
+        fillDeadline: expiry_fill,
         orderDataType: gaslessCrosschainOrderDataTypehash,
         orderData: await encodeGaslessCrosschainOrderData(
           gaslessCrosschainOrderData,
@@ -247,8 +257,8 @@ describe('Origin Settler Test', (): void => {
         originChainId: Number(
           (await originSettler.runner?.provider?.getNetwork())?.chainId,
         ),
-        openDeadline: expiry,
-        fillDeadline: expiry,
+        openDeadline: expiry_open,
+        fillDeadline: expiry_fill,
         orderDataType: gaslessCrosschainOrderDataTypehash,
         orderDataHash: keccak256(
           await encodeGaslessCrosschainOrderData(gaslessCrosschainOrderData),
@@ -258,13 +268,18 @@ describe('Origin Settler Test', (): void => {
     })
 
     describe('onchainCrosschainOrder', async () => {
-      it('creates via open', async () => {
+      it('publishes and transfers via open, checks native overfund', async () => {
+        const provider: Provider = originSettler.runner!.provider!
         expect(
           await intentSource.isIntentFunded({
             route,
             reward: { ...reward, nativeValue: reward.nativeValue },
           }),
         ).to.be.false
+
+        const creatorInitialNativeBalance: bigint = await provider.getBalance(
+          creator.address,
+        )
 
         await tokenA
           .connect(creator)
@@ -274,9 +289,9 @@ describe('Origin Settler Test', (): void => {
           .approve(await originSettler.getAddress(), 2 * mintAmount)
 
         await expect(
-          originSettler
-            .connect(creator)
-            .open(onchainCrosschainOrder, { value: rewardNativeEth }),
+          originSettler.connect(creator).open(onchainCrosschainOrder, {
+            value: rewardNativeEth * BigInt(2),
+          }),
         )
           .to.emit(intentSource, 'IntentCreated')
           .withArgs(
@@ -287,10 +302,11 @@ describe('Origin Settler Test', (): void => {
             ),
             chainId,
             await inbox.getAddress(),
+            routeTokens.map(Object.values),
             calls.map(Object.values),
             await creator.getAddress(),
             await prover.getAddress(),
-            expiry,
+            expiry_fill,
             reward.nativeValue,
             rewardTokens.map(Object.values),
           )
@@ -301,6 +317,93 @@ describe('Origin Settler Test', (): void => {
             reward: { ...reward, nativeValue: reward.nativeValue },
           }),
         ).to.be.true
+        expect(
+          await provider.getBalance(
+            await intentSource.intentVaultAddress({ route, reward }),
+          ),
+        ).to.eq(rewardNativeEth)
+        expect(await provider.getBalance(creator.address)).to.be.gt(
+          creatorInitialNativeBalance - BigInt(2) * rewardNativeEth,
+        )
+      })
+      it('publishes without transferring if intent is already funded, and refunds native', async () => {
+        const provider: Provider = originSettler.runner!.provider!
+
+        const vaultAddress = await intentSource.intentVaultAddress({
+          route,
+          reward,
+        })
+        await tokenA.connect(creator).transfer(vaultAddress, mintAmount)
+        await tokenB.connect(creator).transfer(vaultAddress, 2 * mintAmount)
+        await creator.sendTransaction({
+          to: vaultAddress,
+          value: reward.nativeValue,
+        })
+
+        const creatorInitialNativeBalance: bigint = await provider.getBalance(
+          creator.address,
+        )
+
+        expect(
+          await intentSource.isIntentFunded({
+            route,
+            reward: { ...reward, nativeValue: reward.nativeValue },
+          }),
+        ).to.be.true
+
+        expect(await tokenA.balanceOf(creator)).to.eq(0)
+        expect(await tokenB.balanceOf(creator)).to.eq(0)
+
+        await tokenA
+          .connect(creator)
+          .approve(await originSettler.getAddress(), mintAmount)
+        await tokenB
+          .connect(creator)
+          .approve(await originSettler.getAddress(), 2 * mintAmount)
+        await expect(
+          originSettler
+            .connect(creator)
+            .open(onchainCrosschainOrder, { value: rewardNativeEth }),
+        ).to.not.be.reverted
+
+        expect(await provider.getBalance(vaultAddress)).to.eq(rewardNativeEth)
+        expect(await provider.getBalance(creator.address)).to.be.gt(
+          creatorInitialNativeBalance - rewardNativeEth,
+        )
+      })
+      it('publishes without transferring if intent is already funded', async () => {
+        const vaultAddress = await intentSource.intentVaultAddress({
+          route,
+          reward,
+        })
+        await tokenA.connect(creator).transfer(vaultAddress, mintAmount)
+        await tokenB.connect(creator).transfer(vaultAddress, 2 * mintAmount)
+        await creator.sendTransaction({
+          to: vaultAddress,
+          value: reward.nativeValue,
+        })
+
+        expect(
+          await intentSource.isIntentFunded({
+            route,
+            reward: { ...reward, nativeValue: reward.nativeValue },
+          }),
+        ).to.be.true
+
+        expect(await tokenA.balanceOf(creator)).to.eq(0)
+        expect(await tokenB.balanceOf(creator)).to.eq(0)
+
+        await tokenA
+          .connect(creator)
+          .approve(await originSettler.getAddress(), mintAmount)
+        await tokenB
+          .connect(creator)
+          .approve(await originSettler.getAddress(), 2 * mintAmount)
+        await expect(
+          originSettler
+            .connect(creator)
+            .open(onchainCrosschainOrder, { value: rewardNativeEth }),
+        ).to.not.be.reverted
       })
       it('resolves onchainCrosschainOrder', async () => {
         const resolvedOrder: ResolvedCrossChainOrderStruct =
@@ -312,12 +415,25 @@ describe('Origin Settler Test', (): void => {
         )
         expect(resolvedOrder.openDeadline).to.eq(
           onchainCrosschainOrder.fillDeadline,
-        )
+        ) //for onchainCrosschainOrders openDeadline is the same as fillDeadline, since openDeadline is meaningless due to it being opened by the creator
         expect(resolvedOrder.fillDeadline).to.eq(
           onchainCrosschainOrder.fillDeadline,
         )
         expect(resolvedOrder.orderId).to.eq(intentHash)
-        expect(resolvedOrder.maxSpent.length).to.eq(0)
+        expect(resolvedOrder.maxSpent.length).to.eq(routeTokens.length)
+        for (let i = 0; i < resolvedOrder.maxSpent.length; i++) {
+          expect(resolvedOrder.maxSpent[i].token).to.eq(
+            ethers.zeroPadBytes(route.tokens[i].token, 32),
+          )
+          expect(resolvedOrder.maxSpent[i].amount).to.eq(route.tokens[i].amount)
+          expect(resolvedOrder.maxSpent[i].recipient).to.eq(
+            ethers.zeroPadBytes(ethers.ZeroAddress, 32),
+          )
+          expect(resolvedOrder.maxSpent[i].chainId).to.eq(
+            onchainCrosschainOrderData.route.destination,
+          )
+        }
+
         expect(resolvedOrder.minReceived.length).to.eq(
           reward.tokens.length + (reward.nativeValue > 0 ? 1 : 0),
         )
@@ -346,6 +462,13 @@ describe('Origin Settler Test', (): void => {
         expect(resolvedOrder.minReceived[i].chainId).to.eq(
           onchainCrosschainOrderData.route.destination,
         )
+        expect(resolvedOrder.fillInstructions.length).to.eq(1)
+        const fillInstruction = resolvedOrder.fillInstructions[0]
+        expect(fillInstruction.destinationChainId).to.eq(route.destination)
+        expect(fillInstruction.destinationSettler).to.eq(
+          ethers.zeroPadBytes(await inbox.getAddress(), 32),
+        )
+        expect(fillInstruction.originData).to.eq(encodeIntent(intent))
       })
     })
 
@@ -382,6 +505,29 @@ describe('Origin Settler Test', (): void => {
           }),
         ).to.be.true
       })
+      it('errors if openFor is called when openDeadline has passed', async () => {
+        await time.increaseTo(expiry_open + 1)
+        await expect(
+          originSettler
+            .connect(otherPerson)
+            .openFor(gaslessCrosschainOrder, signature, '0x', {
+              value: rewardNativeEth,
+            }),
+        ).to.be.revertedWithCustomError(originSettler, 'OpenDeadlinePassed')
+      })
+      it('errors if signature does not match', async () => {
+        //TODO investigate why this sometimes reverts with our custom error BadSignature and othere times with ECDSAInvalidSignature
+        await expect(
+          originSettler
+            .connect(otherPerson)
+            .openFor(
+              gaslessCrosschainOrder,
+              signature.replace('1', '0'),
+              '0x',
+              { value: rewardNativeEth },
+            ),
+        ).to.be.reverted
+      })
       it('resolvesFor gaslessCrosschainOrder', async () => {
         const resolvedOrder: ResolvedCrossChainOrderStruct =
           await originSettler.resolveFor(gaslessCrosschainOrder, '0x')
@@ -396,7 +542,19 @@ describe('Origin Settler Test', (): void => {
           gaslessCrosschainOrder.fillDeadline,
         )
         expect(resolvedOrder.orderId).to.eq(intentHash)
-        expect(resolvedOrder.maxSpent.length).to.eq(0)
+        expect(resolvedOrder.maxSpent.length).to.eq(routeTokens.length)
+        for (let i = 0; i < resolvedOrder.maxSpent.length; i++) {
+          expect(resolvedOrder.maxSpent[i].token).to.eq(
+            ethers.zeroPadBytes(route.tokens[i].token, 32),
+          )
+          expect(resolvedOrder.maxSpent[i].amount).to.eq(route.tokens[i].amount)
+          expect(resolvedOrder.maxSpent[i].recipient).to.eq(
+            ethers.zeroPadBytes(ethers.ZeroAddress, 32),
+          )
+          expect(resolvedOrder.maxSpent[i].chainId).to.eq(
+            onchainCrosschainOrderData.route.destination,
+          )
+        }
         expect(resolvedOrder.minReceived.length).to.eq(
           reward.tokens.length + (reward.nativeValue > 0 ? 1 : 0),
         )
@@ -425,6 +583,13 @@ describe('Origin Settler Test', (): void => {
         expect(resolvedOrder.minReceived[i].chainId).to.eq(
           gaslessCrosschainOrderData.destination,
         )
+        expect(resolvedOrder.fillInstructions.length).to.eq(1)
+        const fillInstruction = resolvedOrder.fillInstructions[0]
+        expect(fillInstruction.destinationChainId).to.eq(route.destination)
+        expect(fillInstruction.destinationSettler).to.eq(
+          ethers.zeroPadBytes(await inbox.getAddress(), 32),
+        )
+        expect(fillInstruction.originData).to.eq(encodeIntent(intent))
       })
     })
   })

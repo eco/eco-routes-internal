@@ -14,6 +14,11 @@ import {Intent, Reward, Call, TokenAmount} from "../types/Intent.sol";
  */
 interface IIntentSource is ISemver {
     /**
+     * @notice Thrown when funding an intent is attempted on a chain that isn't the source chain
+     */
+    error WrongSourceChain();
+
+    /**
      * @notice Thrown when an unauthorized address attempts to withdraw intent rewards
      * @param _hash Hash of the intent (key in intents mapping)
      */
@@ -55,11 +60,6 @@ interface IIntentSource is ISemver {
     error NativeRewardTransferFailed();
 
     /**
-     * @notice Thrown when a permit call to a contract fails
-     */
-    error PermitCallFailed();
-
-    /**
      * @notice Thrown when attempting to publish an intent that already exists
      * @param intentHash Hash of the intent that already exists in the system
      */
@@ -91,7 +91,7 @@ interface IIntentSource is ISemver {
      * @notice Status of an intent's reward claim
      */
     enum ClaimStatus {
-        Initiated,
+        Initial,
         Claimed,
         Refunded
     }
@@ -119,12 +119,13 @@ interface IIntentSource is ISemver {
      * @param source Source chain ID
      * @param destination Destination chain ID
      * @param inbox Address of inbox contract on destination chain
+     * @param routeTokens Array of tokens required for execution of calls on destination chain
      * @param calls Array of instruction calls to execute
      * @param creator Address that created the intent
      * @param prover Address of prover contract for validation
      * @param deadline Timestamp by which intent must be fulfilled for reward claim
      * @param nativeValue Amount of native tokens offered as reward
-     * @param tokens Array of ERC20 tokens and amounts offered as rewards
+     * @param rewardTokens Array of ERC20 tokens and amounts offered as rewards
      */
     event IntentCreated(
         bytes32 indexed hash,
@@ -132,12 +133,13 @@ interface IIntentSource is ISemver {
         uint256 source,
         uint256 destination,
         address inbox,
+        TokenAmount[] routeTokens,
         Call[] calls,
         address indexed creator,
         address indexed prover,
         uint256 deadline,
         uint256 nativeValue,
-        TokenAmount[] tokens
+        TokenAmount[] rewardTokens
     );
 
     /**
@@ -191,7 +193,7 @@ interface IIntentSource is ISemver {
 
     /**
      * @notice Calculates the deterministic address of the intent funder
-     * @param intent Intent to calculate vault address for
+     * @param intent Intent to calculate funder address for
      * @return Address of the intent funder
      */
     function intentFunderAddress(
@@ -213,14 +215,12 @@ interface IIntentSource is ISemver {
      * @param routeHash Hash of the route component
      * @param reward Reward structure containing distribution details
      * @param fundingAddress Address to fund the intent from
-     * @param permitCalls Array of permit calls to approve token transfers
      * @param recoverToken Address of the token to recover if sent to the vault
      */
     function fundIntent(
         bytes32 routeHash,
         Reward calldata reward,
         address fundingAddress,
-        Call[] calldata permitCalls,
         address recoverToken
     ) external payable;
 
