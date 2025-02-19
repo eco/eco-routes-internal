@@ -1,69 +1,8 @@
-<div id="top"></div>
-<h1>Cross-L2 Actions</h1>
-
-</div>
-
-- [Abstract](#Abstract)
-- [Components](#Components)
-- [Usage](#usage)
-  - [Installation](#installation)
-  - [Testing](#testing)
-  - [Deployment](#deployment)
-  - [End-to-End Testing](#end-to-end-testing)
-- [Contributing](#contributing)
-- [License](#license)
-- [Contact](#contact)
-
-## Abstract
-
-An intents-driven, permissionless, trust-neutral protocol for facilitating the creation, incentivized execution, and proof of cross-L2 transactions.
-
-**Warning: This code has not been audited. Use at your own risk.**
-
-- [Intent Publishing](#intent-publishing)
-- [Intent Funding](#intent-funding)
-- [Intent Fulfillment](#intent-fulfillment)
-- [Intent Proving](#intent-proving)
-- [Reward Settlement](#intent-reward-settlement)
-
-We identify three main user profiles:
-
-- `Users`: Individuals who want to transact across different L2s.
-- `Solvers`: Individuals interested in performing transactions on behalf of others for a fee.
-- `Provers`: Individuals interested in proving on the source chain that an intent was fulfilled on the destination chain.
-
-### How it works
-
-A `User` wants to initiate a cross-chain transaction by creating an intent. Put simply, an intent represents a `User`'s end goals on the destination chain. It contains the calls they'd want to make, those calls' corresponding addresses, the resources a `Solver` would need to perform those calls, and the rewards the `User` would be willing to pay a `Solver` to execute this call on their behalf, along with other metadata. A `User` can publish this directly on our system or otherwise disseminate that information to a `Solver`. A `User` also must fund this intent - escrow the reward tokens corresponding to the intent. A `Solver`, upon seeing this intent and determining based on the inputs and outputs that it is profitable and ensuring that the `User` has funded the intent, marshalls the required resources and fulfills the intent transaction on the destination chain that corresponds to the user's intent, storing the fulfilled intent's hash on the destination chain. A `Prover` - perhaps the `Solver` themselves or a service they subscribe to - sees this fulfillment transaction and performs a proof that the hash of the fulfilled transaction on the destination chain matches that of the intent on the source chain. After the intent is marked as proven,the `Solver` can withdraw their reward.
-
-## Components
-
-Within the following sections, the terms 'source chain' and 'destination chain' will be relative to any given intent. Each supported chain will have its own `IntentSource`, `Inbox` and a set of `Prover`s.
-
-### Intent Publishing
-
-The `IntentSource` contract provides functionality for publishing intents. Intents can be published in this way on any chain, regardless of where the input and output tokens live. An intent need not be published via the `IntentSource` at all - a user can disseminate intent information directly to solvers if they so choose.
-
-### Intent Funding
-
-A funded intent effectively has its reward tokens stored in a `Vault`. An intent can be funded on the `IntentSource` contract during publishing, after the fact via permit2 signatures, or a user may directly transfer tokens to the `Vault`.
-
-### Intent Fulfillment
-
-Intent fulfillment happens on the `Inbox`, which lives on the destination chain. Solvers approve the `Inbox` to pull the required tokens and then call upon the `Inbox` to fulfill the intent. Fulfillment may also trigger some proving-related post-processing, for example relaying a message indicating fulfillment back to the source chain.
-
-### Intent Proving
-
-Intent proving lives on `Prover` contracts, which are on the source chain. `Prover`s are effectively the source chain's oracle for whether an intent was fulfilled on the destination chain. A User chooses ahead of time which `Prover` their intent will query for fulfillment status. 
-
-### Intent Reward Settlement
-
-Intent reward settlement occurs on the `IntentSource` on the destination chain. The withdrawal flow checks that an intent has been fulfilled on the `Prover` and then transfers reward tokens to the address provided by the solver. In the event that an intent was not fulfilled before the deadline, the user can trigger a refund of their reward tokens through the same flow. Other edge cases like overfunding an intent are also handled by the `IntentSource`.
 
 
-**See [contracts](/contracts) for a detailed API documentation**
+# API Documentation
 
-## Future Work
+## IntentSource
 
 - `_hash` (bytes32) the hash of the intent, also the key to the intents mapping
 - `_creator` (address) the address that created the intent
@@ -75,22 +14,6 @@ Intent reward settlement occurs on the `IntentSource` on the destination chain. 
 - `_expiryTime` (uint256) the time by which the storage proof must have been created in order for the filler to redeem rewards.
 - `_prover` (address) the prover that will verify whether or not this intent has been fulfilled on the destination chain.
 
-## Usage
-
-To get a local copy up and running follow these simple steps.
-
-### Prerequisites
-
-Running this project locally requires the following:
-
-- [NodeJS v18.20.3](https://nodejs.org/en/blog/release/v18.20.3) - using nvm (instructions below)
-- [Yarn v1.22.19](https://www.npmjs.com/package/yarn/v/1.22.19)
-
-It is recommended to use `nvm` to install Node. This is a Node version manager so your computer can easily handle multiple versions of Node:
-
-1. Install `nvm` using the following command in your terminal:
-
-<ins>Security:</ins> This method has no permissioning, it can be called by anyone. Notably, it asks the user for raw calldata to be executed by the filler, and transfers tokens from the user into the IntentSource contract. It is very important, therefore, that a user know exactly what commands they are executing and what their consequences are, as well as what tokens in what quantity they intend to lock up. Also, the user must give this contract permission to move their tokens via a method like permit or approve, otherwise it will revert.
 
 <h4><ins>withdrawRewards</ins></h4>
 <h5>Allows withdawal of reward funds locked up for a given intent.</h5>
@@ -101,9 +24,9 @@ Attributes:
 
 <ins>Security:</ins> This method can be called by anyone, but the caller has no specific rights. Whether or not this method succeeds and who receives the funds if it does depend solely on the intent's proven status and expiry time, as well as the claimant address specified by the solver on the Inbox contract on fulfillment.
 
-## Intent Fulfillment / Execution
+## Inbox
 
-Intent fulfillment lives on `Inbox.sol`, which lives on the destination chain. `Solvers` interact with this contract to `fulfill` Users' intents. At time of launch, solving will be private, restricted only to a whitelisted set of filler addresses while we live test the system, but it will soon become possible for anyone to fill orders. `Solvers` may have to call different fulfill methods depending on the prover address specified in the intent - a HyperProver address necessitates a call to either FulfillHyperInstant or FulfillHyperBatched, and a StorageProver necessitates a call to fulfillStorage. See [Intent Proving](#Intent-Proving) for more information.
+The Inbox is where intent fulfillment lives. Solvers fulfill intents on the Inbox via one of the contract's fulfill methods, which pulls in solver resources and executes the intent's calls on the destination chain. Once an intent has been fulfilled, any subsequent attempts to fulfill it will be reverted. The Inbox also contains functionality
 
 ### Events
 
@@ -265,9 +188,6 @@ Attributes:
 
 <ins>Security:</ins> This method can only be called by the owner of the Inbox. This method is primarily for testing purposes.
 
-## Intent Proving
-
-Intent proving lives on `Prover.sol` and `HyperProver.sol`, which are on the source chain. `Prover`s are the parties that should be interacting with the `Prover` contract, but the `IntentSource` reads state from it. The methods in this contract are complex and require inputs that can be difficult to generate. In the future we will be building out services to assist with proving, as well as publishing an SDK for input generation and/or spinning up independent proving services. The `HyperProver` contract requires no `Prover` entity to interact with it, but is also read by the `IntentSource`. Please see the scripts directory for usage examples.
 
 ## HyperProver (HyperProver.sol)
 
@@ -349,105 +269,3 @@ For Optimisms BedRock release we submit an `outputRoot` storage proof created by
 ```solidity
 output_root = kecakk256( version_byte || state_root || withdrawal_storage_root || latest_block_hash)
 ```
-
-2. If you're not on an M1 Mac, skip to step 3. For Node < v15, `nvm` will need to be run in a Rosetta terminal since those versions are not supported by the M1 chip for installation. To do that, in the terminal simply run either:
-
-If running bash:
-
-```sh
-arch -x86_64 bash
-```
-
-If running zsh:
-
-```sh
-arch -x86_64 zsh
-```
-
-More information about this can be found in [this thread](https://github.com/nvm-sh/nvm/issues/2350).
-
-3. Install our Node version using the following command:
-
-```sh
-nvm install v18.20.3
-```
-
-4. Once the installation is complete you can use it by running:
-
-```bash
-nvm use v18.20.3
-```
-
-You should see it as the active Node version by running:
-
-```bash
-nvm ls
-```
-
-### Installation
-
-1. Clone the repo
-
-```bash
- git clone git@github.com:ecoinc/Cross-L2-Actions.git
-```
-
-2. Install and build using yarn
-
-```bash
- yarn install
-```
-
-```bash
- yarn build
-```
-
-### Lint
-
-```bash
-yarn lint
-```
-
-### Testing
-
-```bash
-# tests
-$ yarn  test
-
-# test coverage
-$ yarn coverage
-```
-
-### Deployment
-
-Deploy using `deploy.ts` in the `scripts` directory. This script draws from the configs (found in the `config` directory) as well as a local .env file. See `.env.example`.
-
-### End-To-End Testing
-
-This section is under development. While the tests are not yet operational, the scripts are available in the `scripts` directory
-
-## Contributing
-
-1. Fork the Project
-2. Create your Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-<p align="right">(<a href="#top">back to top</a>)</p>
-
-<!-- LICENSE -->
-
-## License
-
-[MIT License](./LICENSE)
-
-<p align="right">(<a href="#top">back to top</a>)</p>
-
-<!-- CONTACT -->
-
-## Contact
-
-Project Link: [https://github.com/ecoinc/Cross-L2-Actions](https://github.com/ecoinc/Cross-L2-Actions)
-
-<p align="right">(<a href="#top">back to top</a>)</p>
