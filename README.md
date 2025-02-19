@@ -34,6 +34,8 @@ We identify three main user profiles:
 
 A `User` wants to initiate a cross-chain transaction by creating an intent. Put simply, an intent represents a `User`'s end goals on the destination chain. It contains the calls they'd want to make, those calls' corresponding addresses, the resources a `Solver` would need to perform those calls, and the rewards the `User` would be willing to pay a `Solver` to execute this call on their behalf, along with other metadata. A `User` can publish this directly on our system or otherwise disseminate that information to a `Solver`. A `User` also must fund this intent - escrow the reward tokens corresponding to the intent. A `Solver`, upon seeing this intent and determining based on the inputs and outputs that it is profitable and ensuring that the `User` has funded the intent, marshalls the required resources and fulfills the intent transaction on the destination chain that corresponds to the user's intent, storing the fulfilled intent's hash on the destination chain. A `Prover` - perhaps the `Solver` themselves or a service they subscribe to - sees this fulfillment transaction and performs a proof that the hash of the fulfilled transaction on the destination chain matches that of the intent on the source chain. After the intent is marked as proven,the `Solver` can withdraw their reward.
 
+We also implement ERC-7683 and enable the creation and fulfillment of intents in our system via that interface.
+
 ## Components
 
 Within the following sections, the terms 'source chain' and 'destination chain' will be relative to any given intent. Each supported chain will have its own `IntentSource`, `Inbox` and a set of `Prover`s.
@@ -58,6 +60,10 @@ Intent proving lives on `Prover` contracts, which are on the source chain. `Prov
 ### Intent Reward Settlement
 
 Intent reward settlement occurs on the `IntentSource` on the destination chain. The withdrawal flow checks that an intent has been fulfilled on the `Prover` and then transfers reward tokens to the address provided by the solver. In the event that an intent was not fulfilled before the deadline, the user can trigger a refund of their reward tokens through the same flow. Other edge cases like overfunding an intent are also handled by the `IntentSource`.
+
+### ERC-7683
+
+Eco's implementation of ERC-7683 allows users to create and fulfill intents on Eco's ecosystem through ERC-7683's rails. `EcoERC7683OriginSettler` is the entrypoint to our system, while `EcoERC7683DestinationSettler` is where they are fulfilled. While `EcoERC7683OriginSettler` is a separate contract, `EcoERC7683DestinationSettler` is an abstract contract inherited by Eco's `Inbox`.
 
 ## Contract Addresses
 
