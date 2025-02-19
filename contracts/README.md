@@ -4,76 +4,215 @@
 
 ## IntentSource
 
-- `_hash` (bytes32) the hash of the intent, also the key to the intents mapping
-- `_creator` (address) the address that created the intent
+The IntentSource is where intent publishing and reward claiming functionality live. Users (or actors on their behalf) can publish intents here, as well as fund intents' rewards. After an intent is fulfilled and proven, a solver can fetch their rewards here as well. This contract is not expected to hold any funds between transactions.
+
+### Events
+
+<h4><ins>IntentPartiallyFunded</ins></h4>
+<h5>Signals partial funding of an intent with native tokens</h5>
+
+Parameters:
+- `intentHash` (bytes32) The hash of the partially funded intent
+- `fundingSource` (address) The address providing the partial funding
+
+<h4><ins>IntentFunded</ins></h4>
+<h5>Signals complete funding of an intent with native tokens</h5>
+
+Parameters:
+- `intentHash` (bytes32) The hash of the partially funded intent
+- `fundingSource` (address) The address providing the partial funding
+
+<h4><ins>IntentCreated</ins></h4>
+<h5>Signals the creation of a new cross-chain intent</h5>
+
+Parameters:
+- `hash` (bytes32) Unique identifier of the intent
 - `_destinationChain` (uint256) the destination chain
-- `_targets` (address[]) the address on \_destinationChain at which the instruction sets need to be executed
-- `_data` (bytes[]) the instructions to be executed on \_targets
-- `_rewardTokens` (address[]) the addresses of reward tokens
-- `_rewardAmounts` (uint256[]) the amounts of reward tokens
-- `_expiryTime` (uint256) the time by which the storage proof must have been created in order for the filler to redeem rewards.
-- `_prover` (address) the prover that will verify whether or not this intent has been fulfilled on the destination chain.
+- `salt` (bytes32) Creator-provided uniqueness factor
+- `source` (uint256) Source chain identifier
+- `destination` (uint256) Destination chain identifier
+- `inbox` (address) Address of the receiving contract on the destination chain
+- `routeTokens` (TokenAmount[]) Required tokens for executing destination chain calls
+- `calls` (Call[]) Instructions to execute on the destination chain
+- `creator` (address) Intent originator address
+- `prover` (address) Prover contract address
+- `deadline` (address) Timestamp for reward claim eligibility
+- `nativeValue` (uint256) Native token reward amount
+- `rewardTokens` (TokenAmount[]) ERC20 token rewards with amounts
+
+<h4><ins>Withdrawal</ins></h4>
+<h5>Signals successful reward withdrawal</h5>
+
+Parameters:
+- `_hash` (bytes32) The hash of the claimed intent
+- `_recipient` (address) The address receiving the rewards
+
+<h4><ins>Refund</ins></h4>
+<h5>Signals successful reward refund</h5>
+
+Parameters:
+- `_hash` (bytes32) The hash of the refunded intent
+- `_recipient` (address) The address receiving the refund
+
+### Methods
+
+<h4><ins>getRewardStatus</ins></h4>
+<h5>Retrieves the current reward claim status for an intent</h5>
+
+Parameters:
+- `intentHash` (bytes32) The hash of the intent
+
+<h4><ins>getVaultState</ins></h4>
+<h5>Retrieves the current state of an intent's vault</h5>
+
+Parameters:
+- `intentHash` (bytes32) The hash of the intent
+
+<h4><ins>getPermitContract</ins></h4>
+<h5> Retrieves the permit contract for the token transfers</h5>
+
+Parameters:
+- `intentHash` (bytes32) The hash of the intent
+
+<h4><ins>getIntentHash</ins></h4>
+<h5>Computes the hash components of an intent</h5>
+
+Parameters:
+- `intent` (Intent) The intent to hash
+
+<h4><ins>intentVaultAddress</ins></h4>
+<h5>Computes the deterministic vault address for an intent</h5>
+
+Parameters:
+- `intent` (Intent) The intent to calculate the vault address for
+
+<h4><ins>publish</ins></h4>
+<h5>Creates a new cross-chain intent with associated rewards</h5>
+
+Parameters:
+- `intent` (Intent) The complete intent specification
+
+<ins>Security:</ins> This method can be called to create an intent on anyone's behalf. It does not transfer any funds. It emits an event that would give a solver all the information required to fulfill the intent, but the solver is expected to check that the intent is funded before fulfilling.
+
+<h4><ins>publishAndFund</ins></h4>
+<h5>Creates and funds an intent in a single transaction</h5>
+
+Parameters:
+- `intent` (Intent) The complete intent specification
+
+<ins>Security:</ins> This method is called by the user to create and completely fund an intent. It will fail if the funder does not have sufficient balance or has not given the IntentSource authority to move all the reward funds.
+
+<h4><ins>fund</ins></h4>
+<h5>Funds an existing intent</h5>
+
+Parameters:
+- `intent` (Intent) The complete intent specification
+- `reward` (Reward) Reward structure containing distribution details
+
+<ins>Security:</ins> This method is called by the user to completely fund an intent. It will fail if the funder does not have sufficient balance or has not given the IntentSource authority to move all the reward funds.
+
+<h4><ins>fundFor</ins></h4>
+<h5>Funds an intent for a user with permit/allowance</h5>
+
+Parameters:
+- `routeHash` (bytes32) The complete intent specification
+- `reward` (Reward) Reward structure containing distribution details
+- `funder` (address) Address to fund the intent from
+- `permitContract` (address) Address of the permitContract instance
+- `allowPartial` (bool) Whether to allow partial funding
+
+<ins>Security:</ins> This method will fail if allowPartial is false but incomplete funding is provided. Additionally, this method cannot be called for intents with nonzero native rewards. 
 
 
-<h4><ins>withdrawRewards</ins></h4>
+<h4><ins>publishAndFundFor</ins></h4>
+<h5>Creates and funds an intent using permit/allowance</h5>
+
+Parameters:
+- `intent` (Intent) The complete intent specification
+- `funder` (address) Address to fund the intent from
+- `permitContract` (address) Address of the permitContract instance
+- `allowPartial` (bool) Whether to allow partial funding
+
+<ins>Security:</ins> This method is called by the user to create and completely fund an intent. It will fail if the funder does not have sufficient balance or has not given the IntentSource authority to move all the reward funds.
+
+
+<h4><ins>withdraw</ins></h4>
 <h5>Allows withdawal of reward funds locked up for a given intent.</h5>
 
-Attributes:
-
+Parameters:
 - `_hash` (bytes32) the hash of the intent on which withdraw is being attempted
 
 <ins>Security:</ins> This method can be called by anyone, but the caller has no specific rights. Whether or not this method succeeds and who receives the funds if it does depend solely on the intent's proven status and expiry time, as well as the claimant address specified by the solver on the Inbox contract on fulfillment.
 
-## Inbox
+## Inbox (Inbox.sol)
 
-The Inbox is where intent fulfillment lives. Solvers fulfill intents on the Inbox via one of the contract's fulfill methods, which pulls in solver resources and executes the intent's calls on the destination chain. Once an intent has been fulfilled, any subsequent attempts to fulfill it will be reverted. The Inbox also contains functionality
+The Inbox is where intent fulfillment lives. Solvers fulfill intents on the Inbox via one of the contract's fulfill methods, which pulls in solver resources and executes the intent's calls on the destination chain. Once an intent has been fulfilled, any subsequent attempts to fulfill it will be reverted. The Inbox also contains some post-fulfillment proving-related logic.
 
 ### Events
 
 <h4><ins>Fulfillment</ins></h4>
 <h5>Emitted when an intent is successfully fulfilled</h5>
 
-Attributes:
+Parameters:
 
-- `_hash` (bytes32) the hash of the intent, also the key to the intents mapping
+- `_hash` (bytes32) the hash of the intent
 - `_sourceChainID` (uint256) the ID of the chain where the fulfilled intent originated
 - `_claimant` (address) the address (on the source chain) that will receive the fulfilled intent's reward
 
 <h4><ins>ToBeProven</ins></h4>
 <h5>Emitted when an intent is ready to be proven via a storage prover</h5>
 
-Attributes:
+Parameters:
 
-- `_hash` (bytes32) the hash of the intent, also the key to the intents mapping
+- `_hash` (bytes32) the hash of the intent
 - `_sourceChainID` (uint256) the ID of the chain where the fulfilled intent originated
 - `_claimant` (address) the address (on the source chain) that will receive the fulfilled intent's reward
 
 <h4><ins>HyperInstantFulfillment</ins></h4>
 <h5>Emitted when an intent is fulfilled with the instant hyperprover path</h5>
 
-Attributes:
+Parameters:
 
-- `_hash` (bytes32) the hash of the intent, also the key to the intents mapping
+- `_hash` (bytes32) the hash of the intent
 - `_sourceChainID` (uint256) the ID of the chain where the fulfilled intent originated
 - `_claimant` (address) the address (on the source chain) that will receive the fulfilled intent's reward
 
 <h4><ins>AddToBatch</ins></h4>
 <h5>Emitted when an intent is added to a batch to be proven with the hyperprover</h5>
 
-Attributes:
+Parameters:
 
-- `_hash` (bytes32) the hash of the intent, also the key to the intents mapping
+- `_hash` (bytes32) the hash of the intent
 - `_sourceChainID` (uint256) the ID of the chain where the fulfilled intent originated
 - `_claimant` (address) the address (on the source chain) that will receive the fulfilled intent's reward
 - `_prover` (address) the address of the HyperProver these intents will be proven on
 
+<h4><ins>AddToBatch</ins></h4>
+<h5>Emitted when an intent is added to a Hyperlane batch</h5>
+
+Parameters:
+
+- `_hash` (bytes32) the hash of the intent
+- `_sourceChainID` (uint256) the ID of the chain where the fulfilled intent originated
+- `_claimant` (address) the address (on the source chain) that will receive the fulfilled 
+intent's reward
+- `_prover` (address) the address of the Hyperlane prover
+
 <h4><ins>SolvingIsPublic</ins></h4>
 <h5>Emitted when solving is made public</h5>
+
+
+<h4><ins>MailboxSet</ins></h4>
+<h5>Emitted when Hyperlane mailbox address is set</h5>
+
+Parameters:
+
+- `_mailbox` (address) address of the mailbox contract
 
 <h4><ins>SolverWhitelistChanged</ins></h4>
 <h5>Emitted when the solver whitelist permissions are changed</h5>
 
-Attributes:
+Parameters:
 
 - `_solver` (address) the address of the solver whose permissions are being changed
 - `_canSolve`(bool) whether or not \_solver will be able to solve after this method is called
@@ -83,7 +222,7 @@ Attributes:
 <h4><ins>fulfillStorage</ins></h4>
 <h5> Allows a filler to fulfill an intent on its destination chain to be proven by the StorageProver specified in the intent. The filler also gets to predetermine the address on the destination chain that will receive the reward tokens.</h5>
 
-Attributes:
+Parameters:
 
 - `_sourceChainID` (uint256) the ID of the chain where the fulfilled intent originated
 - `_targets` (address[]) the address on the destination chain at which the instruction sets need to be executed
@@ -98,7 +237,7 @@ Attributes:
 <h4><ins>fulfillHyperInstant</ins></h4>
 <h5> Allows a filler to fulfill an intent on its destination chain to be proven by the HyperProver specified in the intent. After fulfilling the intent, this method packs the intentHash and claimant into a message and sends it over the Hyperlane bridge to the HyperProver on the source chain. The filler also gets to predetermine the address on the destination chain that will receive the reward tokens.</h5>
 
-Attributes:
+Parameters:
 
 - `_sourceChainID` (uint256) the ID of the chain where the fulfilled intent originated
 - `_targets` (address[]) the address on the destination chain at which the instruction sets need to be executed
@@ -111,10 +250,10 @@ Attributes:
 
 <ins>Security:</ins> This method inherits all of the security features in fulfillstorage. This method is also payable, as funds are required to use the hyperlane bridge.
 
-<h4><ins>fulfillHyperBatched</ins></h4>
+<h4><ins>fulfillHyperBatched</ins></h4>`
 <h5> Allows a filler to fulfill an intent on its destination chain to be proven by the HyperProver specified in the intent. After fulfilling the intent, this method emits an event that indicates which intent was fulfilled. Fillers of hyperprover-destined intents will listen to these events and batch process them later on. The filler also gets to predetermine the address on the destination chain that will receive the reward tokens. Note: this method is currently not supported by Eco's solver services, but has been included for completeness. Work on services for this method is ongoing.</h5>
 
-Attributes:
+Parameters:
 
 - `_sourceChainID` (uint256) the ID of the chain where the fulfilled intent originated
 - `_targets` (address[]) the address on the destination chain at which the instruction sets need to be executed
@@ -131,7 +270,7 @@ Attributes:
 
 <h5> Allows a filler to send a batch of HyperProver-destined intents over the HyperLane bridge. This reduces the cost per intent proven, as intents that would have had to be sent in separate messages are now consolidated into one. </h5>
 
-Attributes:
+Parameters:
 
 - `_sourceChainID` (uint256) the chainID of the source chain
 - `_prover` (address) the address of the hyperprover on the source chain
@@ -143,7 +282,7 @@ Attributes:
 
 <h5> A passthrough method that calls the HyperLane Mailbox and fetches the cost of sending a given message. This method is used inside both the fulfillHyperInstant and sendBatch methods to ensure that the user has enough gas to send the message over HyperLane's bridge.</h5>
 
-Attributes:
+Parameters:
 
 - `_sourceChainID` (uint256) the chainID of the source chain
 - `_messageBody` (bytes) the message body being sent over the bridge
@@ -155,7 +294,7 @@ Attributes:
 
 <h5>Sets the HyperLane Mailbox address to be used for all HyperProving fulfills.</h5>
 
-Attributes:
+Parameters:
 
 - `_mailbox` (address) the address of the mailbox.
 
@@ -171,7 +310,7 @@ Attributes:
 
 <h5>Changes the solving permissions for a given address.</h5>
 
-Attributes:
+Parameters:
 
 - `_solver` (address) the address of the solver whose permissions are being changed
 - `_canSolve`(bool) whether or not \_solver will be able to solve after this method is called
@@ -182,7 +321,7 @@ Attributes:
 
 <h5>Transfers excess gas token out of the contract.</h5>
 
-Attributes:
+Parameters:
 
 - `_destination` (address) the destination of the transferred funds
 
@@ -196,7 +335,7 @@ Attributes:
 <h4><ins>IntentProven</ins></h4>
 <h5> emitted when an intent has been successfully proven</h5>
 
-Attributes:
+Parameters:
 
 - `_hash` (bytes32) the hash of the intent
 - `_claimant` (address) the address that can claim this intent's rewards
@@ -204,7 +343,7 @@ Attributes:
 <h4><ins>IntentAlreadyProven</ins></h4>
 <h5> emitted when an attempt is made to re-prove an already-proven intent</h5>
 
-Attributes:
+Parameters:
 
 - `_hash` (bytes32) the hash of the intent
 
@@ -213,7 +352,7 @@ Attributes:
 <h4><ins>handle</ins></h4>
 <h5>Called by the HyperLane Mailbox contract to finish the HyperProving process. This method parses the message sent via HyperLane into intent hashes and their corresponding claimant addresses, then writes them to the provenIntents mapping so that the IntentSource can read from them when a reward withdrawal is attempted.</h5>
 
-Attributes:
+Parameters:
 
 - ` ` (uint32) this variable is not used, but is required by the interface. it is the chain ID of the intent's origin chain.
 - `_sender` (bytes32) the address that called dispatch() on the HyperLane Mailbox on the destination chain
@@ -228,7 +367,7 @@ Attributes:
 <h4><ins>L1WorldStateProven</ins></h4>
 <h5> emitted when L1 world state is proven</h5>
 
-Attributes:
+Parameters:
 
 - `_blocknumber` (uint256) the block number corresponding to this L1 world state
 - `_L1WorldStateRoot` (bytes32) the world state root at \_blockNumber
@@ -236,7 +375,7 @@ Attributes:
 <h4><ins>L2WorldStateProven</ins></h4>
 <h5> emitted when L2 world state is proven</h5>
 
-Attributes:
+Parameters:
 
 - `_destinationChainID` (uint256) the chainID of the destination chain
 - `_blocknumber` (uint256) the block number corresponding to this L2 world state
@@ -245,7 +384,7 @@ Attributes:
 <h4><ins>IntentProven</ins></h4>
 <h5> emitted when an intent has been successfully proven</h5>
 
-Attributes:
+Parameters:
 
 - `_hash` (bytes32) the hash of the intent
 - `_claimant` (address) the address that can claim this intent's rewards
@@ -255,7 +394,7 @@ Attributes:
 <h4><ins>proveSettlementLayerState</ins></h4>
 <h5> validates input L1 block state against the L1 oracle contract. This method does not need to be called per intent, but the L2 batch containing the intent must have been settled to L1 on or before this block.</h5>
 
-Attributes:
+Parameters:
 
 - `rlpEncodedBlockData` (bytes) properly encoded L1 block data
 

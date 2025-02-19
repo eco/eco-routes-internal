@@ -18,8 +18,7 @@ import {Vault} from "./Vault.sol";
  * @dev Used to create intents and withdraw associated rewards. Works in conjunction with
  *      an inbox contract on the destination chain. Verifies intent fulfillment through
  *      a prover contract on the source chain
- * @dev This contract should not hold any funds or hold any roles for other contracts,
- *      as it executes arbitrary calls to other contracts when funding intents.
+ * @dev This contract should not hold any funds or hold any roles for other contracts.
  */
 contract IntentSource is IIntentSource, Semver {
     using SafeERC20 for IERC20;
@@ -151,7 +150,7 @@ contract IntentSource is IIntentSource, Semver {
     }
 
     /**
-     * @notice Funds an intent for a user with allowance/permit
+     * @notice Funds an intent for a user with permit/allowance
      * @param routeHash Hash of the route component
      * @param reward Reward structure containing distribution details
      * @param funder Address to fund the intent from
@@ -187,6 +186,9 @@ contract IntentSource is IIntentSource, Semver {
     /**
      * @notice Creates and funds an intent using permit/allowance
      * @param intent The complete intent struct
+     * @param funder Address to fund the intent from
+     * @param permitContact Address of the permitContact instance
+     * @param allowPartial Whether to allow partial funding
      * @return intentHash Hash of the created and funded intent
      */
     function publishAndFundFor(

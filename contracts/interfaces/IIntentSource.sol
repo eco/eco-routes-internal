@@ -86,14 +86,14 @@ interface IIntentSource is ISemver, IVaultStorage {
     error ArrayLengthMismatch();
 
     /**
-     * @notice Signals partial funding of an intent with native tokens
+     * @notice Signals partial funding of an intent
      * @param intentHash The hash of the partially funded intent
      * @param fundingSource The address providing the partial funding
      */
     event IntentPartiallyFunded(bytes32 intentHash, address fundingSource);
 
     /**
-     * @notice Signals complete funding of an intent with native tokens
+     * @notice Signals complete funding of an intent
      * @param intentHash The hash of the fully funded intent
      * @param fundingSource The address providing the complete funding
      */
@@ -103,13 +103,13 @@ interface IIntentSource is ISemver, IVaultStorage {
      * @notice Signals the creation of a new cross-chain intent
      * @param hash Unique identifier of the intent
      * @param salt Creator-provided uniqueness factor
-     * @param source Origin chain identifier
-     * @param destination Target chain identifier
+     * @param source Source chain identifier
+     * @param destination Destination chain identifier
      * @param inbox Address of the receiving contract on the destination chain
      * @param routeTokens Required tokens for executing destination chain calls
      * @param calls Instructions to execute on the destination chain
      * @param creator Intent originator address
-     * @param prover Verification contract address
+     * @param prover Prover contract address
      * @param deadline Timestamp for reward claim eligibility
      * @param nativeValue Native token reward amount
      * @param rewardTokens ERC20 token rewards with amounts
@@ -145,7 +145,7 @@ interface IIntentSource is ISemver, IVaultStorage {
 
     /**
      * @notice Retrieves the current reward claim status for an intent
-     * @param intentHash The hash of the queried intent
+     * @param intentHash The hash of the intent
      * @return status Current reward status
      */
     function getRewardStatus(
