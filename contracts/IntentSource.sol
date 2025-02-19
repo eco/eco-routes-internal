@@ -223,9 +223,9 @@ contract IntentSource is IIntentSource, Semver {
     }
 
     /**
-     * @notice Checks if an intent is properly funded
+     * @notice Checks if an intent is completely funded
      * @param intent Intent to validate
-     * @return True if intent is properly funded, false otherwise
+     * @return True if intent is completely funded, false otherwise
      */
     function isIntentFunded(
         Intent calldata intent
@@ -340,7 +340,7 @@ contract IntentSource is IIntentSource, Semver {
      * @dev Must not be among the intent's rewards
      * @param routeHash Hash of the intent's route
      * @param reward Reward structure of the intent
-     * @param token Optional token address for handling incorrect vault transfers
+     * @param token Token address for handling incorrect vault transfers
      */
     function recoverToken(
         bytes32 routeHash,

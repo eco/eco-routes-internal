@@ -265,7 +265,7 @@ interface IIntentSource is ISemver, IVaultStorage {
     ) external view returns (bool);
 
     /**
-     * @notice Claims rewards for a successfully fulfilled intent
+     * @notice Claims rewards for a successfully fulfilled and proven intent
      * @param routeHash The hash of the intent's route component
      * @param reward The reward specification
      */
@@ -275,7 +275,7 @@ interface IIntentSource is ISemver, IVaultStorage {
     ) external;
 
     /**
-     * @notice Claims rewards for multiple fulfilled intents
+     * @notice Claims rewards for multiple fulfilled and proven intents
      * @param routeHashes Array of route component hashes
      * @param rewards Array of corresponding reward specifications
      */

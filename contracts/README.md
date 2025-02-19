@@ -115,7 +115,7 @@ Parameters:
 <h5>Funds an intent for a user with permit/allowance</h5>
 
 Parameters:
-- `routeHash` (bytes32) The complete intent specification
+- `routeHash` (bytes32) The hash of the intent's route component
 - `reward` (Reward) Reward structure containing distribution details
 - `funder` (address) Address to fund the intent from
 - `permitContract` (address) Address of the permitContract instance
@@ -135,14 +135,51 @@ Parameters:
 
 <ins>Security:</ins> This method is called by the user to create and completely fund an intent. It will fail if the funder does not have sufficient balance or has not given the IntentSource authority to move all the reward funds.
 
-
-<h4><ins>withdraw</ins></h4>
-<h5>Allows withdawal of reward funds locked up for a given intent.</h5>
+<h4><ins>isIntentFunded</ins></h4>
+<h5>Checks if an intent is completely funded</h5>
 
 Parameters:
-- `_hash` (bytes32) the hash of the intent on which withdraw is being attempted
+- `intent` (Intent) Intent to validate
 
 <ins>Security:</ins> This method can be called by anyone, but the caller has no specific rights. Whether or not this method succeeds and who receives the funds if it does depend solely on the intent's proven status and expiry time, as well as the claimant address specified by the solver on the Inbox contract on fulfillment.
+
+<h4><ins>withdrawRewards</ins></h4>
+<h5>Claims rewards for a successfully fulfilled and proven intent</h5>
+
+Parameters:
+- `routeHash` (bytes32) The hash of the intent's route component
+- `reward` (Reward) Reward structure containing distribution details
+
+<ins>Security:</ins> Can withdraw anyone's intent, but only to the claimant predetermined by its solver. Withdraws to solver only if intent is proven.
+
+
+<h4><ins>batchWithdraw</ins></h4>
+<h5>Claims rewards for multiple fulfilled and proven intents</h5>
+
+Parameters:
+- `routeHashes` (bytes32[]) Array of route component hashes
+- `reward` (Reward[]) Array of corresponding reward specifications
+
+<ins>Security:</ins> Can withdraw anyone's intent, but only to the claimant predetermined by its solver. Withdraws to solver only if intent is proven.
+
+<h4><ins>refund</ins></h4>
+<h5>Returns rewards to the intent creator</h5>
+
+Parameters:
+- `routeHashes` (bytes32[]) Array of route component hashes
+- `reward` (Reward[]) Array of corresponding reward specifications
+
+<ins>Security:</ins> Will fail if intent not expired.
+
+<h4><ins>recoverToken</ins></h4>
+<h5>Recover tokens that were sent to the intent vault by mistake</h5>
+
+Parameters:
+- `routeHashes` (bytes32[]) Array of route component hashes
+- `reward` (Reward[]) Array of corresponding reward specifications
+- `token` (address) Token address for handling incorrect vault transfers
+
+<ins>Security:</ins> Will fail if token is the zero address or the address of any of the reward tokens. Will also fail if intent has nonzero native token rewards and has not yet been claimed or refunded.
 
 ## Inbox (Inbox.sol)
 
