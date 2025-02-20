@@ -88,6 +88,8 @@ jobs:
         uses: foundry-rs/foundry-toolchain@v1
       - name: 🔍 Verify Installation
         run: forge --version
+      - name: 🔧 Install Forge Dependencies
+        run: forge install
       - name: 🔧 Grant Execute Permission to MultiDeploy.sh
         run: chmod +x scripts/MultiDeploy.sh
       - name: 🔧 Grant Execute Permission to Verify.sh
