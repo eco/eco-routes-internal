@@ -87,7 +87,7 @@ jobs:
       - name: ⚡ Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
       - name: 🔍 Verify Installation
-        run: forge test -vvv
+        run: forge --version
       - name: Install dependencies
         uses: borales/actions-yarn@v5
         with:
