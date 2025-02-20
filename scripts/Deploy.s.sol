@@ -31,11 +31,10 @@ contract Deploy is Script {
     ICreate3Deployer constant create3Deployer =
         ICreate3Deployer(0xC6BAd1EbAF366288dA6FB5689119eDd695a66814);
 
-    string constant FILE_NAME = "out/.deploy";
-
     function run() external {
         bytes32 salt = vm.envBytes32("SALT");
         address mailbox = vm.envAddress("MAILBOX");
+        string memory deployFilePath = vm.envString("DEPLOY_FILE");
         address deployer = vm.rememberKey(vm.envUint("PRIVATE_KEY"));
 
         bytes32 INTENT_SOURCE_SALT = getContractSalt(salt, "INTENT_SOURCE");
@@ -122,7 +121,7 @@ contract Deploy is Script {
 
         vm.stopBroadcast();
 
-        writeDeployFile(contracts);
+        writeDeployFile(deployFilePath, contracts);
     }
 
     function isDeployed(address _addr) internal view returns (bool) {
@@ -177,10 +176,13 @@ contract Deploy is Script {
         }
     }
 
-    function writeDeployFile(VerificationData[3] memory contracts) internal {
+    function writeDeployFile(
+        string memory filePath,
+        VerificationData[3] memory contracts
+    ) internal {
         for (uint256 i = 0; i < contracts.length; i++) {
             vm.writeLine(
-                FILE_NAME,
+                filePath,
                 string(
                     abi.encodePacked(
                         vm.toString(contracts[i].chainId),
