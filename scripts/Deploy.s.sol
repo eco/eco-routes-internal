@@ -125,11 +125,7 @@ contract Deploy is Script {
     }
 
     function isDeployed(address _addr) internal view returns (bool) {
-        uint256 size;
-        assembly {
-            size := extcodesize(_addr)
-        }
-        return size > 0;
+        return _addr.code.length > 0;
     }
 
     function getContractSalt(
@@ -172,6 +168,10 @@ contract Deploy is Script {
             require(
                 deployedContract == justDeployedAddr,
                 "Expected address does not match the deployed address"
+            );
+            require(
+                isDeployed(deployedContract),
+                "Contract did not get deployed"
             );
         }
     }
