@@ -113,7 +113,7 @@ contract Deploy is Script {
         vm.stopBroadcast();
 
         // Ensure `.deploy` file exists before writing
-        try vm.readFile(".deploy") returns (string memory data) {
+        try vm.readFile(".deploy") {
             console.log(".deploy file already exists");
         } catch {
             vm.writeFile(".deploy", ""); // If the file doesn't exist, create it

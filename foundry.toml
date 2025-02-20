@@ -5,7 +5,7 @@ libs = ["lib"]
 bytecode_hash = "none"
 cbor_metadata = false
 optimize = true
-via-ir = false
+via-ir = true
 runs = 1000
 
 [profile.deploy]
