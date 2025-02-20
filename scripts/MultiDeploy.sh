@@ -27,8 +27,8 @@ fi
 
 touch "$DEPLOY_FILE"
 
-# Convert space-separated CHAIN_IDS into an array
-IFS=' ' read -r -a CHAINS <<< "$CHAIN_IDS"
+# Convert comma-separated CHAIN_IDS into an array
+IFS=',' read -r -a CHAINS <<< "$CHAIN_IDS"
 
 # Loop through each chain and deploy contracts
 for CHAIN_ID in "${CHAINS[@]}"; do

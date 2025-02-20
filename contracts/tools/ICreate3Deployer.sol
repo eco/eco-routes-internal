@@ -5,7 +5,7 @@ pragma solidity ^0.8.0;
 /**
  * @title Deployer Contract
  * @notice This contract is responsible for deploying and initializing new contracts using
- * a deployment method, such as `CREATE2` or `CREATE3`.
+ * the `CREATE3` deployment method.
  */
 interface ICreate3Deployer {
     /**
@@ -43,7 +43,7 @@ interface ICreate3Deployer {
      * - `bytecode` must not be empty.
      * - `salt` must have not been used for `bytecode` already by the same `msg.sender`.
      * - `init` is used to initialize the deployed contract as an option to not have the
-     *    constructor args affect the address derived by `CREATE2`.
+     *    constructor args affect the address derived by `CREATE3`.
      *
      * @param bytecode The bytecode of the contract to be deployed
      * @param salt A salt to influence the contract address
