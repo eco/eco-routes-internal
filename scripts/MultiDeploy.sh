@@ -19,6 +19,8 @@ if [ -f "$DEPLOY_FILE" ]; then
     rm "$DEPLOY_FILE"
 fi
 
+touch "$DEPLOY_FILE"
+
 # Convert space-separated CHAIN_IDS into an array
 IFS=' ' read -r -a CHAINS <<< "$CHAIN_IDS"
 
