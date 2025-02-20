@@ -14,13 +14,22 @@ if [ ! -f "$DEPLOY_FILE" ]; then
     exit 1
 fi
 
-# Read the CSV file line by line (skipping the header)
-tail -n +2 "$DEPLOY_FILE" | while IFS=, read -r CHAIN_ID CONTRACT_ADDRESS CONTRACT_PATH CONSTRUCTOR_ARGS; do
+# Read the CSV file line by line
+while IFS=, read -r CHAIN_ID CONTRACT_ADDRESS CONTRACT_PATH CONSTRUCTOR_ARGS; do
     # Trim whitespace
     CHAIN_ID=$(echo "$CHAIN_ID" | xargs)
     CONTRACT_ADDRESS=$(echo "$CONTRACT_ADDRESS" | xargs)
     CONTRACT_PATH=$(echo "$CONTRACT_PATH" | xargs)
     CONSTRUCTOR_ARGS=$(echo "$CONSTRUCTOR_ARGS" | xargs)
+
+    # Debug: Print the values being read
+    echo "📝 Processing: Chain ID = [$CHAIN_ID], Address = [$CONTRACT_ADDRESS], Path = [$CONTRACT_PATH], Args = [$CONSTRUCTOR_ARGS]"
+
+    # Skip empty lines or invalid data
+    if [[ -z "$CHAIN_ID" || -z "$CONTRACT_ADDRESS" || -z "$CONTRACT_PATH" ]]; then
+        echo "⚠️  Warning: Skipping invalid line in .deploy"
+        continue
+    fi
 
     # Use an alternative approach to fetch API key dynamically
     eval "ETHERSCAN_API_KEY=\$ETHERSCAN_API_KEY_$CHAIN_ID"
@@ -47,4 +56,7 @@ tail -n +2 "$DEPLOY_FILE" | while IFS=, read -r CHAIN_ID CONTRACT_ADDRESS CONTRA
     else
         echo "❌ Verification failed for $CONTRACT_ADDRESS on Chain ID $CHAIN_ID"
     fi
-done
+
+    echo ""
+    echo ""
+done < "$DEPLOY_FILE"
