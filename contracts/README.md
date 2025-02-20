@@ -2,6 +2,8 @@
 
 # API Documentation
 
+Type references can be found in the (types directory)[/types].
+
 ## IntentSource
 
 The IntentSource is where intent publishing and reward claiming functionality live. Users (or actors on their behalf) can publish intents here, as well as fund intents' rewards. After an intent is fulfilled and proven, a solver can fetch their rewards here as well. This contract is not expected to hold any funds between transactions.
@@ -183,7 +185,7 @@ Parameters:
 
 ## Inbox (Inbox.sol)
 
-The Inbox is where intent fulfillment lives. Solvers fulfill intents on the Inbox via one of the contract's fulfill methods, which pulls in solver resources and executes the intent's calls on the destination chain. Once an intent has been fulfilled, any subsequent attempts to fulfill it will be reverted. The Inbox also contains some post-fulfillment proving-related logic.
+The Inbox is where intent fulfillment lives. Solvers fulfill intents on the Inbox via one of the contract's fulfill methods, which pulls in solver resources and executes the intent's calls on the destination chain. Once an intent has been fulfilled, any subsequent attempts to fulfill it will be reverted. The Inbox also contains some post-fulfillment proving-related logic. 
 
 ### Events
 
@@ -482,3 +484,78 @@ For Optimisms BedRock release we submit an `outputRoot` storage proof created by
 ```solidity
 output_root = kecakk256( version_byte || state_root || withdrawal_storage_root || latest_block_hash)
 ```
+
+## ERC-7683
+
+Eco Protocol also allows the creation and solving of intents via the ERC-7683 interface.
+
+## Eco7683OriginSettler
+
+An implementation of the ERC-7683 OriginSettler designed to work with Eco protocol. This contract is where intents are created and funded. Reward withdrawal has not yet been implemented within Eco's ERC7683 implementation, but it can be accomplished via the IntentSource contract.
+
+### Events
+
+<h4><ins>Open</ins></h4>
+<h5>Signals that an order has been opened</h5>
+
+Parameters:
+- `orderId` (bytes32) a unique order identifier within this settlement system
+- `resolvedOrder` (ResolvedCrossChainOrder) resolved order that would be returned by resolve if called instead of Open
+
+### Methods
+
+<h4><ins>open</ins></h4>
+<h5>Opens an Eco intent directly on chain</h5>
+
+Parameters:
+- `_order` (OnchainCrossChainOrder) the onchain order containing all relevant intent data. The orderData of the order is of type OnchainCrosschainOrderData.
+
+<ins>Security:</ins> This method will fail if the orderDataType does not match the typehash of OnchainCrosschainOrderData. This method is payable to account for users who wish to create intents that reward solvers with native tokens. A user should have approved the Eco7683OriginSettler to transfer reward tokens. This method will also fail if a user attempts to use it to open an intent that has already been funded.
+
+<h4><ins>openFor</ins></h4>
+<h5>Opens an Eco intent on behalf of a user</h5>
+
+Parameters:
+- `_order` (GaslessCrossChainOrder) the gasless order containing all relevant intent data. The orderData of the order is of type GaslessCrosschainOrderData.
+- `_signature` (bytes32) the intent user's signature over _order
+_ `_originFillerData` (bytes) filler data for the origin chain (this is vestigial, not used and included only to maintain compatibility)
+
+<ins>Security:</ins> This method will fail if the orderDataType does not match the typehash of GaslessCrosschainOrderData. This method is made payable in the event that the caller of this method (a solver) is opening an intent that has native token as a reward. How that solver receives the native token from the user is not within the scope of this method. This method also demands that the intent is funded in its entirety and will fail if the requisite funds have not been approved by the user. Lastly, this method will fail if the same intent has already been funded.
+
+<h4><ins>resolve</ins></h4>
+<h5>resolves an OnchainCrossChainOrder to a ResolvedCrossChainOrder</h5>
+
+Parameters:
+- `_order` (OnchainCrossChainOrder) the OnchainCrossChainOrder to be resolved
+
+<h4><ins>resolveFor</ins></h4>
+<h5>resolves a GaslessCrossChainOrder to a ResolvedCrossChainOrder</h5>
+
+Parameters:
+- `_order` (OnchainCrossChainOrder) the GaslessCrossChainOrder to be resolved
+
+## Eco7683DestinationSettler
+
+An implementation of the ERC-7683 DestinationSettler designed to work with Eco protocol. This is an abstract contract whose functionality is present on Eco's Inbox contract. This is where intent fulfillment lives within the ERC-7683 system. 
+
+### Events
+
+<h4><ins>OrderFilled</ins></h4>
+<h5>Emitted when an intent is fulfilled via the Eco7683DestinationSettler using Hyperlane instant proving</h5>
+
+Parameters:
+- `_orderId` (bytes32) Hash of the fulfilled intent
+- `_solver` (address) Address that fulfilled the intent
+
+### Methods
+
+<h4><ins>fill</ins></h4>
+<h5>Fills an order on the destination chain</h5>
+
+Parameters:
+- `_orderId` (bytes32) Unique identifier for the order being filled
+- `_originData` (bytes) Data emitted on the origin chain to parameterize the fill, equivalent to the originData field from the fillInstruction of the ResolvedCrossChainOrder. An encoded Intent struct. 
+- `_fillerData` (bytes) Data provided by the filler to inform the fill or express their preferences. an encoding of the ProofType (enum), claimant (address), and optionally postDispatchHook (address) and metadata (bytes) in the event that the intent is to be proven against a HyperProver.
+
+<ins>Security:</ins> This method fails if the intent's fillDeadline has passed. It also inherits all of the security features in fulfillStorage / fulfillHyperInstantWithRelayer.
+

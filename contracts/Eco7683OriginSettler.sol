@@ -46,7 +46,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
     }
 
     /**
-     * @notice opens an Eco intent directly on chain
+     * @notice Opens an Eco intent directly on chain
      * @dev to be called by the user
      * @dev assumes user has erc20 funds approved for the intent, and includes any reward native token in msg.value
      * @dev transfers the reward tokens at time of open
@@ -83,7 +83,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
     }
 
     /**
-     * @notice opens an Eco intent on behalf of a user
+     * @notice Opens an Eco intent on behalf of a user
      * @notice This method is made payable in the event that the caller of this method (a solver) wants to open
      * an intent that has native token as a reward. In this case, the solver would need to send the native
      * token as part of the transaction. How the intent's creator pays the solver is not covered by this method.
