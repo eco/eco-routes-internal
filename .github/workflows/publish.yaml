@@ -104,7 +104,7 @@ jobs:
           cmd: deployForgeCI
         env:
           PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
-          CHAIN_IDS: "1 10 137 5000 8453 42161"
+          CHAIN_IDS: "1 10 137 5000 8453 42161 84532 11155111 11155420"
 
           # RPC URLs
           RPC_URL_1: "https://eth-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}"
@@ -113,6 +113,10 @@ jobs:
           RPC_URL_8453: "https://base-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}"
           RPC_URL_5000: "https://mantle-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}"
           RPC_URL_42161: "https://arb-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}"
+          # Testnets
+          RPC_URL_84532: "https://base-sepolia.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}"
+          RPC_URL_11155111: "https://eth-sepolia.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}"
+          RPC_URL_11155420: "https://opt-sepolia.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}"
 
           # Etherscan API Keys
           ETHERSCAN_API_KEY_1: ${{ secrets.ETHERSCAN_API_KEY }}
@@ -121,6 +125,10 @@ jobs:
           ETHERSCAN_API_KEY_5000: ${{ secrets.MANTLE_SCAN_API_KEY }}
           ETHERSCAN_API_KEY_8453: ${{ secrets.BASE_SCAN_API_KEY }}
           ETHERSCAN_API_KEY_42161: ${{ secrets.ARBSCAN_API_KEY }}
+          # Testnets
+          ETHERSCAN_API_KEY_84532: ${{ secrets.BASE_SCAN_API_KEY }}
+          ETHERSCAN_API_KEY_11155111: ${{ secrets.ETHERSCAN_API_KEY }}
+          ETHERSCAN_API_KEY_11155420: ${{ secrets.OPTIMISM_SCAN_API_KEY }}
 
           # Hyperlane Mailbox addresses
           MAILBOX_1: "0xc005dc82818d67AF737725bD4bf75435d065D239"
@@ -129,9 +137,14 @@ jobs:
           MAILBOX_5000: "0x398633D19f4371e1DB5a8EFE90468eB70B1176AA"
           MAILBOX_8453: "0xeA87ae93Fa0019a82A727bfd3eBd1cFCa8f64f1D"
           MAILBOX_42161: "0x979Ca5202784112f4738403dBec5D0F3B9daabB9"
+          # Testnets
+          MAILBOX_84532: "0x6966b0E55883d49BFB24539356a2f8A673E02039"
+          MAILBOX_11155111: "0xfFAEF09B3cd11D9b20d1a19bECca54EEC2884766"
+          MAILBOX_11155420: "0x6966b0E55883d49BFB24539356a2f8A673E02039"
 
           # Gas Multipliers
           GAS_MULTIPLIER_5000: "600"
+
       - name: Build project
         uses: borales/actions-yarn@v5
         with:
