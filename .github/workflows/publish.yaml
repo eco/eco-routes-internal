@@ -88,6 +88,10 @@ jobs:
         uses: foundry-rs/foundry-toolchain@v1
       - name: 🔍 Verify Installation
         run: forge --version
+      - name: 🔧 Grant Execute Permission to MultiDeploy.sh
+        run: chmod +x scripts/MultiDeploy.sh
+      - name: 🔧 Grant Execute Permission to Verify.sh
+        run: chmod +x scripts/Verify.sh
       - name: Install dependencies
         uses: borales/actions-yarn@v5
         with:
@@ -123,6 +127,10 @@ jobs:
           MAILBOX_5000: "0x398633D19f4371e1DB5a8EFE90468eB70B1176AA"
           MAILBOX_8453: "0xeA87ae93Fa0019a82A727bfd3eBd1cFCa8f64f1D"
           MAILBOX_42161: "0x979Ca5202784112f4738403dBec5D0F3B9daabB9"
+      - name: Build project
+        uses: borales/actions-yarn@v5
+        with:
+          cmd: build
       - name: Publish prepack build directory
         uses: borales/actions-yarn@v5
         with:
