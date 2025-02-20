@@ -287,6 +287,24 @@ Parameters:
 
 <ins>Security:</ins> This method inherits all of the security features in fulfillstorage. This method is also payable, as funds are required to use the hyperlane bridge.
 
+<h4><ins>fulfillHyperInstantWithRelayer</ins></h4>
+<h5> Performs the same functionality as fulfillHyperInstant, but allows the user to use a custom HyperLane relayer and pass in the corresponding metadata</h5>
+
+Parameters:
+
+- `_sourceChainID` (uint256) the ID of the chain where the fulfilled intent originated
+- `_targets` (address[]) the address on the destination chain at which the instruction sets need to be executed
+- `_data` (bytes[]) the instructions to be executed on \_targets
+- `_expiryTime` (uint256) the timestamp at which the intent expires
+- `_nonce` (bytes32) the nonce of the calldata. Composed of the hash on the source chain of the global nonce and chainID
+- `_claimant` (address) the address that can claim the fulfilled intent's fee on the source chain
+- `_expectedHash` (bytes32) the hash of the intent. Used to verify that the correct data is being input
+- `_prover` (address) the address of the hyperProver on the source chain
+- `_metadata` (bytes) Metadata for postDispatchHook (empty bytes if not applicable)
+- `_postDispatchHook` (address) Address of postDispatchHook (zero address if not applicable)
+
+<ins>Security:</ins> This method inherits all of the security features in fulfillstorage. This method is also payable, as funds are required to use the hyperlane bridge. Additionally, the user is charged with the responsibility of ensuring that the passed in metadata and relayer perform according to their expectations
+
 <h4><ins>fulfillHyperBatched</ins></h4>`
 <h5> Allows a filler to fulfill an intent on its destination chain to be proven by the HyperProver specified in the intent. After fulfilling the intent, this method emits an event that indicates which intent was fulfilled. Fillers of hyperprover-destined intents will listen to these events and batch process them later on. The filler also gets to predetermine the address on the destination chain that will receive the reward tokens. Note: this method is currently not supported by Eco's solver services, but has been included for completeness. Work on services for this method is ongoing.</h5>
 
@@ -313,7 +331,22 @@ Parameters:
 - `_prover` (address) the address of the hyperprover on the source chain
 - `_intentHashes` (bytes32[]) the hashes of the intents to be proven
 
-<ins>Security:</ins> This method inherits all of the security features in fulfillstorage. This method is also payable, as funds are required to use the hyperlane bridge.
+<ins>Security:</ins> This method ensures that all passed-in hashes correspond to intents that have been fulfilled according to the inbox. It contains a low-level call to send native tokens, but will only do this in the event that the call to this method has a nonzero msg.value. The method is payable because the HyperLane relayer requires fees in native token in order to function.
+
+<h4><ins>sendBatchWithRelayer</ins></h4>
+
+<h5> Performs the same functionality as sendBatch, but allows the user to use a custom HyperLane relayer and pass in the corresponding metadata. </h5>
+
+Parameters:
+
+- `_sourceChainID` (uint256) the chainID of the source chain
+- `_prover` (address) the address of the hyperprover on the source chain
+- `_intentHashes` (bytes32[]) the hashes of the intents to be proven
+- `_metadata` (bytes) Metadata for postDispatchHook (empty bytes if not applicable)
+- `_postDispatchHook` (address) Address of postDispatchHook (zero address if not applicable)
+
+
+<ins>Security:</ins> This method inherits all of the security features in sendBatch. Additionally, the user is charged with the responsibility of ensuring that the passed in metadata and relayer perform according to their expectations.
 
 <h4><ins>fetchFee</ins></h4>
 
@@ -367,6 +400,8 @@ Parameters:
 
 ## HyperProver (HyperProver.sol)
 
+A message-based implementation of BaseProver that consumes data coming from HyperLane's message bridge sent by the Inbox on the destination chain. intentHash - claimant address pairs sent across the chain are written to the HyperProver's provenIntents mapping and are later read by the IntentSource when reward withdrawals are attempted.
+
 ### Events
 
 <h4><ins>IntentProven</ins></h4>
@@ -398,6 +433,8 @@ Parameters:
 <ins>Security:</ins> This method is public but there are checks in place to ensure that it reverts unless msg.sender is the local hyperlane mailbox and \_sender is the destination chain's inbox. This method has direct write access to the provenIntents mapping and, therefore, gates access to the rewards for hyperproven intents.
 
 ## Storage Prover (Prover.sol)
+
+A storage-based implementation of BaseProver that utilizes the digests posted between rollups and mainnet to verify fulfilled status of intents on the destination chain.
 
 ### Events
 
