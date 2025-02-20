@@ -129,6 +129,9 @@ jobs:
           MAILBOX_5000: "0x398633D19f4371e1DB5a8EFE90468eB70B1176AA"
           MAILBOX_8453: "0xeA87ae93Fa0019a82A727bfd3eBd1cFCa8f64f1D"
           MAILBOX_42161: "0x979Ca5202784112f4738403dBec5D0F3B9daabB9"
+
+          # Gas Multipliers
+          GAS_MULTIPLIER_5000: "600"
       - name: Build project
         uses: borales/actions-yarn@v5
         with:
