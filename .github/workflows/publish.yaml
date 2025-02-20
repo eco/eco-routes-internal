@@ -87,8 +87,9 @@ jobs:
       - name: ⚡ Install Foundry
         run: |
           curl -L https://foundry.paradigm.xyz | bash
-          foundryup  # Updates Foundry to the latest version
-        shell: bash
+          source ~/.bashrc
+          foundryup
+          echo "$HOME/.foundry/bin" >> $GITHUB_PATH  # Ensure foundry commands are in PATH
       - name: 🔍 Verify Installation
         run: forge --version
       - name: Install dependencies
