@@ -31,14 +31,18 @@ contract Deploy is Script {
     ICreate3Deployer constant create3Deployer =
         ICreate3Deployer(0xC6BAd1EbAF366288dA6FB5689119eDd695a66814);
 
+    string constant FILE_NAME = "out/.deploy";
+
     function run() external {
         bytes32 salt = vm.envBytes32("SALT");
         address mailbox = vm.envAddress("MAILBOX");
         address deployer = vm.rememberKey(vm.envUint("PRIVATE_KEY"));
 
-        vm.startBroadcast();
+        bytes32 INTENT_SOURCE_SALT = getContractSalt(salt, "INTENT_SOURCE");
+        bytes32 INBOX_SALT = getContractSalt(salt, "INBOX");
+        bytes32 HYPER_PROVER_SALT = getContractSalt(salt, "HYPER_PROVER");
 
-        VerificationData[] memory contracts;
+        vm.startBroadcast();
 
         // Deploy deployer if hasn't been deployed
         if (!isDeployed(address(create3Deployer))) {
@@ -50,18 +54,11 @@ contract Deploy is Script {
         }
 
         // Intent Source
-        address intentSource = deployWithCreate3(
+        (address intentSource, ) = deployWithCreate3(
             type(IntentSource).creationCode,
             deployer,
-            salt
+            INTENT_SOURCE_SALT
         );
-
-        contracts[contracts.length] = VerificationData({
-            contractAddress: intentSource,
-            contractPath: "contracts/IntentSource.sol:IntentSource",
-            constructorArgs: new bytes(0),
-            chainId: block.chainid
-        });
 
         console.log("IntentSource :", address(intentSource));
 
@@ -74,19 +71,18 @@ contract Deploy is Script {
             type(Inbox).creationCode,
             inboxConstructorArgs
         );
-        address inbox = deployWithCreate3(inboxBytecode, deployer, salt);
+        (address inbox, bool wasInboxDeployed) = deployWithCreate3(
+            inboxBytecode,
+            deployer,
+            INBOX_SALT
+        );
 
-        // Set Hyperlane Mailbox contract address
-        Inbox(payable(inbox)).setMailbox(mailbox);
+        console.log("Inbox :", inbox);
 
-        console.log("Inbox :", address(inbox));
-
-        contracts[contracts.length] = VerificationData({
-            contractAddress: inbox,
-            contractPath: "contracts/Inbox.sol:Inbox",
-            constructorArgs: inboxConstructorArgs,
-            chainId: block.chainid
-        });
+        if (!wasInboxDeployed) {
+            // Set Hyperlane Mailbox contract address
+            Inbox(payable(inbox)).setMailbox(mailbox);
+        }
 
         // HyperProver
 
@@ -96,44 +92,37 @@ contract Deploy is Script {
             type(HyperProver).creationCode,
             hyperProverConstructorArgs
         );
-        address hyperProver = deployWithCreate3(
+        (address hyperProver, ) = deployWithCreate3(
             hyperProverBytecode,
             deployer,
-            salt
+            HYPER_PROVER_SALT
         );
         console.log("HyperProver :", address(hyperProver));
 
-        contracts[contracts.length] = VerificationData({
-            contractAddress: inbox,
-            contractPath: "contracts/prover/HyperProver.sol:HyperProver",
-            constructorArgs: hyperProverConstructorArgs,
-            chainId: block.chainid
-        });
+        VerificationData[3] memory contracts = [
+            VerificationData({
+                contractAddress: intentSource,
+                contractPath: "contracts/IntentSource.sol:IntentSource",
+                constructorArgs: new bytes(0),
+                chainId: block.chainid
+            }),
+            VerificationData({
+                contractAddress: inbox,
+                contractPath: "contracts/Inbox.sol:Inbox",
+                constructorArgs: inboxConstructorArgs,
+                chainId: block.chainid
+            }),
+            VerificationData({
+                contractAddress: hyperProver,
+                contractPath: "contracts/prover/HyperProver.sol:HyperProver",
+                constructorArgs: hyperProverConstructorArgs,
+                chainId: block.chainid
+            })
+        ];
 
         vm.stopBroadcast();
 
-        // Ensure `.deploy` file exists before writing
-        try vm.readFile(".deploy") {
-            console.log(".deploy file already exists");
-        } catch {
-            vm.writeFile(".deploy", ""); // If the file doesn't exist, create it
-        }
-        for (uint256 i = 0; i < contracts.length; i++) {
-            vm.writeLine(
-                ".deploy",
-                string(
-                    abi.encodePacked(
-                        vm.toString(contracts[i].chainId),
-                        ",",
-                        vm.toString(contracts[i].contractAddress),
-                        ",",
-                        contracts[i].contractPath,
-                        ",",
-                        vm.toString(contracts[i].constructorArgs)
-                    )
-                )
-            );
-        }
+        writeDeployFile(contracts);
     }
 
     function isDeployed(address _addr) internal view returns (bool) {
@@ -142,6 +131,16 @@ contract Deploy is Script {
             size := extcodesize(_addr)
         }
         return size > 0;
+    }
+
+    function getContractSalt(
+        bytes32 rootSalt,
+        string memory contractName
+    ) internal pure returns (bytes32) {
+        return
+            keccak256(
+                abi.encode(rootSalt, keccak256(abi.encodePacked(contractName)))
+            );
     }
 
     function deployCreate3Deployer() internal {
@@ -160,18 +159,39 @@ contract Deploy is Script {
         bytes memory bytecode,
         address sender,
         bytes32 salt
-    ) internal returns (address deployedContract) {
+    ) internal returns (address deployedContract, bool deployed) {
         deployedContract = create3Deployer.deployedAddress(
             bytecode,
             sender,
             salt
         );
 
-        if (!isDeployed(deployedContract)) {
+        deployed = isDeployed(deployedContract);
+
+        if (!deployed) {
             address justDeployedAddr = create3Deployer.deploy(bytecode, salt);
             require(
                 deployedContract == justDeployedAddr,
                 "Expected address does not match the deployed address"
+            );
+        }
+    }
+
+    function writeDeployFile(VerificationData[3] memory contracts) internal {
+        for (uint256 i = 0; i < contracts.length; i++) {
+            vm.writeLine(
+                FILE_NAME,
+                string(
+                    abi.encodePacked(
+                        vm.toString(contracts[i].chainId),
+                        ",",
+                        vm.toString(contracts[i].contractAddress),
+                        ",",
+                        contracts[i].contractPath,
+                        ",",
+                        vm.toString(contracts[i].constructorArgs)
+                    )
+                )
             );
         }
     }

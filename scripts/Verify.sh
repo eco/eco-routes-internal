@@ -1,34 +1,50 @@
 #!/bin/bash
 
-# Load environment variables from .env
+# Load environment variables from .env safely
 if [ -f .env ]; then
-    export $(grep -v '^#' .env | xargs)
+    set -a  # Export all variables automatically
+    source .env
+    set +a
 fi
 
-# Convert space-separated values into arrays
-IFS=' ' read -r -a RPCS <<< "$RPC_URLS"
-IFS=' ' read -r -a CHAINS <<< "$CHAIN_IDS"
-IFS=' ' read -r -a ETHERSCAN_KEYS <<< "$ETHERSCAN_API_KEYS"
+# Ensure `.deploy` file exists
+DEPLOY_FILE="out/.deploy"
+if [ ! -f "$DEPLOY_FILE" ]; then
+    echo "❌ Error: $DEPLOY_FILE not found!"
+    exit 1
+fi
 
-# Read deployed contracts from .deploy file and verify per chain
-while IFS=',' read -r chain address contractPath encodedArgs; do
-    for index in "${!CHAINS[@]}"; do
-        if [[ "${CHAINS[$index]}" == "$chain" ]]; then
-            ETHERSCAN_API_KEY="${ETHERSCAN_KEYS[$index]}"
-            echo "Verifying contract at $address on chain $chain using $contractPath..."
+# Read the CSV file line by line (skipping the header)
+tail -n +2 "$DEPLOY_FILE" | while IFS=, read -r CHAIN_ID CONTRACT_ADDRESS CONTRACT_PATH CONSTRUCTOR_ARGS; do
+    # Trim whitespace
+    CHAIN_ID=$(echo "$CHAIN_ID" | xargs)
+    CONTRACT_ADDRESS=$(echo "$CONTRACT_ADDRESS" | xargs)
+    CONTRACT_PATH=$(echo "$CONTRACT_PATH" | xargs)
+    CONSTRUCTOR_ARGS=$(echo "$CONSTRUCTOR_ARGS" | xargs)
 
-            if [[ -z "$encodedArgs" || "$encodedArgs" == "0x" ]]; then
-                forge verify-contract --chain "$chain" --watch \
-                    "$address" \
-                    "$contractPath" \
-                    --etherscan-api-key "$ETHERSCAN_API_KEY"
-            else
-                forge verify-contract --chain "$chain" --watch \
-                    "$address" \
-                    "$contractPath" \
-                    --constructor-args "$encodedArgs" \
-                    --etherscan-api-key "$ETHERSCAN_API_KEY"
-            fi
-        fi
-    done
-done < .deploy
+    # Use an alternative approach to fetch API key dynamically
+    eval "ETHERSCAN_API_KEY=\$ETHERSCAN_API_KEY_$CHAIN_ID"
+
+    if [ -z "$ETHERSCAN_API_KEY" ]; then
+        echo "⚠️  Warning: No API key found for Chain ID $CHAIN_ID, skipping verification."
+        continue
+    fi
+
+    echo "🔍 Verifying contract $CONTRACT_ADDRESS on Chain ID $CHAIN_ID..."
+
+    # Construct the verification command
+    VERIFY_CMD="forge verify-contract \
+        --chain-id $CHAIN_ID \
+        --etherscan-api-key $ETHERSCAN_API_KEY \
+        --constructor-args $CONSTRUCTOR_ARGS \
+        $CONTRACT_ADDRESS $CONTRACT_PATH"
+
+    # Run verification
+    eval $VERIFY_CMD
+
+    if [ $? -eq 0 ]; then
+        echo "✅ Successfully verified $CONTRACT_ADDRESS ($CONTRACT_PATH) on Chain ID $CHAIN_ID"
+    else
+        echo "❌ Verification failed for $CONTRACT_ADDRESS on Chain ID $CHAIN_ID"
+    fi
+done

@@ -7,6 +7,5 @@ cbor_metadata = false
 optimize = true
 via-ir = true
 runs = 1000
-
-[profile.deploy]
-via-ir = true
+ffi = true
+fs_permissions = [{ access = "read-write", path = "./out"}]
