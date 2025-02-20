@@ -85,13 +85,9 @@ jobs:
           node-version-file: ".nvmrc"
           cache: "yarn"
       - name: ⚡ Install Foundry
-        run: |
-          curl -L https://foundry.paradigm.xyz | bash
-          source /home/runner/.bashrc  # Ensure Foundry is loaded into PATH
-          foundryup
-          echo "$HOME/.foundry/bin" >> $GITHUB_PATH  # Add Foundry to GitHub Actions PATH
+        uses: foundry-rs/foundry-toolchain@v1
       - name: 🔍 Verify Installation
-        run: forge --version
+        run: forge test -vvv
       - name: Install dependencies
         uses: borales/actions-yarn@v5
         with:
