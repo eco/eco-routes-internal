@@ -13,6 +13,12 @@ if [ -z "$DEPLOY_FILE" ]; then
     exit 1
 fi
 
+# Ensure CHAIN_IDS is properly set
+if [ -z "$CHAIN_IDS" ]; then
+    echo "❌ Error: CHAIN_IDS variable is empty! Set it in the .env file."
+    exit 1
+fi
+
 # Remove existing deploy file before starting
 if [ -f "$DEPLOY_FILE" ]; then
     echo "🗑️  Deleting previous deploy file: $DEPLOY_FILE"
@@ -28,9 +34,11 @@ IFS=' ' read -r -a CHAINS <<< "$CHAIN_IDS"
 for CHAIN_ID in "${CHAINS[@]}"; do
     RPC_URL_VAR="RPC_URL_$CHAIN_ID"
     MAILBOX_VAR="MAILBOX_$CHAIN_ID"
+    GAS_MULTIPLIER_VAR="GAS_MULTIPLIER_$CHAIN_ID"
 
     RPC_URL="${!RPC_URL_VAR}"
     MAILBOX_CONTRACT="${!MAILBOX_VAR}"
+    GAS_MULTIPLIER="${!GAS_MULTIPLIER_VAR}"
 
     echo "🔄 Deploying contracts for Chain ID: $CHAIN_ID"
     echo "📬 Mailbox Contract: $MAILBOX_CONTRACT"
@@ -40,11 +48,21 @@ for CHAIN_ID in "${CHAINS[@]}"; do
         continue
     fi
 
-    # Run Foundry script with DEPLOY_FILE path
-    MAILBOX="$MAILBOX_CONTRACT" SALT="$SALT" DEPLOY_FILE="$DEPLOY_FILE" forge script scripts/Deploy.s.sol \
-        --rpc-url "$RPC_URL" \
-        --broadcast \
-        --private-key "$PRIVATE_KEY"
+    # Construct Foundry command
+    FOUNDRY_CMD="MAILBOX=\"$MAILBOX_CONTRACT\" SALT=\"$SALT\" DEPLOY_FILE=\"$DEPLOY_FILE\" forge script scripts/Deploy.s.sol \
+            --rpc-url \"$RPC_URL\" \
+            --broadcast \
+            --private-key \"$PRIVATE_KEY\""
+
+    # Only add --gas-estimate-multiplier if GAS_MULTIPLIER is defined
+    if [[ -n "$GAS_MULTIPLIER" ]]; then
+        echo "⛽ Gas Multiplier: $GAS_MULTIPLIER x"
+        FOUNDRY_CMD+=" --gas-estimate-multiplier \"$GAS_MULTIPLIER\""
+    fi
+
+    # Run the command
+    eval $FOUNDRY_CMD
+
 
     echo "✅ Deployment on Chain ID: $CHAIN_ID completed!"
 done
