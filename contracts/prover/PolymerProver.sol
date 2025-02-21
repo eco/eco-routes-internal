@@ -27,6 +27,7 @@ contract PolymerProver is BaseProver, Semver {
     error UnsupportedChainId();
     error InvalidEmittingContract();
     error InvalidTopicsLength();
+    error SizeMismatch();
 
     /**
      * @notice Address of local Polymer CrossL2ProverV2 contract
@@ -101,7 +102,6 @@ contract PolymerProver is BaseProver, Semver {
      * @param proof The proof data to validate
      */
     function _validateProof(bytes calldata proof) internal {
-        //validate event using CrossL2ProverV2
         (
             uint32 chainId,
             address emittingContract,
@@ -111,12 +111,11 @@ contract PolymerProver is BaseProver, Semver {
 
         if (emittingContract != INBOX) revert InvalidEmittingContract();
 
-        // might not need this check
-        if (!supportedChainIds[chainId]) revert UnsupportedChainId();
+        if (!supportedChainIds[chainId]) revert UnsupportedChainId(); // might not need this check
 
-        //deconstruct topics into intent hash, chainId, and claimant
-        bytes32[] memory topicsArray = new bytes32[](4);
         if (topics.length != 128) revert InvalidTopicsLength();
+
+        bytes32[] memory topicsArray = new bytes32[](4);
 
         // Use assembly for efficient memory operations when splitting topics per example
         assembly {
@@ -139,12 +138,7 @@ contract PolymerProver is BaseProver, Semver {
 
         address claimant = address(uint160(uint256(topicsArray[3])));
 
-        if (provenIntents[intentHash] != address(0)) {
-            emit IntentAlreadyProven(intentHash);
-        } else {
-            provenIntents[intentHash] = claimant;
-            emit IntentProven(intentHash, claimant);
-        }
+        processIntent(intentHash, claimant);
     }
 
     /**
@@ -173,7 +167,6 @@ contract PolymerProver is BaseProver, Semver {
      * @param proof The packed proof data to validate
      */
     function _validatePackedProof(bytes calldata proof) internal {
-        //validate event using CrossL2ProverV2
         (
             uint32 chainId,
             address emittingContract,
@@ -183,25 +176,16 @@ contract PolymerProver is BaseProver, Semver {
 
         if (emittingContract != INBOX) revert InvalidEmittingContract();
 
-        // might not need this check
-        if (!supportedChainIds[chainId]) revert UnsupportedChainId();
+        if (!supportedChainIds[chainId]) revert UnsupportedChainId(); // might not need this check
 
         if (topics.length != 32) revert InvalidTopicsLength();
 
         if (bytes32(topics) != BATCH_PROOF_SELECTOR) revert InvalidEventSignature();
 
-        //unpack abi.encodePacked(intentHashes, claimants) data from data
         (bytes32[] memory hashes, address[] memory claimants) = decodeMessageBody(data);
 
-        // Process each intent proof
         for (uint256 i = 0; i < hashes.length; i++) {
-            (bytes32 intentHash, address claimant) = (hashes[i], claimants[i]);
-            if (provenIntents[intentHash] != address(0)) {
-                emit IntentAlreadyProven(intentHash);
-            } else {
-                provenIntents[intentHash] = claimant;
-                emit IntentProven(intentHash, claimant);
-            }
+            processIntent(hashes[i], claimants[i]);
         }
     }
 
@@ -215,7 +199,7 @@ contract PolymerProver is BaseProver, Semver {
     function decodeMessageBody(bytes memory messageBody) public pure 
         returns (bytes32[] memory intentHashes, address[] memory claimants)
     {
-        if (messageBody.length % 52 != 0) revert("size mismatch"); // 32 bytes per hash + 20 per address
+        if (messageBody.length % 52 != 0) revert SizeMismatch(); // 32 bytes per hash + 20 per address
         uint256 size = messageBody.length / 52;
 
         intentHashes = new bytes32[](size);
@@ -238,6 +222,21 @@ contract PolymerProver is BaseProver, Semver {
             }
             claimants[i] = temp;
             offset += 20;
+        }
+    }
+
+    /**
+     * @notice Processes a single intent proof
+     * @dev Updates proven intent mapping and emits event if not already proven
+     * @param intentHash Hash of the intent being proven
+     * @param claimant Address that fulfilled the intent and should receive rewards
+     */
+    function processIntent(bytes32 intentHash, address claimant) internal {
+        if (provenIntents[intentHash] != address(0)) {
+            emit IntentAlreadyProven(intentHash);
+        } else {
+            provenIntents[intentHash] = claimant;
+            emit IntentProven(intentHash, claimant);
         }
     }
 
