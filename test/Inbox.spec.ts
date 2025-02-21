@@ -20,8 +20,6 @@ import {
 } from '../utils/intent'
 
 
-//todo: write tests for new methods in Inbox.sol (batchStorageEmit and fulfillStorageSilent)
-
 describe('Inbox Test', (): void => {
   let inbox: Inbox
   let mailbox: TestMailbox
@@ -344,31 +342,6 @@ describe('Inbox Test', (): void => {
         .withArgs(intentHash, sourceChainID, dstAddr.address)
         .to.emit(inbox, 'ToBeProven')
         .withArgs(intentHash, sourceChainID, dstAddr.address)
-      // should update the fulfilled hash
-      expect(await inbox.fulfilled(intentHash)).to.equal(dstAddr.address)
-
-      // check balances
-      expect(await erc20.balanceOf(solver.address)).to.equal(0)
-      expect(await erc20.balanceOf(dstAddr.address)).to.equal(mintAmount)
-    })
-
-    it('should work with fulfillStorageSilent ', async () => {
-      expect(await inbox.fulfilled(intentHash)).to.equal(ethers.ZeroAddress)
-      expect(await erc20.balanceOf(solver.address)).to.equal(mintAmount)
-      expect(await erc20.balanceOf(dstAddr.address)).to.equal(0)
-
-      // transfer the tokens to the inbox so it can process the transaction
-      await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
-
-      // should emit an event
-      await expect(
-        inbox
-          .connect(solver)
-          .fulfillStorage(route, rewardHash, dstAddr.address, intentHash),
-      )
-        .to.emit(inbox, 'Fulfillment')
-        .withArgs(intentHash, sourceChainID, dstAddr.address)
-    
       // should update the fulfilled hash
       expect(await inbox.fulfilled(intentHash)).to.equal(dstAddr.address)
 
@@ -852,57 +825,96 @@ describe('Inbox Test', (): void => {
         )
         expect(await mailbox.dispatched()).to.be.true
       })
-
-
-      it('batchStorageEmit should work for multiple intents', async () => {
-        await inbox
-          .connect(solver)
-          .fulfillStorageSilent(
-            route,
-            rewardHash,
-            dstAddr.address,
-            intentHash,
-          )
-        const newTokenAmount = 12345
-        const newTimeDelta = 1123
-
-        ;({
-          calls: otherCalls,
-          route,
-          reward,
-          intent,
-          routeHash,
-          rewardHash,
-          intentHash: otherHash,
-        } = await createIntentData(newTokenAmount, newTimeDelta))
-        await erc20.mint(solver.address, newTokenAmount)
-        await erc20
-          .connect(solver)
-          .approve(await inbox.getAddress(), newTokenAmount)
-
-        await inbox
-          .connect(solver)
-          .fulfillStorageSilent(
-            route,
-            rewardHash,
-            dstAddr.address,
-            otherHash,
-          )
-        
-        const messageBody = ethers.solidityPacked(
-          ['bytes32[]', 'address[]'],
-          [[intentHash, otherHash], [dstAddr.address, dstAddr.address]]
-        )
-        
-        await expect(
-          inbox
-            .connect(solver)
-            .batchStorageEmit(
-              [intentHash, otherHash]
-            ),
-        ).to.emit(inbox, 'BatchToBeProven').withArgs(messageBody)
-      })
-      
     })
+  })
+
+  describe('PolymerProver',  () => {
+    beforeEach(async () => {
+      await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
+    })
+    it('batchStorageEmit should work for multiple intents', async () => {
+      await inbox
+        .connect(solver)
+        .fulfillStorageSilent(
+          route,
+          rewardHash,
+          dstAddr.address,
+          intentHash,
+        )
+      const newTokenAmount = 12345
+      const newTimeDelta = 1123
+
+      ;({
+        calls: otherCalls,
+        route,
+        reward,
+        intent,
+        routeHash,
+        rewardHash,
+        intentHash: otherHash,
+      } = await createIntentData(newTokenAmount, newTimeDelta))
+      await erc20.mint(solver.address, newTokenAmount)
+      await erc20
+        .connect(solver)
+        .approve(await inbox.getAddress(), newTokenAmount)
+
+      await inbox
+        .connect(solver)
+        .fulfillStorageSilent(
+          route,
+          rewardHash,
+          dstAddr.address,
+          otherHash,
+        )
+      
+      const messageBody = ethers.solidityPacked(
+        ['bytes32[]', 'address[]'],
+        [[intentHash, otherHash], [dstAddr.address, dstAddr.address]]
+      )
+      
+      await expect(
+        inbox
+          .connect(solver)
+          .batchStorageEmit(
+            [intentHash, otherHash]
+          ),
+      ).to.emit(inbox, 'BatchToBeProven').withArgs(messageBody)
+    })
+
+    it('batchStorageEmit should not allow emitting intents that have not been fulfilled', async () => {
+      await expect(
+        inbox
+          .connect(solver)
+          .batchStorageEmit(
+            [intentHash]
+          ),
+      ).to.be.revertedWithCustomError(inbox, 'IntentNotFulfilled')
+    })
+
+    it('should work with fulfillStorageSilent ', async () => {
+      expect(await inbox.fulfilled(intentHash)).to.equal(ethers.ZeroAddress)
+      expect(await erc20.balanceOf(solver.address)).to.equal(mintAmount)
+      expect(await erc20.balanceOf(dstAddr.address)).to.equal(0)
+
+      // transfer the tokens to the inbox so it can process the transaction
+      await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
+
+      // should emit an event
+      await expect(
+        inbox
+          .connect(solver)
+          .fulfillStorage(route, rewardHash, dstAddr.address, intentHash),
+      )
+        .to.emit(inbox, 'Fulfillment')
+        .withArgs(intentHash, sourceChainID, dstAddr.address)
+    
+      // should update the fulfilled hash
+      expect(await inbox.fulfilled(intentHash)).to.equal(dstAddr.address)
+
+      // check balances
+      expect(await erc20.balanceOf(solver.address)).to.equal(0)
+      expect(await erc20.balanceOf(dstAddr.address)).to.equal(mintAmount)
+    })
+
   })
 })
