@@ -22,11 +22,7 @@ contract PolymerProver is BaseProver, Semver {
      */
     event IntentAlreadyProven(bytes32 _intentHash);
 
-    /**
-     * @notice Unauthorized call to handle() detected
-     * @param _sender Address that attempted the call
-     */
-    error UnauthorizedHandle(address _sender);
+    // write custom errors 
 
     /**
      * @notice Address of local Polymer CrossL2ProverV2 contract
