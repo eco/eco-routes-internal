@@ -109,18 +109,16 @@ contract PolymerProver is BaseProver, Semver {
             bytes memory data
         ) = CROSS_L2_PROVER_V2.validateEvent(proof);
 
-        if (emittingContract != INBOX) revert InvalidEmittingContract();
-
-        if (!supportedChainIds[chainId]) revert UnsupportedChainId(); // might not need this check
-
-        if (topics.length != 128) revert InvalidTopicsLength();
+        // revert checks (might not need chainId check)
+        checkInboxContract(emittingContract);
+        checkSupportedChainId(chainId);
+        checkTopicLength(topics, 128);
 
         bytes32[] memory topicsArray = new bytes32[](4);
 
         // Use assembly for efficient memory operations when splitting topics per example
         assembly {
             let topicsPtr := add(topics, 32)
-
             for {
                 let i := 0
             } lt(i, 4) {
@@ -132,13 +130,12 @@ contract PolymerProver is BaseProver, Semver {
                 )
             }
         }
-        if (topicsArray[0] != PROOF_SELECTOR) revert InvalidEventSignature();
 
-        bytes32 intentHash = topicsArray[1];
+        checkTopicSignature(topicsArray[0], PROOF_SELECTOR);
 
         address claimant = address(uint160(uint256(topicsArray[3])));
 
-        processIntent(intentHash, claimant);
+        processIntent(topicsArray[1], claimant);
     }
 
     /**
@@ -174,13 +171,11 @@ contract PolymerProver is BaseProver, Semver {
             bytes memory data
         ) = CROSS_L2_PROVER_V2.validateEvent(proof);
 
-        if (emittingContract != INBOX) revert InvalidEmittingContract();
-
-        if (!supportedChainIds[chainId]) revert UnsupportedChainId(); // might not need this check
-
-        if (topics.length != 32) revert InvalidTopicsLength();
-
-        if (bytes32(topics) != BATCH_PROOF_SELECTOR) revert InvalidEventSignature();
+        // revert checks (might not need chainId check)
+        checkInboxContract(emittingContract);
+        checkSupportedChainId(chainId);
+        checkTopicLength(topics, 32);
+        checkTopicSignature(bytes32(topics), BATCH_PROOF_SELECTOR);
 
         (bytes32[] memory hashes, address[] memory claimants) = decodeMessageBody(data);
 
@@ -238,6 +233,22 @@ contract PolymerProver is BaseProver, Semver {
             provenIntents[intentHash] = claimant;
             emit IntentProven(intentHash, claimant);
         }
+    }
+
+    function checkTopicSignature(bytes32 topic, bytes32 selector) internal pure {
+        if (topic != selector) revert InvalidEventSignature();
+    }
+
+    function checkInboxContract(address emittingContract) internal view {
+        if (emittingContract != INBOX) revert InvalidEmittingContract();
+    }
+    
+    function checkSupportedChainId(uint32 chainId) internal view {
+        if (!supportedChainIds[chainId]) revert UnsupportedChainId();
+    }
+
+    function checkTopicLength(bytes memory topics, uint256 length) internal pure {
+        if (topics.length != length) revert InvalidTopicsLength();
     }
 
     /**
