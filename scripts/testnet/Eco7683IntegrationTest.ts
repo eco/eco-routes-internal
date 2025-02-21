@@ -10,7 +10,7 @@ import {
   Eco7683DestinationSettler
 } from '../../typechain-types'
 import { time, loadFixture } from '@nomicfoundation/hardhat-network-helpers'
-import { keccak256, BytesLike, Wallet, JsonRpcProvider } from 'ethers'
+import { keccak256, BytesLike, Wallet, JsonRpcProvider, ethers } from 'ethers'
 import { encodeTransfer } from '../../utils/encode'
 import {
     AlchemyProvider,
@@ -50,6 +50,9 @@ const hyperProverAddress = '0xA32e0B3620D9946c6ee1be6c3C6Ceb5fe3E27174' //op-sep
 const inboxAddress = '0x99bc55Df1eb02dB64fF20fE457c996b2D53bFf7E' //base-sepolia
 const originSettlerAddress = '0xafF66f826C72116622915804f1d85B711dF16553' //op-sepolia
 
+const USDCAddress = '0x5fd84259d66Cd46123540766Be93DFE6D43130D7' //op-sepolia
+const USDTAddress = '0x323e78f944A9a1FcF3a10efcC5319DBb0bB6e673' //base-sepolia
+
 let intentSource: IntentSource
 let originSettler: Eco7683OriginSettler
 let destinationSettler: Inbox
@@ -86,17 +89,46 @@ async function deployOriginSettler() {
     const originSettlerAddress = await originSettler.getAddress()
     console.log(`Origin Settler deployed at ${originSettlerAddress}`)
 
-    await run("verify:verify", {
-        address: originSettlerAddress,
-        contract: "contracts/ERC7683/Eco7683OriginSettler.sol:Eco7683OriginSettler",
-      constructorArguments: ['Eco7683OriginSettler', '123', intentSourceAddress],
-    })
+    // await run("verify:verify", {
+    //     address: originSettlerAddress,
+    //     contract: "contracts/ERC7683/Eco7683OriginSettler.sol:Eco7683OriginSettler",
+    //   constructorArguments: ['Eco7683OriginSettler', '123', intentSourceAddress],
+    // })
 }
 
 async function setup() {
     intentSource = await ethers.getContractAt('IntentSource', intentSourceAddress)
     intentSource.connect(intentCreator)
     destinationSettler = await ethers.getContractAt('Inbox', inboxAddress)
+}
+
+async function createIntent() {
+    const route: Route = {
+        salt: keccak256('abc'),
+        source: networks.optimismSepolia.chainId,
+        destination: networks.baseSepolia.chainId,
+        inbox: inboxAddress,
+        tokens: [{
+            token: USDTAddress,
+            amount: 456,
+        }],
+        calls: [{
+            target: USDTAddress,
+            data: await encodeTransfer(intentCreator.address, 456),
+            value: 0,
+        }]
+    }
+    const reward: Reward = {
+        creator: intentCreator.address,
+        prover: hyperProverAddress,
+        deadline: await time.latest() + 1000,   
+        nativeValue: 1000n,
+        tokens: [{
+            token: USDCAddress,
+            amount: 123,
+        }]
+    }
+
 }
 
 async function testOpen() {
