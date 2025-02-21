@@ -19,6 +19,9 @@ import {
   TokenAmount,
 } from '../utils/intent'
 
+
+//todo: write tests for new methods in Inbox.sol (batchStorageEmit and fulfillStorageSilent)
+
 describe('Inbox Test', (): void => {
   let inbox: Inbox
   let mailbox: TestMailbox
