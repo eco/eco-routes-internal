@@ -115,8 +115,8 @@ contract PolymerProver is BaseProver, Semver {
         require(supportedChainIds[chainId], "Unsupported chainId");
 
         //deconstruct topics into intent hash, chainId, and claimant
-        bytes32[] memory topicsArray = new bytes32[](3);
-        require(topics.length >= 96, "Invalid topics length");
+        bytes32[] memory topicsArray = new bytes32[](4);
+        require(topics.length >= 128, "Invalid topics length");
 
         // Use assembly for efficient memory operations when splitting topics per example
         assembly {
@@ -124,7 +124,7 @@ contract PolymerProver is BaseProver, Semver {
 
             for {
                 let i := 0
-            } lt(i, 3) {
+            } lt(i, 4) {
                 i := add(i, 1)
             } {
                 mstore(
