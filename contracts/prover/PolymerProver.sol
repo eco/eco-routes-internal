@@ -79,7 +79,7 @@ contract PolymerProver is BaseProver, Semver {
      * @dev External function called to validate single event proof
      * @param proof The proof data for CROSS_L2_PROVER_V2 to validate
      */
-    function validate(bytes calldata proof) internal {
+    function validate(bytes calldata proof) external {
         _validateProof(proof);
     }
 
