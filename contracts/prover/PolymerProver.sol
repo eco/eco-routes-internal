@@ -22,7 +22,7 @@ contract PolymerProver is BaseProver, Semver {
      */
     event IntentAlreadyProven(bytes32 _intentHash);
 
-    // write custom errors 
+    // write custom errors
     error InvalidEventSignature();
     error UnsupportedChainId();
     error InvalidEmittingContract();
@@ -177,7 +177,10 @@ contract PolymerProver is BaseProver, Semver {
         checkTopicLength(topics, 32);
         checkTopicSignature(bytes32(topics), BATCH_PROOF_SELECTOR);
 
-        (bytes32[] memory hashes, address[] memory claimants) = decodeMessageBody(data);
+        (
+            bytes32[] memory hashes,
+            address[] memory claimants
+        ) = decodeMessageBody(data);
 
         for (uint256 i = 0; i < hashes.length; i++) {
             processIntent(hashes[i], claimants[i]);
@@ -191,7 +194,11 @@ contract PolymerProver is BaseProver, Semver {
      * @return intentHashes The array of intent hashes
      * @return claimants The array of claimants
      */
-    function decodeMessageBody(bytes memory messageBody) public pure 
+    function decodeMessageBody(
+        bytes memory messageBody
+    )
+        public
+        pure
         returns (bytes32[] memory intentHashes, address[] memory claimants)
     {
         if (messageBody.length % 52 != 0) revert SizeMismatch(); // 32 bytes per hash + 20 per address
@@ -235,19 +242,25 @@ contract PolymerProver is BaseProver, Semver {
         }
     }
 
-    function checkTopicSignature(bytes32 topic, bytes32 selector) internal pure {
+    function checkTopicSignature(
+        bytes32 topic,
+        bytes32 selector
+    ) internal pure {
         if (topic != selector) revert InvalidEventSignature();
     }
 
     function checkInboxContract(address emittingContract) internal view {
         if (emittingContract != INBOX) revert InvalidEmittingContract();
     }
-    
+
     function checkSupportedChainId(uint32 chainId) internal view {
         if (!supportedChainIds[chainId]) revert UnsupportedChainId();
     }
 
-    function checkTopicLength(bytes memory topics, uint256 length) internal pure {
+    function checkTopicLength(
+        bytes memory topics,
+        uint256 length
+    ) internal pure {
         if (topics.length != length) revert InvalidTopicsLength();
     }
 
