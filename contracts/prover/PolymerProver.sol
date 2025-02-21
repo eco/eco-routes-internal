@@ -23,6 +23,10 @@ contract PolymerProver is BaseProver, Semver {
     event IntentAlreadyProven(bytes32 _intentHash);
 
     // write custom errors 
+    error InvalidEventSignature();
+    error UnsupportedChainId();
+    error InvalidEmittingContract();
+    error InvalidTopicsLength();
 
     /**
      * @notice Address of local Polymer CrossL2ProverV2 contract
@@ -105,14 +109,14 @@ contract PolymerProver is BaseProver, Semver {
             bytes memory data
         ) = CROSS_L2_PROVER_V2.validateEvent(proof);
 
-        require(emittingContract == INBOX, "Invalid emitting contract");
+        if (emittingContract != INBOX) revert InvalidEmittingContract();
 
         // might not need this check
-        require(supportedChainIds[chainId], "Unsupported chainId");
+        if (!supportedChainIds[chainId]) revert UnsupportedChainId();
 
         //deconstruct topics into intent hash, chainId, and claimant
         bytes32[] memory topicsArray = new bytes32[](4);
-        require(topics.length >= 128, "Invalid topics length");
+        if (topics.length != 128) revert InvalidTopicsLength();
 
         // Use assembly for efficient memory operations when splitting topics per example
         assembly {
@@ -129,7 +133,7 @@ contract PolymerProver is BaseProver, Semver {
                 )
             }
         }
-        require(topicsArray[0] == PROOF_SELECTOR, "Invalid event signature");
+        if (topicsArray[0] != PROOF_SELECTOR) revert InvalidEventSignature();
 
         bytes32 intentHash = topicsArray[1];
 
@@ -177,15 +181,14 @@ contract PolymerProver is BaseProver, Semver {
             bytes memory data
         ) = CROSS_L2_PROVER_V2.validateEvent(proof);
 
-        require(emittingContract == INBOX, "Invalid emitting contract");
+        if (emittingContract != INBOX) revert InvalidEmittingContract();
 
         // might not need this check
-        require(supportedChainIds[chainId], "Unsupported chainId");
+        if (!supportedChainIds[chainId]) revert UnsupportedChainId();
 
-        require(
-            bytes32(topics) == BATCH_PROOF_SELECTOR,
-            "Invalid event signature"
-        );
+        if (topics.length != 32) revert InvalidTopicsLength();
+
+        if (bytes32(topics) != BATCH_PROOF_SELECTOR) revert InvalidEventSignature();
 
         //unpack abi.encodePacked(intentHashes, claimants) data from data
         (bytes32[] memory hashes, address[] memory claimants) = decodeMessageBody(data);

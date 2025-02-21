@@ -368,7 +368,7 @@ contract Inbox is IInbox, Ownable, Semver {
         emit SolverWhitelistChanged(_solver, _canSolve);
     }
 
-    function fulfillStorageSilent(
+    function fulfillSilent(
         Route calldata _route,
         bytes32 _rewardHash,
         address _claimant,

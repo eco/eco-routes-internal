@@ -835,7 +835,7 @@ describe('Inbox Test', (): void => {
     it('batchStorageEmit should work for multiple intents', async () => {
       await inbox
         .connect(solver)
-        .fulfillStorageSilent(
+        .fulfillSilent(
           route,
           rewardHash,
           dstAddr.address,
@@ -860,7 +860,7 @@ describe('Inbox Test', (): void => {
 
       await inbox
         .connect(solver)
-        .fulfillStorageSilent(
+        .fulfillSilent(
           route,
           rewardHash,
           dstAddr.address,
@@ -891,7 +891,7 @@ describe('Inbox Test', (): void => {
       ).to.be.revertedWithCustomError(inbox, 'IntentNotFulfilled')
     })
 
-    it('should work with fulfillStorageSilent ', async () => {
+    it('should work with fulfillSilent ', async () => {
       expect(await inbox.fulfilled(intentHash)).to.equal(ethers.ZeroAddress)
       expect(await erc20.balanceOf(solver.address)).to.equal(mintAmount)
       expect(await erc20.balanceOf(dstAddr.address)).to.equal(0)
