@@ -90,6 +90,12 @@ interface IInbox is ISemver {
         bool indexed _canSolve
     );
 
+    /** 
+     * @notice Emitted when a batch of intent hashes is emitted
+     * @param _packedIntentHashes Packed intent hashes
+     */
+    event BatchToBeProven(bytes _packedIntentHashes);
+
     /**
      * @notice Unauthorized solver attempted to fulfill intent
      * @param _solver Address of the unauthorized solver

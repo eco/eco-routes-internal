@@ -368,6 +368,38 @@ contract Inbox is IInbox, Ownable, Semver {
         emit SolverWhitelistChanged(_solver, _canSolve);
     }
 
+    function fulfillStorageSilent(
+        Route calldata _route,
+        bytes32 _rewardHash,
+        address _claimant,
+        bytes32 _expectedHash
+    ) external payable returns (bytes[] memory) {
+        bytes[] memory result = _fulfill(
+            _route,
+            _rewardHash,
+            _claimant,
+            _expectedHash
+        );
+
+        return result;
+    }
+
+    function batchStorageEmit(bytes32[] calldata _intentHashes) public onlyOwner {   
+        uint256 size = _intentHashes.length;
+        address[] memory claimants = new address[](size);
+        for (uint256 i = 0; i < size; ++i) {
+            address claimant = fulfilled[_intentHashes[i]];
+            if (claimant == address(0)) {
+                revert IntentNotFulfilled(_intentHashes[i]);
+            }
+            claimants[i] = claimant;
+        }
+
+        //pack the intent hashes into a single event using abi.encodePacked
+        bytes memory messageBody = abi.encodePacked(_intentHashes, claimants);
+        emit BatchToBeProven(messageBody);
+    }
+        
     /**
      * @notice Internal function to fulfill intents
      * @dev Validates intent and executes calls

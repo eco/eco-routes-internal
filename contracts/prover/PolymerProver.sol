@@ -10,7 +10,6 @@ import {ICrossL2ProverV2} from "../interfaces/ICrossL2ProverV2.sol";
  * @dev Processes proof messages from Polymer's CrossL2ProverV2 and records proven intents
  */
 contract PolymerProver is BaseProver, Semver {
-
     /**
      * @notice Constant indicating this contract uses Polymer for proving
      */
@@ -28,7 +27,6 @@ contract PolymerProver is BaseProver, Semver {
      * @param _sender Address that attempted the call
      */
     error UnauthorizedHandle(address _sender);
-
 
     /**
      * @notice Address of local Polymer CrossL2ProverV2 contract
@@ -54,6 +52,9 @@ contract PolymerProver is BaseProver, Semver {
      */
     bytes32 public constant PROOF_SELECTOR =
         keccak256("ToBeProven(bytes32,uint256,address)");
+
+    bytes32 public constant BATCH_PROOF_SELECTOR =
+        keccak256("BatchToBeProven(bytes)");
 
     /**
      * @notice Initializes the PolymerProver contract
@@ -172,7 +173,73 @@ contract PolymerProver is BaseProver, Semver {
      * @param proof The packed proof data to validate
      */
     function _validatePackedProof(bytes calldata proof) internal {
-        // todo: implement
+        //validate event using CrossL2ProverV2
+        (
+            uint32 chainId,
+            address emittingContract,
+            bytes memory topics,
+            bytes memory data
+        ) = CROSS_L2_PROVER_V2.validateEvent(proof);
+
+        require(emittingContract == INBOX, "Invalid emitting contract");
+
+        // might not need this check
+        require(supportedChainIds[chainId], "Unsupported chainId");
+
+        require(
+            bytes32(topics) == BATCH_PROOF_SELECTOR,
+            "Invalid event signature"
+        );
+
+        //unpack abi.encodePacked(intentHashes, claimants) data from data
+        (bytes32[] memory hashes, address[] memory claimants) = decodeMessageBody(data);
+
+        // Process each intent proof
+        for (uint256 i = 0; i < hashes.length; i++) {
+            (bytes32 intentHash, address claimant) = (hashes[i], claimants[i]);
+            if (provenIntents[intentHash] != address(0)) {
+                emit IntentAlreadyProven(intentHash);
+            } else {
+                provenIntents[intentHash] = claimant;
+                emit IntentProven(intentHash, claimant);
+            }
+        }
+    }
+
+    /**
+     * @notice Decodes a message body into intent hashes and claimants
+     * @dev Used to decode the data from the BatchToBeProven event
+     * @param messageBody The message body to decode
+     * @return intentHashes The array of intent hashes
+     * @return claimants The array of claimants
+     */
+    function decodeMessageBody(bytes memory messageBody) public pure 
+        returns (bytes32[] memory intentHashes, address[] memory claimants)
+    {
+        if (messageBody.length % 52 != 0) revert("size mismatch"); // 32 bytes per hash + 20 per address
+        uint256 size = messageBody.length / 52;
+
+        intentHashes = new bytes32[](size);
+        claimants = new address[](size);
+
+        uint256 offset = 0;
+        for (uint256 i = 0; i < size; i++) {
+            bytes32 temp;
+            assembly {
+                temp := mload(add(messageBody, add(32, offset)))
+            }
+            intentHashes[i] = temp;
+            offset += 32;
+        }
+
+        for (uint256 i = 0; i < size; i++) {
+            address temp;
+            assembly {
+                temp := shr(96, mload(add(messageBody, add(32, offset))))
+            }
+            claimants[i] = temp;
+            offset += 20;
+        }
     }
 
     /**
