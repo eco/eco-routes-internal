@@ -384,7 +384,7 @@ contract Inbox is IInbox, Ownable, Semver {
         return result;
     }
 
-    function batchStorageEmit(bytes32[] calldata _intentHashes) public onlyOwner {   
+    function batchStorageEmit(bytes32[] calldata _intentHashes) public {   
         uint256 size = _intentHashes.length;
         address[] memory claimants = new address[](size);
         for (uint256 i = 0; i < size; ++i) {
