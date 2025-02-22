@@ -220,7 +220,7 @@ contract PolymerProver is BaseProver, Semver {
         for (uint256 i = 0; i < size; i++) {
             address temp;
             assembly {
-                temp := shr(96, mload(add(messageBody, add(32, offset))))
+                temp := mload(add(messageBody, add(20, offset)))
             }
             claimants[i] = temp;
             offset += 20;

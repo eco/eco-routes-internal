@@ -482,14 +482,10 @@ describe('PolymerProver Test', (): void => {
       );
 
       messageBody = ethers.concat([packedHashes, packedAddresses]);
-      console.log(messageBody);
-      console.log(intentHashes);
-      console.log(claimants);
-
 
     })
 
-    it('should validate a batch of emits', async (): Promise<void> => {
+    it('should validate a single packed emit', async (): Promise<void> => {
 
       // set values for mock prover
       await testCrossL2ProverV2.setAll(
@@ -506,9 +502,10 @@ describe('PolymerProver Test', (): void => {
         await testCrossL2ProverV2.validateEvent(proof);
 
       expect(chainId_returned).to.equal(chainIds[0]);
-      expect(emittingContract_returned).to.equal(claimant.address);
+      expect(emittingContract_returned).to.equal(inboxAddress);
       expect(topics_returned).to.equal(topics_packed);
       expect(data_returned).to.equal(messageBody);
+
 
       await expect(polymerProver.validatePacked(proof))
         .to.emit(polymerProver, 'IntentProven')
@@ -517,6 +514,262 @@ describe('PolymerProver Test', (): void => {
         .withArgs(intentHashes[1], claimants[1])
         .to.emit(polymerProver, 'IntentProven')
         .withArgs(intentHashes[2], claimants[2]);
+    })
+
+    it('should emit IntentAlreadyProven if the intent is already proven', async (): Promise<void> => {
+      intentHashes = [
+        expectedHash,
+        expectedHash2,
+        expectedHash
+      ];
+      claimants = [
+        claimant.address,
+        claimant2.address,
+        claimant.address
+      ];
+
+      const packedHashes = ethers.solidityPacked(
+        ['bytes32','bytes32','bytes32'],
+        [intentHashes[0], intentHashes[1], intentHashes[2]]
+      );
+      const packedAddresses = ethers.solidityPacked(
+        ['uint160','uint160','uint160'],
+        [claimants[0], claimants[1], claimants[2]]
+      );
+
+      messageBody = ethers.concat([packedHashes, packedAddresses]);
+
+      // set values for mock prover
+      await testCrossL2ProverV2.setAll(
+        chainIds[0], 
+        inboxAddress,
+        topics_packed, 
+        messageBody
+      );
+
+      const proofIndex = 1;
+      const proof = ethers.zeroPadValue(ethers.toBeHex(proofIndex), 32);
+
+      await expect(polymerProver.validatePacked(proof))
+        .to.emit(polymerProver, 'IntentProven')
+        .withArgs(intentHashes[0], claimants[0])
+        .to.emit(polymerProver, 'IntentProven')
+        .withArgs(intentHashes[1], claimants[1])
+        .to.emit(polymerProver, 'IntentAlreadyProven')
+        .withArgs(intentHashes[0]);
+    })
+
+    it('should revert for invalid emitting contract', async (): Promise<void> => {
+
+      await testCrossL2ProverV2.setAll(
+        chainIds[0], 
+        claimant.address,
+        topics_packed, 
+        messageBody
+      );
+
+      const proofIndex = 1;
+      const proof = ethers.zeroPadValue(ethers.toBeHex(proofIndex), 32);
+      
+      const [chainId_returned, emittingContract_returned, topics_returned, data_returned] = 
+        await testCrossL2ProverV2.validateEvent(proof);
+
+      expect(chainId_returned).to.equal(chainIds[0]);
+      expect(emittingContract_returned).to.equal(claimant.address);
+      expect(topics_returned).to.equal(topics_packed);
+      expect(data_returned).to.equal(messageBody);
+
+      await expect(polymerProver.validatePacked(proof))
+        .to.be.revertedWithCustomError(polymerProver, 'InvalidEmittingContract');
+    })
+
+    it('should revert for invalid chainId', async (): Promise<void> => {
+      const badChainId = 1234;
+      await testCrossL2ProverV2.setAll(
+        badChainId, 
+        inboxAddress,
+        topics_packed, 
+        messageBody
+      );
+
+      const proofIndex = 1;
+      const proof = ethers.zeroPadValue(ethers.toBeHex(proofIndex), 32);
+      
+      const [chainId_returned, emittingContract_returned, topics_returned, data_returned] = 
+        await testCrossL2ProverV2.validateEvent(proof);
+
+      expect(chainId_returned).to.equal(badChainId);
+      expect(emittingContract_returned).to.equal(inboxAddress);
+      expect(topics_returned).to.equal(topics_packed);
+      expect(data_returned).to.equal(messageBody);
+
+      await expect(polymerProver.validatePacked(proof))
+        .to.be.revertedWithCustomError(polymerProver, 'UnsupportedChainId');
+    })
+
+    it('should revert for topics length not 1', async (): Promise<void> => {
+      topics = [
+        eventSignature, 
+        expectedHash, 
+    ];
+
+      topics_packed = ethers.solidityPacked(
+          ["bytes32", "bytes32"],
+          topics
+      );
+
+      await testCrossL2ProverV2.setAll(
+        chainIds[0], 
+        inboxAddress,
+        topics_packed, 
+        messageBody
+      );
+
+      const proofIndex = 1;
+      const proof = ethers.zeroPadValue(ethers.toBeHex(proofIndex), 32);
+      
+      const [chainId_returned, emittingContract_returned, topics_returned, data_returned] = 
+        await testCrossL2ProverV2.validateEvent(proof);
+
+      expect(chainId_returned).to.equal(chainIds[0]);
+      expect(emittingContract_returned).to.equal(inboxAddress);
+      expect(topics_returned).to.equal(topics_packed);
+      expect(data_returned).to.equal(messageBody);
+
+      await expect(polymerProver.validatePacked(proof))
+        .to.be.revertedWithCustomError(polymerProver, 'InvalidTopicsLength');
+    })
+
+    it('should revert for invalid event signature', async (): Promise<void> => {
+      const invalidEventSignature = ethers.id('ToBeProven(bytes)');
+      topics = [
+        invalidEventSignature, 
+      ];
+
+      topics_packed = ethers.solidityPacked(
+          ["bytes32"],
+          topics
+      );
+
+      await testCrossL2ProverV2.setAll(
+        chainIds[0], 
+        inboxAddress,
+        topics_packed, 
+        messageBody
+      );
+
+      const proofIndex = 1;
+      const proof = ethers.zeroPadValue(ethers.toBeHex(proofIndex), 32);
+      
+      const [chainId_returned, emittingContract_returned, topics_returned, data_returned] = 
+        await testCrossL2ProverV2.validateEvent(proof);
+
+      expect(chainId_returned).to.equal(chainIds[0]);
+      expect(emittingContract_returned).to.equal(inboxAddress);
+      expect(topics_returned).to.equal(topics_packed);
+      expect(data_returned).to.equal(messageBody);
+
+      await expect(polymerProver.validatePacked(proof))
+        .to.be.revertedWithCustomError(polymerProver, 'InvalidEventSignature');
+    })
+
+    it('should allow a batch of packed emits to be proven', async (): Promise<void> => {
+      const intentHashes1 = [
+        expectedHash,
+        expectedHash2,
+        expectedHash3
+      ];
+      const claimants1 = [
+        claimant.address,
+        claimant2.address,
+        claimant3.address
+      ];
+
+      const packedHashes1 = ethers.solidityPacked(
+        ['bytes32','bytes32','bytes32'],
+        [intentHashes[0], intentHashes[1], intentHashes[2]]
+      );
+      const packedAddresses1 = ethers.solidityPacked(
+        ['uint160','uint160','uint160'],
+        [claimants[0], claimants[1], claimants[2]]
+      );
+
+      const messageBody1 = ethers.concat([packedHashes1, packedAddresses1]);
+
+      const expectedHash4 = '0x' + '44'.repeat(32);
+      const expectedHash5 = '0x' + '55'.repeat(32);
+      const expectedHash6 = '0x' + '66'.repeat(32);
+
+      const intentHashes2 = [
+        expectedHash4,
+        expectedHash5,
+        expectedHash6
+      ];
+      const claimants2 = [
+        claimant.address,
+        claimant2.address,
+        claimant3.address
+      ];
+
+      const packedHashes2 = ethers.solidityPacked(
+        ['bytes32','bytes32','bytes32'],
+        [intentHashes2[0], intentHashes2[1], intentHashes2[2]]
+      );
+
+      const packedAddresses2 = ethers.solidityPacked(
+        ['uint160','uint160','uint160'],
+        [claimants2[0], claimants2[1], claimants2[2]]
+      );
+
+      const messageBody2 = ethers.concat([packedHashes2, packedAddresses2]);
+
+      const proofIndex = [1, 2];
+      const proofs = proofIndex.map((index) => ethers.zeroPadValue(ethers.toBeHex(index), 32));
+      // set values for mock prover
+      await testCrossL2ProverV2.setAll(
+        chainIds[0], 
+        inboxAddress,
+        topics_packed, 
+        messageBody1
+      );
+
+      let [chainId_returned1, emittingContract_returned1, topics_returned1, data_returned1] = 
+      await testCrossL2ProverV2.validateEvent(proofs[0]);
+
+      expect(chainId_returned1).to.equal(chainIds[0]);
+      expect(emittingContract_returned1).to.equal(inboxAddress);
+      expect(topics_returned1).to.equal(topics_packed);
+      expect(data_returned1).to.equal(messageBody1);
+
+      await testCrossL2ProverV2.setAll(
+        chainIds[1], 
+        inboxAddress,
+        topics_packed, 
+        messageBody2
+      );
+
+
+      let [chainId_returned2, emittingContract_returned2, topics_returned2, data_returned2] = 
+      await testCrossL2ProverV2.validateEvent(proofs[1]);
+
+      expect(chainId_returned2).to.equal(chainIds[1]);
+      expect(emittingContract_returned2).to.equal(inboxAddress);
+      expect(topics_returned2).to.equal(topics_packed);
+      expect(data_returned2).to.equal(messageBody2);
+
+      await expect(polymerProver.validateBatchPacked(proofs))
+        .to.emit(polymerProver, 'IntentProven')
+        .withArgs(intentHashes1[0], claimants1[0])
+        .to.emit(polymerProver, 'IntentProven')
+        .withArgs(intentHashes1[1], claimants1[1])
+        .to.emit(polymerProver, 'IntentProven')
+        .withArgs(intentHashes1[2], claimants1[2])
+        .to.emit(polymerProver, 'IntentProven')
+        .withArgs(intentHashes2[0], claimants2[0])
+        .to.emit(polymerProver, 'IntentProven')
+        .withArgs(intentHashes2[1], claimants2[1])
+        .to.emit(polymerProver, 'IntentProven')
+        .withArgs(intentHashes2[2], claimants2[2]);
     })
   })
 })
