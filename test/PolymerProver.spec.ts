@@ -321,7 +321,6 @@ describe('PolymerProver Test', (): void => {
     let expectedHash2: string;
     let expectedHash3: string;
     let eventSignature: string;
-    let badEventSignature: string;
     let inboxAddress: string;
 
     beforeEach(async (): Promise<void> => {
@@ -431,6 +430,87 @@ describe('PolymerProver Test', (): void => {
         .withArgs(expectedHash)
         .to.emit(polymerProver, 'IntentProven')
         .withArgs(expectedHash2, claimant2.address);
+    })
+  })
+
+  describe('packed emit', (): void => {
+    let topics: string[];
+    let topics_packed: string;
+    let data: string;
+    let expectedHash: string;
+    let expectedHash2: string;
+    let expectedHash3: string;
+    let eventSignature: string;
+    let inboxAddress: string;
+    let intentHashes: string[];
+    let claimants: string[];
+
+    beforeEach(async (): Promise<void> => {
+        eventSignature = ethers.id('BatchToBeProven(bytes)');
+        expectedHash = '0x' + '11'.repeat(32);
+        expectedHash2 = '0x' + '22'.repeat(32);
+        expectedHash3 = '0x' + '33'.repeat(32);
+        topics = [
+            eventSignature, 
+        ];
+
+        topics_packed = ethers.solidityPacked(
+            ["bytes32"],
+            topics
+        );
+       inboxAddress = await inbox.getAddress();
+
+      intentHashes = [
+        expectedHash,
+        expectedHash2,
+        expectedHash3
+      ];
+      claimants = [
+        claimant.address,
+        claimant2.address,
+        claimant3.address
+      ];
+
+      data = ethers.solidityPacked(
+        ["bytes32[]", "address[]"],
+        [intentHashes, claimants]
+      );
+      console.log(data);
+
+    })
+
+    it('should validate a batch of emits', async (): Promise<void> => {
+      const proofIndex = [1, 2, 3];
+      const proof = proofIndex.map(index => ethers.zeroPadValue(ethers.toBeHex(index), 32));
+
+      // const chainIdsArray = [chainIds[0], chainIds[1], chainIds[0]];
+      // const emittingContractsArray = [inboxAddress, inboxAddress, inboxAddress];
+      // const topicsArray = [topics_0_packed, topics_1_packed, topics_2_packed];
+      // const dataArray = [data, data, data];
+
+      // for (let i = 0; i < proofIndex.length; i++) {
+      //   await testCrossL2ProverV2.setAll(
+      //     chainIdsArray[i], 
+      //     emittingContractsArray[i],
+      //     topicsArray[i], 
+      //     dataArray[i]
+      //   );
+      //   let [chainId_returned, emittingContract_returned, topics_returned, data_returned] = 
+      //     await testCrossL2ProverV2.validateEvent(proof[i]);
+
+      //   expect(chainId_returned).to.equal(chainIdsArray[i]);
+      //   expect(emittingContract_returned).to.equal(emittingContractsArray[i]);
+      //   expect(topics_returned).to.equal(topicsArray[i]);
+      //   expect(data_returned).to.equal(dataArray[i]);
+      // }
+
+      // await expect(polymerProver.validateBatch(proof))
+      //   .to.emit(polymerProver, 'IntentProven')
+      //   .withArgs(expectedHash, claimant.address)
+      //   .to.emit(polymerProver, 'IntentProven')
+      //   .withArgs(expectedHash2, claimant2.address)
+      //   .to.emit(polymerProver, 'IntentProven')
+      //   .withArgs(expectedHash3, claimant3.address);
     })
   })
 })

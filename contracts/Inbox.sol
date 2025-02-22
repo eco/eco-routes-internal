@@ -386,15 +386,15 @@ contract Inbox is IInbox, Ownable, Semver {
 
     function batchStorageEmit(bytes32[] calldata _intentHashes) public {   
         uint256 size = _intentHashes.length;
-        address[] memory claimants = new address[](size);
+        bytes memory claimants;
+
         for (uint256 i = 0; i < size; ++i) {
             address claimant = fulfilled[_intentHashes[i]];
             if (claimant == address(0)) {
                 revert IntentNotFulfilled(_intentHashes[i]);
             }
-            claimants[i] = claimant;
+            claimants = abi.encodePacked(claimants, claimant);
         }
-
         //pack the intent hashes into a single event using abi.encodePacked
         bytes memory messageBody = abi.encodePacked(_intentHashes, claimants);
         emit BatchToBeProven(messageBody);
