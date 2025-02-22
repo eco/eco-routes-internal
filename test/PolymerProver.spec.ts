@@ -444,21 +444,22 @@ describe('PolymerProver Test', (): void => {
     let inboxAddress: string;
     let intentHashes: string[];
     let claimants: string[];
+    let messageBody: string;
 
     beforeEach(async (): Promise<void> => {
-        eventSignature = ethers.id('BatchToBeProven(bytes)');
-        expectedHash = '0x' + '11'.repeat(32);
-        expectedHash2 = '0x' + '22'.repeat(32);
-        expectedHash3 = '0x' + '33'.repeat(32);
-        topics = [
-            eventSignature, 
-        ];
+      eventSignature = ethers.id('BatchToBeProven(bytes)');
+      expectedHash = '0x' + '11'.repeat(32);
+      expectedHash2 = '0x' + '22'.repeat(32);
+      expectedHash3 = '0x' + '33'.repeat(32);
+      topics = [
+          eventSignature, 
+      ];
 
-        topics_packed = ethers.solidityPacked(
-            ["bytes32"],
-            topics
-        );
-       inboxAddress = await inbox.getAddress();
+      topics_packed = ethers.solidityPacked(
+          ["bytes32"],
+          topics
+      );
+      inboxAddress = await inbox.getAddress();
 
       intentHashes = [
         expectedHash,
@@ -471,46 +472,51 @@ describe('PolymerProver Test', (): void => {
         claimant3.address
       ];
 
-      data = ethers.solidityPacked(
-        ["bytes32[]", "address[]"],
-        [intentHashes, claimants]
+      const packedHashes = ethers.solidityPacked(
+        ['bytes32','bytes32','bytes32'],
+        [intentHashes[0], intentHashes[1], intentHashes[2]]
       );
-      console.log(data);
+      const packedAddresses = ethers.solidityPacked(
+        ['uint160','uint160','uint160'],
+        [claimants[0], claimants[1], claimants[2]]
+      );
+
+      messageBody = ethers.concat([packedHashes, packedAddresses]);
+      console.log(messageBody);
+      console.log(intentHashes);
+      console.log(claimants);
+
 
     })
 
     it('should validate a batch of emits', async (): Promise<void> => {
-      const proofIndex = [1, 2, 3];
-      const proof = proofIndex.map(index => ethers.zeroPadValue(ethers.toBeHex(index), 32));
 
-      // const chainIdsArray = [chainIds[0], chainIds[1], chainIds[0]];
-      // const emittingContractsArray = [inboxAddress, inboxAddress, inboxAddress];
-      // const topicsArray = [topics_0_packed, topics_1_packed, topics_2_packed];
-      // const dataArray = [data, data, data];
+      // set values for mock prover
+      await testCrossL2ProverV2.setAll(
+        chainIds[0], 
+        inboxAddress,
+        topics_packed, 
+        messageBody
+      );
 
-      // for (let i = 0; i < proofIndex.length; i++) {
-      //   await testCrossL2ProverV2.setAll(
-      //     chainIdsArray[i], 
-      //     emittingContractsArray[i],
-      //     topicsArray[i], 
-      //     dataArray[i]
-      //   );
-      //   let [chainId_returned, emittingContract_returned, topics_returned, data_returned] = 
-      //     await testCrossL2ProverV2.validateEvent(proof[i]);
+      const proofIndex = 1;
+      const proof = ethers.zeroPadValue(ethers.toBeHex(proofIndex), 32);
+      
+      const [chainId_returned, emittingContract_returned, topics_returned, data_returned] = 
+        await testCrossL2ProverV2.validateEvent(proof);
 
-      //   expect(chainId_returned).to.equal(chainIdsArray[i]);
-      //   expect(emittingContract_returned).to.equal(emittingContractsArray[i]);
-      //   expect(topics_returned).to.equal(topicsArray[i]);
-      //   expect(data_returned).to.equal(dataArray[i]);
-      // }
+      expect(chainId_returned).to.equal(chainIds[0]);
+      expect(emittingContract_returned).to.equal(claimant.address);
+      expect(topics_returned).to.equal(topics_packed);
+      expect(data_returned).to.equal(messageBody);
 
-      // await expect(polymerProver.validateBatch(proof))
-      //   .to.emit(polymerProver, 'IntentProven')
-      //   .withArgs(expectedHash, claimant.address)
-      //   .to.emit(polymerProver, 'IntentProven')
-      //   .withArgs(expectedHash2, claimant2.address)
-      //   .to.emit(polymerProver, 'IntentProven')
-      //   .withArgs(expectedHash3, claimant3.address);
+      await expect(polymerProver.validatePacked(proof))
+        .to.emit(polymerProver, 'IntentProven')
+        .withArgs(intentHashes[0], claimants[0])
+        .to.emit(polymerProver, 'IntentProven')
+        .withArgs(intentHashes[1], claimants[1])
+        .to.emit(polymerProver, 'IntentProven')
+        .withArgs(intentHashes[2], claimants[2]);
     })
   })
 })

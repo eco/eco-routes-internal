@@ -868,12 +868,6 @@ describe('Inbox Test', (): void => {
         )
 
       
-      // const messageBody = ethers.solidityPacked(
-      //   ['bytes32[]', 'bytes'],
-      //   [[intentHash, otherHash], [dstAddr.address, dstAddr.address]]
-      // )
-
-      // say you have [intentHash, otherHash] and [addr1, addr2]:
       const packedHashes = ethers.solidityPacked(
         ['bytes32','bytes32'],
         [intentHash, otherHash]
@@ -883,10 +877,7 @@ describe('Inbox Test', (): void => {
         [dstAddr.address, dstAddr.address]
       );
 
-      // final data is just the two packed blobs stuck together
       const messageBody = ethers.concat([packedHashes, packedAddresses]);
-
-      console.log(messageBody);
       
       await expect(
         inbox
