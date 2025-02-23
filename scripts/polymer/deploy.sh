@@ -95,7 +95,7 @@ echo "$HARDHAT_NETWORK_BASE inbox: $base_inbox"
 echo "$HARDHAT_NETWORK_OPTIMISM prover: $optimism_prover"
 echo "$HARDHAT_NETWORK_BASE prover: $base_prover"
 
-cat > deployed.json << EOF
+cat > scripts/polymer/deployed.json << EOF
 {
   "optimism_intent_source": "$optimism_intent_source",
   "optimism_inbox": "$optimism_inbox",
