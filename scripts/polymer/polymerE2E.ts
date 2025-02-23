@@ -32,36 +32,39 @@ interface ProofRequestParams {
 }
 
 async function main() {
-
   // Get network choice from command line arguments
-  const args = process.argv.slice(2);
-  let isTestnet = true;
+  const args = process.argv.slice(2)
+  let isTestnet = true
 
   if (args.length > 0) {
     if (args[0].toLowerCase() === 'mainnet') {
-      isTestnet = false;
+      isTestnet = false
     } else if (args[0].toLowerCase() !== 'testnet') {
-      console.log('Invalid network argument. Please specify "testnet" or "mainnet"');
-      process.exit(1);
+      console.log(
+        'Invalid network argument. Please specify "testnet" or "mainnet"',
+      )
+      process.exit(1)
     }
   } else {
-    console.log('No network specified. Defaulting to testnet...');
+    console.log('No network specified. Defaulting to testnet...')
   }
 
   // Load deployed contract addresses
-  let deployedAddresses;
+  let deployedAddresses
   try {
-    deployedAddresses = require('./deployed.json');
+    deployedAddresses = require('./deployed.json')
   } catch (error) {
-    console.error('Error loading deployed.json. Please run deploy.sh first');
-    process.exit(1);
+    console.error('Error loading deployed.json. Please run deploy.sh first')
+    process.exit(1)
   }
 
   // Verify network choice matches deployed contracts
-  const expectedNetwork = isTestnet ? "1" : "2";
+  const expectedNetwork = isTestnet ? '1' : '2'
   if (deployedAddresses.network !== expectedNetwork) {
-    console.error(`Network mismatch: Script running for ${isTestnet ? "testnet" : "mainnet"} but deployed.json is for ${deployedAddresses.network === "1" ? "testnet" : "mainnet"}`);
-    process.exit(1);
+    console.error(
+      `Network mismatch: Script running for ${isTestnet ? 'testnet' : 'mainnet'} but deployed.json is for ${deployedAddresses.network === '1' ? 'testnet' : 'mainnet'}`,
+    )
+    process.exit(1)
   }
 
   /// network information ///
@@ -72,7 +75,9 @@ async function main() {
       prover: deployedAddresses.optimism_prover,
       chainId: isTestnet ? 11155420 : 10,
       intentSource: deployedAddresses.optimism_intent_source,
-      usdc: isTestnet ?'0x5fd84259d66Cd46123540766Be93DFE6D43130D7': '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
+      usdc: isTestnet
+        ? '0x5fd84259d66Cd46123540766Be93DFE6D43130D7'
+        : '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
       usdcDecimals: 6,
       usdcAmount: Number(ethers.parseUnits('1.0', 6)),
       usdcRewardAmount: Number(ethers.parseUnits('1.1', 6)),
@@ -82,7 +87,9 @@ async function main() {
       prover: deployedAddresses.base_prover,
       chainId: isTestnet ? 84532 : 8453,
       intentSource: deployedAddresses.base_intent_source,
-      usdc: isTestnet ? '0x036CbD53842c5426634e7929541eC2318f3dCF7e': '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+      usdc: isTestnet
+        ? '0x036CbD53842c5426634e7929541eC2318f3dCF7e'
+        : '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
       usdcDecimals: 6,
       usdcAmount: Number(ethers.parseUnits('1.0', 6)),
       usdcRewardAmount: Number(ethers.parseUnits('1.1', 6)),
@@ -137,12 +144,12 @@ async function main() {
 
   const optimismUSDC = TestERC20__factory.connect(
     network_info.optimism.usdc,
-    optimismWallet
+    optimismWallet,
   )
 
   const baseUSDC = TestERC20__factory.connect(
     network_info.base.usdc,
-    baseWallet
+    baseWallet,
   )
 
   /// bind the contracts on Base mainnet (IntentSource, Inbox, PolymerProver) ///
@@ -224,11 +231,11 @@ async function main() {
     route,
     reward,
   }
-  
+
   console.log('🔄 Approving tokens...')
   const approvalTx = await optimismUSDC.approve(
     optimismIntentSource.getAddress(),
-    network_info.optimism.usdcRewardAmount
+    network_info.optimism.usdcRewardAmount,
   )
   const approvalTxReceipt = await approvalTx.wait()
   if (!approvalTxReceipt) {
@@ -363,11 +370,16 @@ async function main() {
   console.log('🔄 Polling for proof generation...')
 
   const proof = await pollForProof(proofRequest.result)
-  console.log('📜 Proof details:', proof)
+  console.log('📜 Raw proof:', proof.result.proof)
+  
+  // Convert base64 proof to hex
+  const hexProof = base64ToHex(proof.result.proof)
+  console.log('📜 Hex proof:', hexProof)
+  console.log('🔄 Converted proof to hex format')
 
   /// POLYMER PROVER CONTRACT FLOW ///
-
-  const proveTx = await optimismPolymerProver.validate(proof)
+  console.log('🔄 Validating proof...')
+  const proveTx = await optimismPolymerProver.validate(hexProof)
 
   const proveTxReceipt = await proveTx.wait()
   if (!proveTxReceipt) {
@@ -376,25 +388,32 @@ async function main() {
 
   // Find and verify the IntentProven event
   const intentProvenEvent = proveTxReceipt.logs.find(
-    (log) => log.topics[0] === optimismPolymerProver.interface.getEvent('IntentProven').topicHash
+    (log) =>
+      log.topics[0] ===
+      optimismPolymerProver.interface.getEvent('IntentProven').topicHash,
   )
 
   if (!intentProvenEvent) {
     throw new Error('IntentProven event not found in receipt')
   }
 
-  const [provenIntentHash, provenClaimant] = optimismPolymerProver.interface.decodeEventLog(
-    'IntentProven',
-    intentProvenEvent.data,
-    intentProvenEvent.topics
-  )
+  const [provenIntentHash, provenClaimant] =
+    optimismPolymerProver.interface.decodeEventLog(
+      'IntentProven',
+      intentProvenEvent.data,
+      intentProvenEvent.topics,
+    )
 
   if (provenIntentHash !== eventIntentHash) {
-    throw new Error(`Intent hash mismatch. Expected: ${eventIntentHash}, Got: ${provenIntentHash}`)
+    throw new Error(
+      `Intent hash mismatch. Expected: ${eventIntentHash}, Got: ${provenIntentHash}`,
+    )
   }
 
-  if (provenClaimant.toLowerCase() !== eventClaimant.toLowerCase()) {
-    throw new Error(`Claimant mismatch. Expected: ${eventClaimant}, Got: ${provenClaimant}`)
+  if (provenClaimant.toLowerCase() !== optimismWallet.address.toLowerCase()) {
+    throw new Error(
+      `Claimant mismatch. Expected: ${optimismWallet.address.toLowerCase()}, Got: ${provenClaimant.toLowerCase()}`,
+    )
   }
 
   console.log('✅ Proof validated successfully!')
@@ -412,39 +431,45 @@ async function main() {
   if (!claimTxReceipt) {
     throw new Error('Transaction failed: No receipt received')
   }
-  
+
   // Find and verify the Withdrawal event
   const withdrawalEvent = claimTxReceipt.logs.find(
-    (log) => log.topics[0] === optimismIntentSource.interface.getEvent('Withdrawal').topicHash
+    (log) =>
+      log.topics[0] ===
+      optimismIntentSource.interface.getEvent('Withdrawal').topicHash,
   )
 
   if (!withdrawalEvent) {
     throw new Error('Withdrawal event not found in receipt')
   }
 
-  const [withdrawalIntentHash, withdrawalClaimant] = optimismIntentSource.interface.decodeEventLog(
-    'Withdrawal',
-    withdrawalEvent.data,
-    withdrawalEvent.topics
-  )
+  const [withdrawalIntentHash, withdrawalClaimant] =
+    optimismIntentSource.interface.decodeEventLog(
+      'Withdrawal',
+      withdrawalEvent.data,
+      withdrawalEvent.topics,
+    )
 
   if (withdrawalIntentHash !== eventIntentHash) {
-    throw new Error(`Intent hash mismatch. Expected: ${eventIntentHash}, Got: ${withdrawalIntentHash}`)
+    throw new Error(
+      `Intent hash mismatch. Expected: ${eventIntentHash}, Got: ${withdrawalIntentHash}`,
+    )
   }
 
-  if (withdrawalClaimant.toLowerCase() !== eventClaimant.toLowerCase()) {
-    throw new Error(`Claimant mismatch. Expected: ${eventClaimant}, Got: ${withdrawalClaimant}`)
+  if (withdrawalClaimant.toLowerCase() !== optimismWallet.address.toLowerCase()) {
+    throw new Error(
+      `Claimant mismatch. Expected: ${optimismWallet.address.toLowerCase()}, Got: ${withdrawalClaimant.toLowerCase()}`,
+    )
   }
 
   console.log('✅ Withdrawal validated successfully!')
   console.log('   Intent Hash:', withdrawalIntentHash)
   console.log('   Claimant:', withdrawalClaimant)
-  
 
   console.log('\n🎉 ✨ 🚀 POLYMER INTENT FLOW COMPLETED! 🚀 ✨ 🎉')
   console.log('🔄 Intent Created & Funded')
   console.log('✅ Intent Fulfilled')
-  console.log('📜 Proof Generated & Validated') 
+  console.log('📜 Proof Generated & Validated')
   console.log('💎 Rewards Successfully Claimed')
   console.log('🏁 All Steps Completed Successfully! 🏁\n')
 }
@@ -481,6 +506,7 @@ async function requestProof({
 
   return response.data
 }
+
 async function pollForProof(jobId: string, maxAttempts = 60) {
   const POLYMER_API_URL = process.env.POLYMER_API_URL
   const POLYMER_API_KEY = process.env.POLYMER_API_KEY
@@ -517,10 +543,18 @@ async function pollForProof(jobId: string, maxAttempts = 60) {
 
     attempts++
     console.log(`⏳ Waiting for proof... Attempt ${attempts}/${maxAttempts}`)
-    await new Promise((resolve) => setTimeout(resolve, 1)) // Wait 2 seconds between attempts
+    await new Promise((resolve) => setTimeout(resolve, 2000)) // Wait 2 seconds between attempts
   }
 
   throw new Error('Proof generation timed out')
+}
+
+// Convert base64 to hex
+function base64ToHex(base64: string): string {
+  // Convert base64 to buffer
+  const buffer = Buffer.from(base64, 'base64')
+  // Convert buffer to hex string with 0x prefix
+  return '0x' + buffer.toString('hex')
 }
 
 main()

@@ -8,7 +8,6 @@ Before running the end-to-end tests, ensure you have the following environment v
 export ALCHEMY_API_KEY="your_alchemy_api_key"
 export BASE_SCAN_API_KEY="your_base_scan_api_key"
 export OPTIMISM_SCAN_API_KEY="your_optimism_scan_api_key"
-export OPTIMISM_BLOCKSCOUT_API_KEY="your_optimism_blockscout_api_key"
 export DEPLOYER_PRIVATE_KEY="your_deployer_private_key"
 export POLYMER_API_URL="your_polymer_api_url"
 export POLYMER_API_KEY="your_polymer_api_key"
@@ -39,6 +38,8 @@ source .env
 
    Select option 1 for testnet deployment or option 2 for mainnet deployment. You will need a wallet with ETH and USDC on either Optimism and Base (or their respective Sepolia testnets) to run the end-to-end tests.
 
+   See https://faucet.circle.com/ for testnet USDC. Pray to God if you need testnet ETH.
+
    This will deploy the contracts and output a `deployed.json` file containing the deployed contract addresses for:
    - Optimism Intent Source
    - Optimism Inbox
@@ -49,10 +50,10 @@ source .env
 
 ## Running End-to-End Tests
 
-After successful deployment, you can run the end-to-end tests using:
+After successful deployment, you can run the end-to-end tests using (replace testnet with mainnet to run on mainnet):
 
 ```bash
-npx ts-node scripts/polymer/polymerE2E.ts
+npx ts-node scripts/polymer/polymerE2E.ts testnet 
 ```
 
 This will validate the deployment and test the cross-chain messaging functionality between Base and Optimism. You will need a wallet with 5 USDC on either Optimism or Base (or their respective Sepolia testnets) to run the end-to-end tests.

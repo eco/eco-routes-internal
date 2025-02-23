@@ -16,6 +16,9 @@ async function main() {
   const inboxAddr = await inbox.getAddress();
   console.log("inbox deployed at:", inboxAddr);
 
+ 
+  await new Promise(resolve => setTimeout(resolve, 5000));
+  
   await hre.run("verify:verify", {
     address: inboxAddr,
     constructorArguments: [

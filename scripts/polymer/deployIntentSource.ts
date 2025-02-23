@@ -12,6 +12,8 @@ async function main() {
   const intentSourceAddr = await intentSource.getAddress();
   console.log("intent source deployed at:", intentSourceAddr);
 
+  await new Promise(resolve => setTimeout(resolve, 5000));
+
   await hre.run("verify:verify", {
     address: intentSourceAddr,
     constructorArguments: [], });

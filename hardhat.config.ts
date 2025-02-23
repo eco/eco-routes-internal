@@ -147,14 +147,14 @@ const config: HardhatUserConfig = {
           browserURL: 'https://sepolia-optimism.etherscan.io',
         },
       },
-      {
-        network: 'optimismSepoliaBlockscout',
-        chainId: 11155420,
-        urls: {
-          apiURL: 'https://optimism-sepolia.blockscout.com/api',
-          browserURL: 'https://optimism-sepolia.blockscout.com/',
-        },
-      },
+      // {
+      //   network: 'optimismSepoliaBlockscout',
+      //   chainId: 11155420,
+      //   urls: {
+      //     apiURL: 'https://optimism-sepolia.blockscout.com/api',
+      //     browserURL: 'https://optimism-sepolia.blockscout.com/',
+      //   },
+      // },
       {
         network: 'ecoTestnet',
         chainId: 471923,
