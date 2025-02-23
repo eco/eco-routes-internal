@@ -67,6 +67,11 @@ async function main() {
     process.exit(1)
   }
 
+  const op_explorer = 'https://optimistic.etherscan.io//tx/'
+  const base_explorer = 'https://basescan.org/tx/'
+  const op_testnet_explorer = 'https://sepolia-optimism.etherscan.io//tx/'
+  const base_testnet_explorer = 'https://sepolia.basescan.org/tx/'
+
   /// network information ///
   dotenv.config()
   const network_info = {
@@ -81,6 +86,7 @@ async function main() {
       usdcDecimals: 6,
       usdcAmount: Number(ethers.parseUnits('1.0', 6)),
       usdcRewardAmount: Number(ethers.parseUnits('1.1', 6)),
+      explorer: isTestnet ? op_testnet_explorer : op_explorer,
     },
     base: {
       inbox: deployedAddresses.base_inbox,
@@ -93,6 +99,7 @@ async function main() {
       usdcDecimals: 6,
       usdcAmount: Number(ethers.parseUnits('1.0', 6)),
       usdcRewardAmount: Number(ethers.parseUnits('1.1', 6)),
+      explorer: isTestnet ? base_testnet_explorer : base_explorer,
     },
   }
 
@@ -272,6 +279,7 @@ async function main() {
   console.log(
     `✅  Intent published on optimism at address ${network_info.optimism.intentSource}`,
   )
+  console.log(`    Source IntentSource at ${network_info.optimism.intentSource}`)
   console.log(`    Destination Inbox at ${network_info.base.inbox}`)
   console.log(
     `    Intent Request:  ${network_info.base.usdcAmount}  USDC to address ${baseWallet.address}`,
@@ -279,6 +287,8 @@ async function main() {
   console.log(`    Reward:  ${network_info.optimism.usdcRewardAmount} USDC`)
   console.log('    transaction hash: ', intentTxOptimism.hash)
   console.log('    intent hash: ', intentHash)
+  console.log('    transaction link: ', network_info.optimism.explorer + intentTxOptimism.hash)
+
 
   const [calcIntentHash, calcRouteHash, calcRewardHash] =
     await optimismIntentSource.getIntentHash(intent)
@@ -336,6 +346,7 @@ async function main() {
   console.log('   Intent Hash:', eventIntentHash)
   console.log('   Source Chain:', eventSourceChain)
   console.log('   Claimant:', eventClaimant)
+  console.log('   transaction link: ', network_info.base.explorer + baseInboxSolve.hash)
 
   /// PROVER TRANSACTION FLOW ///
 
@@ -370,11 +381,12 @@ async function main() {
   console.log('🔄 Polling for proof generation...')
 
   const proof = await pollForProof(proofRequest.result)
-  console.log('📜 Raw proof:', proof.result.proof)
+
+  console.log('🛸 Mission Control: Proof acquired')
   
   // Convert base64 proof to hex
   const hexProof = base64ToHex(proof.result.proof)
-  console.log('📜 Hex proof:', hexProof)
+//   console.log('📜 Hex proof:', hexProof)
   console.log('🔄 Converted proof to hex format')
 
   /// POLYMER PROVER CONTRACT FLOW ///
@@ -419,6 +431,7 @@ async function main() {
   console.log('✅ Proof validated successfully!')
   console.log('   Intent Hash:', provenIntentHash)
   console.log('   Claimant:', provenClaimant)
+  console.log('   transaction link: ', network_info.optimism.explorer + proveTx.hash)
 
   /// CLAIM REWARDS INTENT FLOW ///
 
@@ -465,6 +478,7 @@ async function main() {
   console.log('✅ Withdrawal validated successfully!')
   console.log('   Intent Hash:', withdrawalIntentHash)
   console.log('   Claimant:', withdrawalClaimant)
+  console.log('   transaction link: ', network_info.optimism.explorer + claimTx.hash)
 
   console.log('\n🎉 ✨ 🚀 POLYMER INTENT FLOW COMPLETED! 🚀 ✨ 🎉')
   console.log('🔄 Intent Created & Funded')
