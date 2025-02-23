@@ -2,18 +2,7 @@ import dotenv from 'dotenv'
 import axios from 'axios'
 import { networks } from '../../config/testnet/config'
 import { ethers } from 'ethers'
-import {
-  Call,
-  TokenAmount,
-  Route,
-  Reward,
-  Intent,
-  encodeRoute,
-  encodeReward,
-  hashIntent,
-  intentFunderAddress,
-  intentVaultAddress,
-} from '../../utils/intent'
+import { Call, TokenAmount, Route, Reward, Intent } from '../../utils/intent'
 import {
   IntentSource,
   IntentSource__factory,
@@ -115,7 +104,6 @@ async function main() {
     throw new Error('DEPLOYER_PRIVATE_KEY environment variable not found')
   }
 
-  console.log('⛓️  connected to optimism...')
   const optimismProvider = new ethers.AlchemyProvider(
     network_info.optimism.chainId,
     ALCHEMY_API_KEY,
@@ -123,7 +111,6 @@ async function main() {
 
   const optimismWallet = new ethers.Wallet(privateKey, optimismProvider)
 
-  console.log('⛓️  connected to base...')
   const baseProvider = new ethers.AlchemyProvider(
     network_info.base.chainId,
     ALCHEMY_API_KEY,
@@ -131,9 +118,9 @@ async function main() {
 
   const baseWallet = new ethers.Wallet(privateKey, baseProvider)
 
+  console.log('⛓️  connected to optimism and base...')
   /// bind the contracts on Optimism mainnet (IntentSource, Inbox, PolymerProver) ///
 
-  console.log('🏗️  binding contracts on optimism...')
   const optimismIntentSource: IntentSource = IntentSource__factory.connect(
     network_info.optimism.intentSource,
     optimismWallet,
@@ -159,9 +146,6 @@ async function main() {
     baseWallet,
   )
 
-  /// bind the contracts on Base mainnet (IntentSource, Inbox, PolymerProver) ///
-
-  console.log('🏗️  binding contracts on base...')
   const baseIntentSource: IntentSource = IntentSource__factory.connect(
     network_info.base.intentSource,
     baseWallet,
@@ -176,7 +160,7 @@ async function main() {
     network_info.base.prover,
     baseWallet,
   )
-
+  console.log('🏗️  binding contracts on optimism and base...')
   /// FULL TRANSACTION FLOW: intent flow going from Optimism to Base ///
 
   /// INTENT SOURCE TRANSACTION FLOW ///
@@ -239,7 +223,7 @@ async function main() {
     reward,
   }
 
-  console.log('🔄 Approving tokens...')
+  console.log('\n🔄 Approving tokens...')
   const approvalTx = await optimismUSDC.approve(
     optimismIntentSource.getAddress(),
     network_info.optimism.usdcRewardAmount,
@@ -276,19 +260,16 @@ async function main() {
     throw new Error('Transaction failed: Intent hash not found in event')
   }
 
-  console.log(
-    `✅  Intent published on optimism at address ${network_info.optimism.intentSource}`,
-  )
-  console.log(`    Source IntentSource at ${network_info.optimism.intentSource}`)
+  console.log(`✅ Intent published on optimism!`)
+
+  console.log(`    IntentSource at ${network_info.optimism.intentSource}`)
   console.log(`    Destination Inbox at ${network_info.base.inbox}`)
   console.log(
     `    Intent Request:  ${network_info.base.usdcAmount}  USDC to address ${baseWallet.address}`,
   )
   console.log(`    Reward:  ${network_info.optimism.usdcRewardAmount} USDC`)
-  console.log('    transaction hash: ', intentTxOptimism.hash)
-  console.log('    intent hash: ', intentHash)
-  console.log('    transaction link: ', network_info.optimism.explorer + intentTxOptimism.hash)
-
+  console.log('    Transaction Hash: ', intentTxOptimism.hash)
+  console.log('    Intent Hash: ', intentHash)
 
   const [calcIntentHash, calcRouteHash, calcRewardHash] =
     await optimismIntentSource.getIntentHash(intent)
@@ -298,7 +279,7 @@ async function main() {
   }
 
   /// INBOX TRANSACTION FLOW ///
-  console.log('🔄 Approving tokens on base...')
+  console.log('\n🔄 Approving tokens on base...')
   const approvalTxBase = await baseUSDC.approve(
     network_info.base.inbox,
     network_info.base.usdcAmount,
@@ -342,11 +323,11 @@ async function main() {
     throw new Error('Transaction failed: Missing event parameters')
   }
 
-  console.log('✅ Fulfillment event emitted:')
+  console.log('\n✅ Fulfillment event emitted:')
   console.log('   Intent Hash:', eventIntentHash)
   console.log('   Source Chain:', eventSourceChain)
   console.log('   Claimant:', eventClaimant)
-  console.log('   transaction link: ', network_info.base.explorer + baseInboxSolve.hash)
+  console.log('   Transaction Hash: ', baseInboxSolve.hash)
 
   /// PROVER TRANSACTION FLOW ///
 
@@ -377,17 +358,17 @@ async function main() {
     localLogIndex,
   })
 
-  console.log('🚀 Proof request sent:', proofRequest)
+  console.log('\n🚀 Proof request sent:', proofRequest)
   console.log('🔄 Polling for proof generation...')
 
   const proof = await pollForProof(proofRequest.result)
 
   console.log('🛸 Mission Control: Proof acquired')
   console.log('📜 Raw proof: ', proof.result.proof)
-  
+
   // Convert base64 proof to hex
   const hexProof = base64ToHex(proof.result.proof)
-//   console.log('📜 Hex proof:', hexProof)
+  //   console.log('📜 Hex proof:', hexProof)
   console.log('🔄 Converted proof to hex format')
 
   /// POLYMER PROVER CONTRACT FLOW ///
@@ -432,7 +413,7 @@ async function main() {
   console.log('✅ Proof validated successfully!')
   console.log('   Intent Hash:', provenIntentHash)
   console.log('   Claimant:', provenClaimant)
-  console.log('   transaction link: ', network_info.optimism.explorer + proveTx.hash)
+  console.log('   Transaction Hash: ', proveTx.hash)
 
   /// CLAIM REWARDS INTENT FLOW ///
 
@@ -470,16 +451,18 @@ async function main() {
     )
   }
 
-  if (withdrawalClaimant.toLowerCase() !== optimismWallet.address.toLowerCase()) {
+  if (
+    withdrawalClaimant.toLowerCase() !== optimismWallet.address.toLowerCase()
+  ) {
     throw new Error(
       `Claimant mismatch. Expected: ${optimismWallet.address.toLowerCase()}, Got: ${withdrawalClaimant.toLowerCase()}`,
     )
   }
 
-  console.log('✅ Withdrawal validated successfully!')
+  console.log('\n✅ Withdrawal validated successfully!')
   console.log('   Intent Hash:', withdrawalIntentHash)
   console.log('   Claimant:', withdrawalClaimant)
-  console.log('   transaction link: ', network_info.optimism.explorer + claimTx.hash)
+  console.log('   Transaction Hash: ', claimTx.hash)
 
   console.log('\n🎉 ✨ 🚀 POLYMER INTENT FLOW COMPLETED! 🚀 ✨ 🎉')
   console.log('🔄 Intent Created & Funded')
@@ -487,6 +470,23 @@ async function main() {
   console.log('📜 Proof Generated & Validated')
   console.log('💎 Rewards Successfully Claimed')
   console.log('🏁 All Steps Completed Successfully! 🏁\n')
+
+  console.log(
+    'Intent Creation: ',
+    network_info.optimism.explorer + intentTxOptimism.hash,
+  )
+  console.log(
+    'Intent Fulfillment: ',
+    network_info.base.explorer + baseInboxSolve.hash,
+  )
+  console.log(
+    'Proof Submission: ',
+    network_info.optimism.explorer + proveTx.hash,
+  )
+  console.log(
+    'Rewards Withdrawal: ',
+    network_info.optimism.explorer + claimTx.hash,
+  )
 }
 
 async function requestProof({
