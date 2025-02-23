@@ -1,4 +1,5 @@
 import dotenv from 'dotenv'
+import axios from 'axios'
 import { networks } from '../../config/testnet/config'
 import { ethers } from 'ethers'
 import {
@@ -22,6 +23,14 @@ import {
   PolymerProver__factory,
   TestERC20__factory,
 } from '../../typechain-types'
+
+
+interface ProofRequestParams {
+  chainId: number
+  blockNumber: number
+  txIndex: number
+  localLogIndex: number
+}
 
 async function main() {
   /// network information ///
@@ -114,7 +123,9 @@ async function main() {
     baseProvider,
   )
 
-  /// get the latest block timestamps for optimism ///
+  /// FULL TRANSACTION FLOW 1: intent flow going from Optimism to Base ///
+
+  /// INTENT SOURCE TRANSACTION FLOW ///
 
   const optimismTimestamp = await optimismProvider
     .getBlock('latest')
@@ -122,8 +133,6 @@ async function main() {
       if (!block) throw new Error('Failed to fetch optimism block')
       return block.timestamp
     })
-
-  /// full intent flow going from Optimism to Base ///
 
   const transferData = TestERC20__factory.createInterface().encodeFunctionData(
     'transfer',
@@ -189,23 +198,175 @@ async function main() {
       log.topics[0] ===
       optimismIntentSource.interface.getEvent('IntentCreated').topicHash,
   )
-  
+
   if (!intentCreatedEvent) {
     throw new Error('Transaction failed: IntentCreated event not found')
   }
-  
+
   const intentHash = intentCreatedEvent.topics[1]
   if (!intentHash) {
     throw new Error('Transaction failed: Intent hash not found in event')
   }
 
-  console.log(
-    `🔄  intent published on optimism at intent source address ${network_info.optimism.intentSource} going to Inbox at ${network_info.base.inbox}`,
+  console.log(`🔄  Intent published on optimism at address ${network_info.optimism.intentSource}`)
+  console.log(`    Destination Inbox at ${network_info.base.inbox}`)
+  console.log(`    Intent Request:  ${network_info.base.usdcAmount}  USDC to address ${baseWallet.address}`)
+  console.log(`    Reward:  ${network_info.optimism.usdcRewardAmount} USDC`)
+  console.log('    transaction hash: ', intentTxOptimism.hash)
+  console.log('    intent hash: ', intentHash)
+
+  const [calcIntentHash, calcRouteHash, calcRewardHash] =
+    await optimismIntentSource.getIntentHash(intent)
+
+  if (calcIntentHash !== intentHash) {
+    throw new Error('Transaction failed: Intent hash mismatch')
+  }
+
+  /// INBOX TRANSACTION FLOW ///
+
+  const baseInboxSolve = await baseInbox.fulfillStorage(
+    route,
+    calcRewardHash,
+    baseWallet.address,
+    calcIntentHash,
   )
-  console.log(
-    `🔄  intent requested ${network_info.base.usdcAmount} Base USDC to be transferred to address ${baseWallet.address} for ${network_info.optimism.usdcRewardAmount} Optimism USDC reward`,
+
+  const baseInboxTxReceipt = await baseInboxSolve.wait()
+  if (!baseInboxTxReceipt) {
+    throw new Error('Transaction failed: No receipt received')
+  }
+
+  const fulfillmentEvent = baseInboxTxReceipt.logs.find(
+    (log) =>
+      log.topics[0] ===
+      baseInbox.interface.getEvent('Fulfillment').topicHash,
   )
-  console.log('🔄  transaction hash: ', intentTxOptimism.hash)
-  console.log('🔄  intent hash: ', intentHash)
+
+  if (!fulfillmentEvent) {
+    throw new Error('Transaction failed: Fulfillment event not found')
+  }
+
+  const [eventIntentHash, eventSourceChain, eventClaimant] = [
+    fulfillmentEvent.topics[1],
+    fulfillmentEvent.topics[2],
+    fulfillmentEvent.topics[3]
+  ]
+
+  if (!eventIntentHash || !eventSourceChain || !eventClaimant) {
+    throw new Error('Transaction failed: Missing event parameters')
+  }
+
+  console.log('✅ Fulfillment event emitted:')
+  console.log('   Intent Hash:', eventIntentHash)
+  console.log('   Source Chain:', eventSourceChain)
+  console.log('   Claimant:', eventClaimant)
+
+  /// PROVER TRANSACTION FLOW ///
+
+  const blockNumber = baseInboxTxReceipt.blockNumber;
+  if (!blockNumber) {
+    throw new Error('Transaction failed: Block number not found in receipt');
+  }
+
+  const txIndex = baseInboxTxReceipt.index;
+  if (!txIndex) {
+    throw new Error('Transaction failed: Transaction index not found in receipt');
+  }
+
+  const localLogIndex = baseInboxTxReceipt.logs.findIndex(
+    log => log.topics[0] === baseInbox.interface.getEvent('ToBeProven').topicHash
+  );
+  if (localLogIndex === -1) {
+    throw new Error('Transaction failed: ToBeProven event not found in receipt');
+  }
+  
+  const proofRequest = await requestProof({
+    chainId: network_info.base.chainId,
+    blockNumber,
+    txIndex,
+    localLogIndex,
+  });
+
+  console.log('🚀 Proof request sent:', proofRequest);
+  console.log('🔄 Polling for proof generation...');
+  
+  const proof = await pollForProof(proofRequest.result);
+  console.log('📜 Proof details:', proof);
 }
+
+async function requestProof({
+    chainId,
+    blockNumber,
+    txIndex,
+    localLogIndex,
+  }: ProofRequestParams) {
+    const POLYMER_API_URL = process.env.POLYMER_API_URL;
+    const POLYMER_API_KEY = process.env.POLYMER_API_KEY;
+  
+    if (!POLYMER_API_URL || !POLYMER_API_KEY) {
+      throw new Error('POLYMER_API_URL or POLYMER_API_KEY environment variable not found');
+    }
+  
+    const response = await axios.post(
+      POLYMER_API_URL,
+      {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'log_requestProof',
+        params: [chainId, blockNumber, txIndex, localLogIndex],
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${POLYMER_API_KEY}`,
+        },
+      }
+    );
+  
+  return response.data
 }
+async function pollForProof(jobId: string, maxAttempts = 30) {
+  const POLYMER_API_URL = process.env.POLYMER_API_URL;
+  const POLYMER_API_KEY = process.env.POLYMER_API_KEY;
+
+  if (!POLYMER_API_URL || !POLYMER_API_KEY) {
+    throw new Error('POLYMER_API_URL or POLYMER_API_KEY environment variable not found');
+  }
+
+  let attempts = 0;
+  let proofResponse;
+
+  while (attempts < maxAttempts) {
+    proofResponse = await axios.post(
+      POLYMER_API_URL,
+      {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'log_queryProof',
+        params: [jobId],
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${POLYMER_API_KEY}`,
+        },
+      }
+    );
+
+    if (proofResponse?.data?.result?.proof) {
+      console.log('✅ Proof generated successfully!');
+      return proofResponse.data;
+    }
+
+    attempts++;
+    console.log(`⏳ Waiting for proof... Attempt ${attempts}/${maxAttempts}`);
+    await new Promise(resolve => setTimeout(resolve, 1)); // Wait 2 seconds between attempts
+  }
+
+  throw new Error('Proof generation timed out');
+}
+
+main()
+  .then(() => process.exit(0))
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
