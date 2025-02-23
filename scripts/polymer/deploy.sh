@@ -11,6 +11,7 @@ case $NETWORK_CHOICE in
     1)
         export HARDHAT_NETWORK_OPTIMISM="optimismSepolia"
         export HARDHAT_NETWORK_BASE="baseSepolia"
+    
         echo "Deploying to testnets (Optimism Sepolia and Base Sepolia)..."
         ;;
     2)
@@ -97,6 +98,7 @@ echo "$HARDHAT_NETWORK_BASE prover: $base_prover"
 
 cat > scripts/polymer/deployed.json << EOF
 {
+  "network": "$NETWORK_CHOICE",
   "optimism_intent_source": "$optimism_intent_source",
   "optimism_inbox": "$optimism_inbox",
   "optimism_prover": "$optimism_prover",

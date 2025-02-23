@@ -32,26 +32,57 @@ interface ProofRequestParams {
 }
 
 async function main() {
-  /// network information ///
 
+  // Get network choice from command line arguments
+  const args = process.argv.slice(2);
+  let isTestnet = true;
+
+  if (args.length > 0) {
+    if (args[0].toLowerCase() === 'mainnet') {
+      isTestnet = false;
+    } else if (args[0].toLowerCase() !== 'testnet') {
+      console.log('Invalid network argument. Please specify "testnet" or "mainnet"');
+      process.exit(1);
+    }
+  } else {
+    console.log('No network specified. Defaulting to testnet...');
+  }
+
+  // Load deployed contract addresses
+  let deployedAddresses;
+  try {
+    deployedAddresses = require('./deployed.json');
+  } catch (error) {
+    console.error('Error loading deployed.json. Please run deploy.sh first');
+    process.exit(1);
+  }
+
+  // Verify network choice matches deployed contracts
+  const expectedNetwork = isTestnet ? "1" : "2";
+  if (deployedAddresses.network !== expectedNetwork) {
+    console.error(`Network mismatch: Script running for ${isTestnet ? "testnet" : "mainnet"} but deployed.json is for ${deployedAddresses.network === "1" ? "testnet" : "mainnet"}`);
+    process.exit(1);
+  }
+
+  /// network information ///
   dotenv.config()
   const network_info = {
     optimism: {
-      inbox: '0x1edaC0905E0E2Dd7Af821A33bB381eeD694D9419',
-      prover: '0xb11D3ff286ed86611147C99FD5105Ce659bEe6b7',
-      chainId: 10,
-      intentSource: '0x58b9e4d5EC0636ADCdA76DF181fa8f73bF930a13',
-      usdc: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
+      inbox: deployedAddresses.optimism_inbox,
+      prover: deployedAddresses.optimism_prover,
+      chainId: isTestnet ? 11155420 : 10,
+      intentSource: deployedAddresses.optimism_intent_source,
+      usdc: isTestnet ?'0x5fd84259d66Cd46123540766Be93DFE6D43130D7': '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
       usdcDecimals: 6,
       usdcAmount: Number(ethers.parseUnits('1.0', 6)),
       usdcRewardAmount: Number(ethers.parseUnits('1.1', 6)),
     },
     base: {
-      inbox: '0x3A7cdEFE27102cB45a0B73c42f33a58e087E7987',
-      prover: '0xCd0a6b46797258949949596190863EB5b5002E65',
-      chainId: 8453,
-      intentSource: '0x58b9e4d5EC0636ADCdA76DF181fa8f73bF930a13',
-      usdc: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+      inbox: deployedAddresses.base_inbox,
+      prover: deployedAddresses.base_prover,
+      chainId: isTestnet ? 84532 : 8453,
+      intentSource: deployedAddresses.base_intent_source,
+      usdc: isTestnet ? '0x036CbD53842c5426634e7929541eC2318f3dCF7e': '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
       usdcDecimals: 6,
       usdcAmount: Number(ethers.parseUnits('1.0', 6)),
       usdcRewardAmount: Number(ethers.parseUnits('1.1', 6)),
