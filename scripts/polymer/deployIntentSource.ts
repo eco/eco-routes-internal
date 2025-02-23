@@ -3,8 +3,10 @@ import hre from "hardhat";
 
 async function main() {
   const [deployer] = await ethers.getSigners();
+  const nonce = await deployer.getNonce();
+  console.log("deploying intent source with nonce:", nonce);
   const IntentSourceFactory = await ethers.getContractFactory("IntentSource");
-  const intentSource = await IntentSourceFactory.deploy();
+  const intentSource = await IntentSourceFactory.deploy(deployer.address);
 
   await intentSource.waitForDeployment();
   const intentSourceAddr = await intentSource.getAddress();

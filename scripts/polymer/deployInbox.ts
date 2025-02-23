@@ -3,6 +3,8 @@ import hre from "hardhat";
 
 async function main() {
   const [deployer] = await ethers.getSigners();
+  const nonce = await deployer.getNonce();
+  console.log("deploying inbox with nonce:", nonce);
   const inboxFactory = await ethers.getContractFactory("Inbox");
   const inbox = await inboxFactory.deploy(
     deployer.address,

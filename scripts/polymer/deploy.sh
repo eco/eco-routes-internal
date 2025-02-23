@@ -36,8 +36,8 @@ base_intent_source_output=$(npx hardhat run scripts/polymer/deployIntentSource.t
 base_intent_source=$(echo "$base_intent_source_output" | grep "intent source deployed at:" | awk '{print $5}')
 echo "successfully deployed intent source on $HARDHAT_NETWORK_BASE"
 
-echo "waiting 10 seconds for nonces to settle..."
-sleep 10
+echo "waiting 5 seconds for nonces to settle..."
+sleep 5
 
 echo "deploying inbox on $HARDHAT_NETWORK_OPTIMISM..."
 optimism_output=$(npx hardhat run scripts/polymer/deployInbox.ts --network $HARDHAT_NETWORK_OPTIMISM | tee /dev/stderr)
@@ -49,8 +49,8 @@ base_output=$(npx hardhat run scripts/polymer/deployInbox.ts --network $HARDHAT_
 base_inbox=$(echo "$base_output" | grep "inbox deployed at:" | awk '{print $4}')
 echo "successfully deployed $HARDHAT_NETWORK_BASE inbox"
 
-echo "waiting 10 seconds for nonces to settle..."
-sleep 10
+echo "waiting 5 seconds for nonces to settle..."
+sleep 5
 
 echo "deploying polymer prover on $HARDHAT_NETWORK_OPTIMISM (using $HARDHAT_NETWORK_BASE inbox)..."
 export INBOX_ADDRESS="$base_inbox"
@@ -71,6 +71,17 @@ echo "$HARDHAT_NETWORK_OPTIMISM inbox: $optimism_inbox"
 echo "$HARDHAT_NETWORK_BASE inbox: $base_inbox"
 echo "$HARDHAT_NETWORK_OPTIMISM prover: $optimism_prover"
 echo "$HARDHAT_NETWORK_BASE prover: $base_prover"
+
+cat > deployed.json << EOF
+{
+  "optimism_intent_source": "$optimism_intent_source",
+  "optimism_inbox": "$optimism_inbox",
+  "optimism_prover": "$optimism_prover",
+  "base_intent_source": "$base_intent_source",
+  "base_inbox": "$base_inbox",
+  "base_prover": "$base_prover"
+}
+EOF
 
 unset INBOX_ADDRESS
 unset HARDHAT_NETWORK_OPTIMISM
