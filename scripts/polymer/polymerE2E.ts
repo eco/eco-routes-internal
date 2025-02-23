@@ -24,7 +24,6 @@ import {
   TestERC20__factory,
 } from '../../typechain-types'
 
-
 interface ProofRequestParams {
   chainId: number
   blockNumber: number
@@ -208,9 +207,13 @@ async function main() {
     throw new Error('Transaction failed: Intent hash not found in event')
   }
 
-  console.log(`🔄  Intent published on optimism at address ${network_info.optimism.intentSource}`)
+  console.log(
+    `🔄  Intent published on optimism at address ${network_info.optimism.intentSource}`,
+  )
   console.log(`    Destination Inbox at ${network_info.base.inbox}`)
-  console.log(`    Intent Request:  ${network_info.base.usdcAmount}  USDC to address ${baseWallet.address}`)
+  console.log(
+    `    Intent Request:  ${network_info.base.usdcAmount}  USDC to address ${baseWallet.address}`,
+  )
   console.log(`    Reward:  ${network_info.optimism.usdcRewardAmount} USDC`)
   console.log('    transaction hash: ', intentTxOptimism.hash)
   console.log('    intent hash: ', intentHash)
@@ -238,8 +241,7 @@ async function main() {
 
   const fulfillmentEvent = baseInboxTxReceipt.logs.find(
     (log) =>
-      log.topics[0] ===
-      baseInbox.interface.getEvent('Fulfillment').topicHash,
+      log.topics[0] === baseInbox.interface.getEvent('Fulfillment').topicHash,
   )
 
   if (!fulfillmentEvent) {
@@ -249,7 +251,7 @@ async function main() {
   const [eventIntentHash, eventSourceChain, eventClaimant] = [
     fulfillmentEvent.topics[1],
     fulfillmentEvent.topics[2],
-    fulfillmentEvent.topics[3]
+    fulfillmentEvent.topics[3],
   ]
 
   if (!eventIntentHash || !eventSourceChain || !eventClaimant) {
@@ -263,77 +265,167 @@ async function main() {
 
   /// PROVER TRANSACTION FLOW ///
 
-  const blockNumber = baseInboxTxReceipt.blockNumber;
+  const blockNumber = baseInboxTxReceipt.blockNumber
   if (!blockNumber) {
-    throw new Error('Transaction failed: Block number not found in receipt');
+    throw new Error('Transaction failed: Block number not found in receipt')
   }
 
-  const txIndex = baseInboxTxReceipt.index;
+  const txIndex = baseInboxTxReceipt.index
   if (!txIndex) {
-    throw new Error('Transaction failed: Transaction index not found in receipt');
+    throw new Error(
+      'Transaction failed: Transaction index not found in receipt',
+    )
   }
 
   const localLogIndex = baseInboxTxReceipt.logs.findIndex(
-    log => log.topics[0] === baseInbox.interface.getEvent('ToBeProven').topicHash
-  );
+    (log) =>
+      log.topics[0] === baseInbox.interface.getEvent('ToBeProven').topicHash,
+  )
   if (localLogIndex === -1) {
-    throw new Error('Transaction failed: ToBeProven event not found in receipt');
+    throw new Error('Transaction failed: ToBeProven event not found in receipt')
   }
-  
+
   const proofRequest = await requestProof({
     chainId: network_info.base.chainId,
     blockNumber,
     txIndex,
     localLogIndex,
-  });
+  })
 
-  console.log('🚀 Proof request sent:', proofRequest);
-  console.log('🔄 Polling for proof generation...');
+  console.log('🚀 Proof request sent:', proofRequest)
+  console.log('🔄 Polling for proof generation...')
+
+  const proof = await pollForProof(proofRequest.result)
+  console.log('📜 Proof details:', proof)
+
+  /// POLYMER PROVER CONTRACT FLOW ///
+
+  const proveTx = await optimismPolymerProver.validate(proof)
+
+  const proveTxReceipt = await proveTx.wait()
+  if (!proveTxReceipt) {
+    throw new Error('Transaction failed: No receipt received')
+  }
+
+  // Find and verify the IntentProven event
+  const intentProvenEvent = proveTxReceipt.logs.find(
+    (log) => log.topics[0] === optimismPolymerProver.interface.getEvent('IntentProven').topicHash
+  )
+
+  if (!intentProvenEvent) {
+    throw new Error('IntentProven event not found in receipt')
+  }
+
+  const [provenIntentHash, provenClaimant] = optimismPolymerProver.interface.decodeEventLog(
+    'IntentProven',
+    intentProvenEvent.data,
+    intentProvenEvent.topics
+  )
+
+  if (provenIntentHash !== eventIntentHash) {
+    throw new Error(`Intent hash mismatch. Expected: ${eventIntentHash}, Got: ${provenIntentHash}`)
+  }
+
+  if (provenClaimant.toLowerCase() !== eventClaimant.toLowerCase()) {
+    throw new Error(`Claimant mismatch. Expected: ${eventClaimant}, Got: ${provenClaimant}`)
+  }
+
+  console.log('✅ Proof validated successfully!')
+  console.log('   Intent Hash:', provenIntentHash)
+  console.log('   Claimant:', provenClaimant)
+
+  /// CLAIM REWARDS INTENT FLOW ///
+
+  const claimTx = await optimismIntentSource.withdrawRewards(
+    calcRouteHash,
+    reward,
+  )
+
+  const claimTxReceipt = await claimTx.wait()
+  if (!claimTxReceipt) {
+    throw new Error('Transaction failed: No receipt received')
+  }
   
-  const proof = await pollForProof(proofRequest.result);
-  console.log('📜 Proof details:', proof);
+  // Find and verify the Withdrawal event
+  const withdrawalEvent = claimTxReceipt.logs.find(
+    (log) => log.topics[0] === optimismIntentSource.interface.getEvent('Withdrawal').topicHash
+  )
+
+  if (!withdrawalEvent) {
+    throw new Error('Withdrawal event not found in receipt')
+  }
+
+  const [withdrawalIntentHash, withdrawalClaimant] = optimismIntentSource.interface.decodeEventLog(
+    'Withdrawal',
+    withdrawalEvent.data,
+    withdrawalEvent.topics
+  )
+
+  if (withdrawalIntentHash !== eventIntentHash) {
+    throw new Error(`Intent hash mismatch. Expected: ${eventIntentHash}, Got: ${withdrawalIntentHash}`)
+  }
+
+  if (withdrawalClaimant.toLowerCase() !== eventClaimant.toLowerCase()) {
+    throw new Error(`Claimant mismatch. Expected: ${eventClaimant}, Got: ${withdrawalClaimant}`)
+  }
+
+  console.log('✅ Withdrawal validated successfully!')
+  console.log('   Intent Hash:', withdrawalIntentHash)
+  console.log('   Claimant:', withdrawalClaimant)
+  
+
+  console.log('\n🎉 ✨ 🚀 POLYMER INTENT FLOW COMPLETED! 🚀 ✨ 🎉')
+  console.log('🔄 Intent Created & Funded')
+  console.log('✅ Intent Fulfilled')
+  console.log('📜 Proof Generated & Validated') 
+  console.log('💎 Rewards Successfully Claimed')
+  console.log('🏁 All Steps Completed Successfully! 🏁\n')
 }
 
 async function requestProof({
-    chainId,
-    blockNumber,
-    txIndex,
-    localLogIndex,
-  }: ProofRequestParams) {
-    const POLYMER_API_URL = process.env.POLYMER_API_URL;
-    const POLYMER_API_KEY = process.env.POLYMER_API_KEY;
-  
-    if (!POLYMER_API_URL || !POLYMER_API_KEY) {
-      throw new Error('POLYMER_API_URL or POLYMER_API_KEY environment variable not found');
-    }
-  
-    const response = await axios.post(
-      POLYMER_API_URL,
-      {
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'log_requestProof',
-        params: [chainId, blockNumber, txIndex, localLogIndex],
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${POLYMER_API_KEY}`,
-        },
-      }
-    );
-  
-  return response.data
-}
-async function pollForProof(jobId: string, maxAttempts = 30) {
-  const POLYMER_API_URL = process.env.POLYMER_API_URL;
-  const POLYMER_API_KEY = process.env.POLYMER_API_KEY;
+  chainId,
+  blockNumber,
+  txIndex,
+  localLogIndex,
+}: ProofRequestParams) {
+  const POLYMER_API_URL = process.env.POLYMER_API_URL
+  const POLYMER_API_KEY = process.env.POLYMER_API_KEY
 
   if (!POLYMER_API_URL || !POLYMER_API_KEY) {
-    throw new Error('POLYMER_API_URL or POLYMER_API_KEY environment variable not found');
+    throw new Error(
+      'POLYMER_API_URL or POLYMER_API_KEY environment variable not found',
+    )
   }
 
-  let attempts = 0;
-  let proofResponse;
+  const response = await axios.post(
+    POLYMER_API_URL,
+    {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'log_requestProof',
+      params: [chainId, blockNumber, txIndex, localLogIndex],
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${POLYMER_API_KEY}`,
+      },
+    },
+  )
+
+  return response.data
+}
+async function pollForProof(jobId: string, maxAttempts = 60) {
+  const POLYMER_API_URL = process.env.POLYMER_API_URL
+  const POLYMER_API_KEY = process.env.POLYMER_API_KEY
+
+  if (!POLYMER_API_URL || !POLYMER_API_KEY) {
+    throw new Error(
+      'POLYMER_API_URL or POLYMER_API_KEY environment variable not found',
+    )
+  }
+
+  let attempts = 0
+  let proofResponse
 
   while (attempts < maxAttempts) {
     proofResponse = await axios.post(
@@ -348,25 +440,25 @@ async function pollForProof(jobId: string, maxAttempts = 30) {
         headers: {
           Authorization: `Bearer ${POLYMER_API_KEY}`,
         },
-      }
-    );
+      },
+    )
 
     if (proofResponse?.data?.result?.proof) {
-      console.log('✅ Proof generated successfully!');
-      return proofResponse.data;
+      console.log('✅ Proof generated successfully!')
+      return proofResponse.data
     }
 
-    attempts++;
-    console.log(`⏳ Waiting for proof... Attempt ${attempts}/${maxAttempts}`);
-    await new Promise(resolve => setTimeout(resolve, 1)); // Wait 2 seconds between attempts
+    attempts++
+    console.log(`⏳ Waiting for proof... Attempt ${attempts}/${maxAttempts}`)
+    await new Promise((resolve) => setTimeout(resolve, 1)) // Wait 2 seconds between attempts
   }
 
-  throw new Error('Proof generation timed out');
+  throw new Error('Proof generation timed out')
 }
 
 main()
   .then(() => process.exit(0))
   .catch((error) => {
-    console.error(error);
-    process.exit(1);
-  });
+    console.error(error)
+    process.exit(1)
+  })
