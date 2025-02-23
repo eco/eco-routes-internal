@@ -384,6 +384,7 @@ contract Inbox is IInbox, Ownable, Semver {
         return result;
     }
 
+    //TODO: need to emit destination chain ID for these emits
     function batchStorageEmit(bytes32[] calldata _intentHashes) public {   
         uint256 size = _intentHashes.length;
         bytes memory claimants;
