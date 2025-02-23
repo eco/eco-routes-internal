@@ -1,6 +1,7 @@
 #!/bin/bash
+set -e  # Exit on error
+set -u  # Error on undefined variables
 
-# Prompt user for network choice
 echo "Do you want to deploy to testnets or mainnet?"
 echo "1) Testnets (Optimism Sepolia and Base Sepolia)"
 echo "2) Mainnets (Optimism and Base)"
@@ -8,13 +9,11 @@ read -p "Enter choice (1 or 2): " NETWORK_CHOICE
 
 case $NETWORK_CHOICE in
     1)
-        # Configure for testnets
         export HARDHAT_NETWORK_OPTIMISM="optimismSepolia"
         export HARDHAT_NETWORK_BASE="baseSepolia"
         echo "Deploying to testnets (Optimism Sepolia and Base Sepolia)..."
         ;;
     2)
-        # Configure for mainnet
         export HARDHAT_NETWORK_OPTIMISM="optimism"
         export HARDHAT_NETWORK_BASE="base"
         echo "Deploying to mainnets (Optimism and Base)..."
@@ -27,26 +26,42 @@ esac
 
 
 echo "deploying intent source on $HARDHAT_NETWORK_OPTIMISM..."
-optimism_intent_source_output=$(npx hardhat run scripts/polymer/deployIntentSource.ts --network $HARDHAT_NETWORK_OPTIMISM | tee /dev/stderr)
-optimism_intent_source=$(echo "$optimism_intent_source_output" | grep "intent source deployed at:" | awk '{print $5}')
+npx hardhat run scripts/polymer/deployIntentSource.ts --network $HARDHAT_NETWORK_OPTIMISM | tee deploy.log
+optimism_intent_source=$(grep "intent source deployed at:" deploy.log | awk '{print $5}')
+if [ -z "$optimism_intent_source" ]; then
+    echo "Failed to deploy intent source on $HARDHAT_NETWORK_OPTIMISM"
+    exit 1
+fi
 echo "successfully deployed intent source on $HARDHAT_NETWORK_OPTIMISM"
 
 echo "deploying intent source on $HARDHAT_NETWORK_BASE..."
-base_intent_source_output=$(npx hardhat run scripts/polymer/deployIntentSource.ts --network $HARDHAT_NETWORK_BASE | tee /dev/stderr)
-base_intent_source=$(echo "$base_intent_source_output" | grep "intent source deployed at:" | awk '{print $5}')
+npx hardhat run scripts/polymer/deployIntentSource.ts --network $HARDHAT_NETWORK_BASE | tee deploy.log
+base_intent_source=$(grep "intent source deployed at:" deploy.log | awk '{print $5}')
+if [ -z "$base_intent_source" ]; then
+    echo "Failed to deploy intent source on $HARDHAT_NETWORK_BASE"
+    exit 1
+fi
 echo "successfully deployed intent source on $HARDHAT_NETWORK_BASE"
 
 echo "waiting 5 seconds for nonces to settle..."
 sleep 5
 
 echo "deploying inbox on $HARDHAT_NETWORK_OPTIMISM..."
-optimism_output=$(npx hardhat run scripts/polymer/deployInbox.ts --network $HARDHAT_NETWORK_OPTIMISM | tee /dev/stderr)
-optimism_inbox=$(echo "$optimism_output" | grep "inbox deployed at:" | awk '{print $4}')
+npx hardhat run scripts/polymer/deployInbox.ts --network $HARDHAT_NETWORK_OPTIMISM | tee deploy.log
+optimism_inbox=$(grep "inbox deployed at:" deploy.log | awk '{print $4}')
+if [ -z "$optimism_inbox" ]; then
+    echo "Failed to deploy inbox on $HARDHAT_NETWORK_OPTIMISM"
+    exit 1
+fi
 echo "successfully deployed $HARDHAT_NETWORK_OPTIMISM inbox"
 
 echo "deploying inbox on $HARDHAT_NETWORK_BASE..."
-base_output=$(npx hardhat run scripts/polymer/deployInbox.ts --network $HARDHAT_NETWORK_BASE | tee /dev/stderr)
-base_inbox=$(echo "$base_output" | grep "inbox deployed at:" | awk '{print $4}')
+npx hardhat run scripts/polymer/deployInbox.ts --network $HARDHAT_NETWORK_BASE | tee deploy.log
+base_inbox=$(grep "inbox deployed at:" deploy.log | awk '{print $4}')
+if [ -z "$base_inbox" ]; then
+    echo "Failed to deploy inbox on $HARDHAT_NETWORK_BASE"
+    exit 1
+fi
 echo "successfully deployed $HARDHAT_NETWORK_BASE inbox"
 
 echo "waiting 5 seconds for nonces to settle..."
@@ -54,14 +69,22 @@ sleep 5
 
 echo "deploying polymer prover on $HARDHAT_NETWORK_OPTIMISM (using $HARDHAT_NETWORK_BASE inbox)..."
 export INBOX_ADDRESS="$base_inbox"
-optimism_prover_output=$( npx hardhat run scripts/polymer/deployPolymerProver.ts --network $HARDHAT_NETWORK_OPTIMISM | tee /dev/stderr)
-optimism_prover=$(echo "$optimism_prover_output" | grep "polymer prover deployed at:" | awk '{print $5}')
+npx hardhat run scripts/polymer/deployPolymerProver.ts --network $HARDHAT_NETWORK_OPTIMISM | tee deploy.log
+optimism_prover=$(grep "polymer prover deployed at:" deploy.log | awk '{print $5}')
+if [ -z "$optimism_prover" ]; then
+    echo "Failed to deploy prover on $HARDHAT_NETWORK_OPTIMISM"
+    exit 1
+fi
 echo "successfully deployed $HARDHAT_NETWORK_OPTIMISM prover"
 
 echo "deploying polymer prover on $HARDHAT_NETWORK_BASE (using $HARDHAT_NETWORK_OPTIMISM inbox)..."
 export INBOX_ADDRESS="$optimism_inbox"
-base_prover_output=$(npx hardhat run scripts/polymer/deployPolymerProver.ts --network $HARDHAT_NETWORK_BASE | tee /dev/stderr)
-base_prover=$(echo "$base_prover_output" | grep "polymer prover deployed at:" | awk '{print $5}')
+npx hardhat run scripts/polymer/deployPolymerProver.ts --network $HARDHAT_NETWORK_BASE | tee deploy.log
+base_prover=$(grep "polymer prover deployed at:" deploy.log | awk '{print $5}')
+if [ -z "$base_prover" ]; then
+    echo "Failed to deploy prover on $HARDHAT_NETWORK_BASE"
+    exit 1
+fi
 echo "successfully deployed $HARDHAT_NETWORK_BASE prover"
 
 echo "deployed addresses:"

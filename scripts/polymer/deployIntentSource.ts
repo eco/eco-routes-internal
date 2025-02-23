@@ -6,7 +6,7 @@ async function main() {
   const nonce = await deployer.getNonce();
   console.log("deploying intent source with nonce:", nonce);
   const IntentSourceFactory = await ethers.getContractFactory("IntentSource");
-  const intentSource = await IntentSourceFactory.deploy(deployer.address);
+  const intentSource = await IntentSourceFactory.deploy();
 
   await intentSource.waitForDeployment();
   const intentSourceAddr = await intentSource.getAddress();
