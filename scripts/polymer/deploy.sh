@@ -1,4 +1,7 @@
 #!/bin/bash
+
+# I used `nvm install 22.14.0` for this one
+
 set -e  # Exit on error
 set -u  # Error on undefined variables
 

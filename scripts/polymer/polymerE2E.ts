@@ -445,7 +445,7 @@ async function main() {
       withdrawalEvent.topics,
     )
 
-  if (withdrawalIntentHash !== eventIntentHash) {
+  if (withdrawalIntentHash.toLowerCase() !== eventIntentHash.toLowerCase()) {
     throw new Error(
       `Intent hash mismatch. Expected: ${eventIntentHash}, Got: ${withdrawalIntentHash}`,
     )

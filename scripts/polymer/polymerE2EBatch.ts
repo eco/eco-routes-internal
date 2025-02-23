@@ -13,6 +13,7 @@ import {
   TestERC20__factory,
 } from '../../typechain-types'
 
+
 interface ProofRequestParams {
   chainId: number
   blockNumber: number
@@ -61,7 +62,7 @@ async function main() {
   const op_testnet_explorer = 'https://sepolia-optimism.etherscan.io//tx/'
   const base_testnet_explorer = 'https://sepolia.basescan.org/tx/'
 
-  const batchSize = 3
+  const batchSize = 20
   const usdcAmount = Number(ethers.parseUnits('0.01', 6))
   const usdcRewardAmount = Number(ethers.parseUnits('0.0101', 6))
 
@@ -379,7 +380,7 @@ async function main() {
   console.log('   Block Number:', blockNumber)
   console.log('   Transaction Index:', txIndex) 
   console.log('   Local Log Index:', localLogIndex)
-  
+
   const proofRequest = await requestProof({
     chainId: network_info.base.chainId,
     blockNumber,
@@ -397,12 +398,14 @@ async function main() {
 
   // Convert base64 proof to hex
   const hexProof = base64ToHex(proof.result.proof)
-  //   console.log('📜 Hex proof:', hexProof)
+  console.log('📜 Hex proof:', hexProof)
   console.log('🔄 Converted proof to hex format')
 
   /// POLYMER PROVER CONTRACT FLOW ///
   console.log('🔄 Validating proof...')
-  const proveTx = await optimismPolymerProver.validate(hexProof)
+
+  
+  const proveTx = await optimismPolymerProver.validatePacked(hexProof)
 
   const proveTxReceipt = await proveTx.wait()
   if (!proveTxReceipt) {
@@ -481,9 +484,10 @@ async function main() {
         withdrawalEvents[i].topics,
       )
 
-    if (withdrawalIntentHash !== calcRouteHashes[i]) {
+
+    if (withdrawalIntentHash.toLowerCase() !== calcIntentHashes[i].toLowerCase()) {
       throw new Error(
-        `Intent hash mismatch. Expected: ${calcRouteHashes[i]}, Got: ${withdrawalIntentHash}`,
+        `Intent hash mismatch. Expected: ${calcIntentHashes[i]}, Got: ${withdrawalIntentHash}`,
       )
     }
 
@@ -501,11 +505,11 @@ async function main() {
   console.log('\n✅ All withdrawals validated successfully!')
   console.log('   Transaction Hash: ', claimTx.hash)
 
-  console.log('\n🎉 ✨ 🚀 POLYMER INTENT FLOW COMPLETED! 🚀 ✨ 🎉')
-  console.log('🔄 Intent Created & Funded')
-  console.log('✅ Intent Fulfilled')
-  console.log('📜 Proof Generated & Validated')
-  console.log('💎 Rewards Successfully Claimed')
+  console.log('\n🎉 ✨ 🚀 POLYMER PACKED INTENT FLOW COMPLETED! 🚀 ✨ 🎉')
+  console.log(`🔄 ${batchSize} Intents Created & Funded`)
+  console.log(`✅ ${batchSize} Intents Fulfilled`) 
+  console.log(`📜 1 Proofs Generated & Validated`)
+  console.log(`💎 ${batchSize} Rewards Successfully Claimed`)
   console.log('🏁 All Steps Completed Successfully! 🏁\n')
 
   console.log(

@@ -482,7 +482,7 @@ describe('PolymerProver Test', (): void => {
       );
 
       messageBody = ethers.concat([packedHashes, packedAddresses]);
-
+      messageBody = ethers.AbiCoder.defaultAbiCoder().encode(['bytes'], [messageBody]);
     })
 
     it('should validate a single packed emit', async (): Promise<void> => {
@@ -538,6 +538,7 @@ describe('PolymerProver Test', (): void => {
       );
 
       messageBody = ethers.concat([packedHashes, packedAddresses]);
+      messageBody = ethers.AbiCoder.defaultAbiCoder().encode(['bytes'], [messageBody]);
 
       // set values for mock prover
       await testCrossL2ProverV2.setAll(
@@ -694,7 +695,8 @@ describe('PolymerProver Test', (): void => {
         [claimants[0], claimants[1], claimants[2]]
       );
 
-      const messageBody1 = ethers.concat([packedHashes1, packedAddresses1]);
+      const messageBody1bytes = ethers.concat([packedHashes1, packedAddresses1]);
+      const messageBody1 = ethers.AbiCoder.defaultAbiCoder().encode(['bytes'], [messageBody1bytes]);
 
       const expectedHash4 = '0x' + '44'.repeat(32);
       const expectedHash5 = '0x' + '55'.repeat(32);
@@ -721,7 +723,8 @@ describe('PolymerProver Test', (): void => {
         [claimants2[0], claimants2[1], claimants2[2]]
       );
 
-      const messageBody2 = ethers.concat([packedHashes2, packedAddresses2]);
+      const messageBody2bytes = ethers.concat([packedHashes2, packedAddresses2]);
+      const messageBody2 = ethers.AbiCoder.defaultAbiCoder().encode(['bytes'], [messageBody2bytes]);
 
       const proofIndex = [1, 2];
       const proofs = proofIndex.map((index) => ethers.zeroPadValue(ethers.toBeHex(index), 32));

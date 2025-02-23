@@ -177,6 +177,9 @@ contract PolymerProver is BaseProver, Semver {
         checkTopicLength(topics, 32);
         checkTopicSignature(bytes32(topics), BATCH_PROOF_SELECTOR);
 
+        //add decode messageBody to skip offset and length encoding
+        data = abi.decode(data, (bytes));
+        
         (
             bytes32[] memory hashes,
             address[] memory claimants

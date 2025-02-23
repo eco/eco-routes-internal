@@ -19,6 +19,8 @@ You can set these variables by creating a `.env` file and sourcing it:
 source .env
 ```
 
+⚠️ **WARNING**: This project requires Node.js v22.14.0. Use `nvm install 22.14.0` to install the correct version. Other Node.js versions may cause issues.
+
 ## Deployment Steps
 
 1. First, compile the contracts from the root directory using the instructions in the [README](../README.md).
@@ -57,6 +59,16 @@ npx ts-node scripts/polymer/polymerE2E.ts testnet
 ```
 
 This will validate the deployment and test the cross-chain messaging functionality between Base and Optimism. You will need a wallet with 5 USDC on either Optimism or Base (or their respective Sepolia testnets) to run the end-to-end tests.
+
+## Running Batch Tests
+
+To run the batch tests, use the following command:
+
+```bash
+npx ts-node scripts/polymer/polymerE2EBatch.ts testnet
+```
+
+This will validate the deployment and test the batch proof functionality between Base and Optimism. You can adjust the batch size, intent usdc amount and reward amount by changing the `batchSize`, `usdcAmount` and `usdcRewardAmount` variables in the script.
 
 ## Troubleshooting
 
