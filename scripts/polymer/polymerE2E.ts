@@ -91,17 +91,27 @@ async function main() {
   console.log('🏗️  binding contracts on optimism...')
   const optimismIntentSource: IntentSource = IntentSource__factory.connect(
     network_info.optimism.intentSource,
-    optimismProvider,
+    optimismWallet,
   )
 
   const optimismInbox: Inbox = Inbox__factory.connect(
     network_info.optimism.inbox,
-    optimismProvider,
+    optimismWallet,
   )
 
   const optimismPolymerProver: PolymerProver = PolymerProver__factory.connect(
     network_info.optimism.prover,
-    optimismProvider,
+    optimismWallet,
+  )
+
+  const optimismUSDC = TestERC20__factory.connect(
+    network_info.optimism.usdc,
+    optimismWallet
+  )
+
+  const baseUSDC = TestERC20__factory.connect(
+    network_info.base.usdc,
+    baseWallet
   )
 
   /// bind the contracts on Base mainnet (IntentSource, Inbox, PolymerProver) ///
@@ -109,22 +119,24 @@ async function main() {
   console.log('🏗️  binding contracts on base...')
   const baseIntentSource: IntentSource = IntentSource__factory.connect(
     network_info.base.intentSource,
-    baseProvider,
+    baseWallet,
   )
 
   const baseInbox: Inbox = Inbox__factory.connect(
     network_info.base.inbox,
-    baseProvider,
+    baseWallet,
   )
 
   const basePolymerProver: PolymerProver = PolymerProver__factory.connect(
     network_info.base.prover,
-    baseProvider,
+    baseWallet,
   )
 
-  /// FULL TRANSACTION FLOW 1: intent flow going from Optimism to Base ///
+  /// FULL TRANSACTION FLOW: intent flow going from Optimism to Base ///
 
   /// INTENT SOURCE TRANSACTION FLOW ///
+
+  console.log('🏁 Starting full transaction flow...')
 
   const optimismTimestamp = await optimismProvider
     .getBlock('latest')
@@ -181,7 +193,19 @@ async function main() {
     route,
     reward,
   }
+  
+  console.log('🔄 Approving tokens...')
+  const approvalTx = await optimismUSDC.approve(
+    optimismIntentSource.getAddress(),
+    network_info.optimism.usdcRewardAmount
+  )
+  const approvalTxReceipt = await approvalTx.wait()
+  if (!approvalTxReceipt) {
+    throw new Error('Transaction failed: No receipt received')
+  }
+  console.log('✅ Tokens approved')
 
+  console.log('🔄 Publishing intent on optimism...')
   const intentTxOptimism = await optimismIntentSource.publishIntent(
     intent,
     true,
@@ -208,7 +232,7 @@ async function main() {
   }
 
   console.log(
-    `🔄  Intent published on optimism at address ${network_info.optimism.intentSource}`,
+    `✅  Intent published on optimism at address ${network_info.optimism.intentSource}`,
   )
   console.log(`    Destination Inbox at ${network_info.base.inbox}`)
   console.log(
@@ -226,7 +250,19 @@ async function main() {
   }
 
   /// INBOX TRANSACTION FLOW ///
+  console.log('🔄 Approving tokens on base...')
+  const approvalTxBase = await baseUSDC.approve(
+    network_info.base.inbox,
+    network_info.base.usdcAmount,
+  )
 
+  const approvalTxBaseReceipt = await approvalTxBase.wait()
+  if (!approvalTxBaseReceipt) {
+    throw new Error('Transaction failed: No receipt received')
+  }
+  console.log('✅ Tokens approved')
+
+  console.log('🔄 Fulfilling intent on base...')
   const baseInboxSolve = await baseInbox.fulfillStorage(
     route,
     calcRewardHash,
