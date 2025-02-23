@@ -383,6 +383,7 @@ async function main() {
   const proof = await pollForProof(proofRequest.result)
 
   console.log('🛸 Mission Control: Proof acquired')
+  console.log('📜 Raw proof: ', proof.result.proof)
   
   // Convert base64 proof to hex
   const hexProof = base64ToHex(proof.result.proof)
