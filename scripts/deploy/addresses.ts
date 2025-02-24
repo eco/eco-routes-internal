@@ -97,6 +97,7 @@ export type EcoChainConfig = {
   IntentSource: Hex
   Inbox: Hex
   HyperProver: Hex
+  Executor: Hex
 }
 
 /**

@@ -197,7 +197,7 @@ contract Deploy is Script {
 
     function writeDeployFile(
         string memory filePath,
-        VerificationData[3] memory contracts
+        VerificationData[4] memory contracts
     ) internal {
         for (uint256 i = 0; i < contracts.length; i++) {
             vm.writeLine(
