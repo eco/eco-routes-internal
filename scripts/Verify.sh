@@ -41,12 +41,23 @@ while IFS=, read -r CHAIN_ID CONTRACT_ADDRESS CONTRACT_PATH CONSTRUCTOR_ARGS; do
         --constructor-args $CONSTRUCTOR_ARGS \
         $CONTRACT_ADDRESS $CONTRACT_PATH"
 
+    # Attempt verification
     eval $VERIFY_CMD
+    exit_code=$?
 
-    if [ $? -eq 0 ]; then
-        echo "✅ Successfully verified $CONTRACT_ADDRESS ($CONTRACT_PATH) on Chain ID $CHAIN_ID"
+    if [ $exit_code -ne 0 ]; then
+        echo "❌ Verification failed for $CONTRACT_ADDRESS on Chain ID $CHAIN_ID. Retrying in 3 seconds..."
+        sleep 3
+        eval $VERIFY_CMD  # Retry once
+        exit_code=$?
+
+        if [ $exit_code -ne 0 ]; then
+            echo "❌ Verification failed again for $CONTRACT_ADDRESS on Chain ID $CHAIN_ID. Skipping..."
+        else
+            echo "✅ Successfully verified $CONTRACT_ADDRESS ($CONTRACT_PATH) on retry!"
+        fi
     else
-        echo "❌ Verification failed for $CONTRACT_ADDRESS on Chain ID $CHAIN_ID"
+        echo "✅ Successfully verified $CONTRACT_ADDRESS ($CONTRACT_PATH) on Chain ID $CHAIN_ID"
     fi
 
     # New lines
