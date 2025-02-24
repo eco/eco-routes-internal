@@ -56,7 +56,7 @@ contract Executor is IExecutor, IHook {
      * @notice Pre-check hook for the executor module.
      * @dev The pre-check hook is called before the execution of a call on the account as an executor.
      * It will revert if the caller of the account is not this module contract
-     * 
+     *
      * @notice interface params ignored
      */
     function preCheck(
