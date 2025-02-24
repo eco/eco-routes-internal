@@ -33,6 +33,11 @@ contract Inbox is IInbox, Ownable, Semver {
     // Is solving public
     bool public isSolvingPublic;
 
+    struct proveBatch {
+        uint256 destinationChainID;
+        bytes32[] intentHashes;
+    }
+
     /**
      * @notice Initializes the Inbox contract
      * @dev Privileged functions are designed to only allow one-time changes
@@ -384,8 +389,15 @@ contract Inbox is IInbox, Ownable, Semver {
         return result;
     }
 
-    //TODO: need to emit destination chain ID for these emits
-    function batchStorageEmit(bytes32[] calldata _intentHashes) public {   
+    /**
+     * @notice Emits a batch of fulfilled intents and their claimants for cross-chain proving
+     * @dev Packs intent hashes and claimant addresses into a single event to optimize gas
+     * @param _destinationChainID The chain ID where the batch will be proven
+     * @param _intentHashes Array of intent hashes that have been fulfilled
+     * @custom:throws IntentNotFulfilled if any intent in the batch has not been fulfilled
+     */
+    //TODO change to proveBatch struct
+    function batchStorageEmit(uint256 _destinationChainID, bytes32[] calldata _intentHashes) public {   
         uint256 size = _intentHashes.length;
         bytes memory claimants;
 
@@ -398,9 +410,23 @@ contract Inbox is IInbox, Ownable, Semver {
         }
         //pack the intent hashes into a single event using abi.encodePacked
         bytes memory messageBody = abi.encodePacked(_intentHashes, claimants);
-        emit BatchToBeProven(messageBody);
+        emit BatchToBeProven(_destinationChainID, messageBody);
     }
-        
+    
+    /**
+     * @notice Emits a batch of fulfilled intents and their claimants for multiple chains
+     * @dev Packs intent hashes and claimant addresses into a single event for each destination chain
+     * @param _proveBatches Array of proveBatch structs containing destination chain ID and intent hashes
+     * @custom:throws SizeMismatch if the number of destination chain IDs and intent hashes arrays do not match
+     */
+    function multichainBatchStorageEmit(proveBatch[] calldata _proveBatches) public {
+        uint256 size = _proveBatches.length;
+
+        for (uint256 i = 0; i < size; ++i) {
+            batchStorageEmit(_proveBatches[i].destinationChainID, _proveBatches[i].intentHashes);
+        }
+    }   
+
     /**
      * @notice Internal function to fulfill intents
      * @dev Validates intent and executes calls

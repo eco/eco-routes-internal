@@ -62,7 +62,7 @@ async function main() {
   const op_testnet_explorer = 'https://sepolia-optimism.etherscan.io//tx/'
   const base_testnet_explorer = 'https://sepolia.basescan.org/tx/'
 
-  const batchSize = 20
+  const batchSize = 3
   const usdcAmount = Number(ethers.parseUnits('0.01', 6))
   const usdcRewardAmount = Number(ethers.parseUnits('0.0101', 6))
 
@@ -333,6 +333,7 @@ async function main() {
 
   console.log('\n🔄 Emitting batch proof...')
   const baseInboxBatch = await baseInbox.batchStorageEmit(
+    network_info.base.chainId,
     intentHashes,
   )
 

@@ -447,16 +447,17 @@ describe('PolymerProver Test', (): void => {
     let messageBody: string;
 
     beforeEach(async (): Promise<void> => {
-      eventSignature = ethers.id('BatchToBeProven(bytes)');
+      eventSignature = inbox.interface.getEvent('BatchToBeProven').topicHash;
       expectedHash = '0x' + '11'.repeat(32);
       expectedHash2 = '0x' + '22'.repeat(32);
       expectedHash3 = '0x' + '33'.repeat(32);
       topics = [
           eventSignature, 
+          ethers.zeroPadValue(ethers.toBeHex(chainIds[0]), 32)
       ];
 
       topics_packed = ethers.solidityPacked(
-          ["bytes32"],
+          ["bytes32", "bytes32"],
           topics
       );
       inboxAddress = await inbox.getAddress();
@@ -608,14 +609,15 @@ describe('PolymerProver Test', (): void => {
         .to.be.revertedWithCustomError(polymerProver, 'UnsupportedChainId');
     })
 
-    it('should revert for topics length not 1', async (): Promise<void> => {
+    it('should revert for topics length not 2', async (): Promise<void> => {
       topics = [
         eventSignature, 
         expectedHash, 
-    ];
+        ethers.zeroPadValue(ethers.toBeHex(chainIds[0]), 32), 
+      ];
 
       topics_packed = ethers.solidityPacked(
-          ["bytes32", "bytes32"],
+          ["bytes32", "bytes32", "bytes32"],
           topics
       );
 
@@ -645,10 +647,11 @@ describe('PolymerProver Test', (): void => {
       const invalidEventSignature = ethers.id('ToBeProven(bytes)');
       topics = [
         invalidEventSignature, 
+        ethers.zeroPadValue(ethers.toBeHex(chainIds[0]), 32)
       ];
 
       topics_packed = ethers.solidityPacked(
-          ["bytes32"],
+          ["bytes32", "bytes32"],
           topics
       );
 

@@ -93,8 +93,14 @@ interface IInbox is ISemver {
     /** 
      * @notice Emitted when a batch of intent hashes is emitted
      * @param _packedIntentHashes Packed intent hashes
+     * @param _destinationChainID ID of the destination chain
      */
-    event BatchToBeProven(bytes _packedIntentHashes);
+    event BatchToBeProven( uint256 indexed _destinationChainID, bytes _packedIntentHashes);
+
+    /**
+     * @notice Size mismatch between destination chain IDs and intent hashes
+     */
+    error SizeMismatch();
 
     /**
      * @notice Unauthorized solver attempted to fulfill intent

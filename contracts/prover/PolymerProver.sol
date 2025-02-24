@@ -55,7 +55,7 @@ contract PolymerProver is BaseProver, Semver {
         keccak256("ToBeProven(bytes32,uint256,address)");
 
     bytes32 public constant BATCH_PROOF_SELECTOR =
-        keccak256("BatchToBeProven(bytes)");
+        keccak256("BatchToBeProven(uint256,bytes)");
 
     /**
      * @notice Initializes the PolymerProver contract
@@ -174,8 +174,11 @@ contract PolymerProver is BaseProver, Semver {
         // revert checks (might not need chainId check)
         checkInboxContract(emittingContract);
         checkSupportedChainId(chainId);
-        checkTopicLength(topics, 32);
+        checkTopicLength(topics, 64); //signature and chainId
         checkTopicSignature(bytes32(topics), BATCH_PROOF_SELECTOR);
+
+        //maybe add check that chainId from topics matches this chainId
+        //but not needed because hash uniqueness is guaranteed by the source chain
 
         //add decode messageBody to skip offset and length encoding
         data = abi.decode(data, (bytes));

@@ -882,10 +882,10 @@ describe('Inbox Test', (): void => {
       await expect(
         inbox
           .connect(solver)
-          .batchStorageEmit(
+          .batchStorageEmit( route.source,
             [intentHash, otherHash]
           ),
-      ).to.emit(inbox, 'BatchToBeProven').withArgs(messageBody)
+      ).to.emit(inbox, 'BatchToBeProven').withArgs(route.source, messageBody)
     })
 
     it('batchStorageEmit should not allow emitting intents that have not been fulfilled', async () => {
@@ -893,6 +893,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .batchStorageEmit(
+            route.source,
             [intentHash]
           ),
       ).to.be.revertedWithCustomError(inbox, 'IntentNotFulfilled')
