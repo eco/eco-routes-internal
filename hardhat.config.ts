@@ -5,6 +5,7 @@ import '@nomicfoundation/hardhat-viem'
 import '@openzeppelin/hardhat-upgrades'
 import '@nomicfoundation/hardhat-chai-matchers'
 import 'solidity-docgen'
+require('@nomicfoundation/hardhat-foundry')
 dotenv.config()
 const DEPLOYER_PRIVATE_KEY =
   process.env.DEPLOYER_PRIVATE_KEY || '0x' + '11'.repeat(32) // this is to avoid hardhat error
