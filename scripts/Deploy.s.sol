@@ -13,7 +13,7 @@ import {Inbox} from "../contracts/Inbox.sol";
 import {IntentSource} from "../contracts/IntentSource.sol";
 import {HyperProver} from "../contracts/prover/HyperProver.sol";
 
-import {ECDSAValidator} from "kernel/contracts/validators/ECDSAValidator.sol";
+import {ECDSAValidator} from "@kernel/validator/ECDSAValidator.sol";
 
 contract Deploy is Script {
     bytes constant CREATE3_DEPLOYER_BYTECODE =
