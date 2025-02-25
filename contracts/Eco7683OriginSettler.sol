@@ -1,11 +1,23 @@
 /* -*- c-basic-offset: 4 -*- */
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+/* solhint-disable indent */
+pragma solidity 0.8.26;
 
-import {OnchainCrossChainOrder, ResolvedCrossChainOrder, GaslessCrossChainOrder, Output, FillInstruction} from "./types/ERC7683.sol";
+import {
+    OnchainCrossChainOrder,
+    ResolvedCrossChainOrder,
+    GaslessCrossChainOrder,
+    Output,
+    FillInstruction
+} from "./types/ERC7683.sol";
 import {IOriginSettler} from "./interfaces/ERC7683/IOriginSettler.sol";
 import {Intent, Reward, Route, Call, TokenAmount} from "./types/Intent.sol";
-import {OnchainCrosschainOrderData, GaslessCrosschainOrderData, ONCHAIN_CROSSCHAIN_ORDER_DATA_TYPEHASH, GASLESS_CROSSCHAIN_ORDER_DATA_TYPEHASH} from "./types/EcoERC7683.sol";
+import {
+    OnchainCrosschainOrderData,
+    GaslessCrosschainOrderData,
+    ONCHAIN_CROSSCHAIN_ORDER_DATA_TYPEHASH,
+    GASLESS_CROSSCHAIN_ORDER_DATA_TYPEHASH
+} from "./types/EcoERC7683.sol";
 import {IntentSource} from "./IntentSource.sol";
 import {Semver} from "./libs/Semver.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
@@ -18,12 +30,13 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
  * @notice Entry point to Eco Protocol via EIP-7683
  * @dev functionality is somewhat limited compared to interacting with Eco Protocol directly
  */
+
 contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
     using ECDSA for bytes32;
     using SafeERC20 for IERC20;
 
-    /// @notice typehash for gasless crosschain _order
-    bytes32 public GASLESS_CROSSCHAIN_ORDER_TYPEHASH =
+    /// @notice typehash for gasless crosschain order
+    bytes32 public constant GASLESS_CROSSCHAIN_ORDER_TYPEHASH =
         keccak256(
             "GaslessCrossChainOrder(address originSettler,address user,uint256 nonce,uint256 originChainId,uint32 openDeadline,uint32 fillDeadline,bytes32 orderDataType,bytes32 orderDataHash)"
         );
@@ -143,6 +156,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
     /**
      * @notice resolves an OnchainCrossChainOrder to a ResolvedCrossChainOrder
      * @param _order the OnchainCrossChainOrder to be resolved
+     * @return resolved order details
      */
     function resolve(
         OnchainCrossChainOrder calldata _order
@@ -233,7 +247,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
     /**
      * @notice resolves GaslessCrossChainOrder to a ResolvedCrossChainOrder
      * @param _order the GaslessCrossChainOrder to be resolved
-     * param _originFillerData filler data for the origin chain (not used)
+     * @return resolved order details
      */
     function resolveFor(
         GaslessCrossChainOrder calldata _order,
@@ -385,6 +399,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
     }
 
     /// @notice EIP712 domain separator
+    /// @return The domain separator
     function domainSeparatorV4() public view returns (bytes32) {
         return _domainSeparatorV4();
     }

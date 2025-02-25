@@ -1,6 +1,11 @@
 import { AbiCoder } from 'ethers'
 
-import { Route, Call, TokenAmount } from './intent'
+import { Route, Call, TokenAmount, Intent } from './intent'
+
+const onchainCrosschainOrderDataTypehash =
+  '0x5dd63cf8abd3430c6387c87b7d2af2290ba415b12c3f6fbc10af65f9aee8ec38'
+const gaslessCrosschainOrderDataTypehash =
+  '0x834338e3ed54385a3fac8309f6f326a71fc399ffb7d77d7366c1e1b7c9feac6f'
 
 export type OnchainCrosschainOrderData = {
   route: Route
@@ -24,6 +29,17 @@ export type OnchainCrosschainOrder = {
   fillDeadline: number
   orderDataType: string
   orderData: OnchainCrosschainOrderData
+}
+
+export type GaslessCrosschainOrder = {
+  originSettler: string
+  user: string
+  nonce: string
+  originChainId: number
+  openDeadline: number
+  fillDeadline: number
+  orderDataType: string
+  orderData: GaslessCrosschainOrderData
 }
 
 const OnchainCrosschainOrderDataStruct = [
@@ -105,6 +121,17 @@ const OnchainCrosschainOrderStruct = [
   { name: 'orderData', type: 'bytes' },
 ]
 
+const GaslessCrosschainOrderStruct = [
+    { name: 'originSettler', type: 'address'},
+    { name: 'user', type: 'address'},
+    { name: 'nonce', type: 'uint256'},
+    { name: 'originChainId', type: 'uint256'},
+    { name: 'openDeadline', type: 'uint32' },
+    { name: 'fillDeadline', type: 'uint32' },
+    { name: 'orderDataType', type: 'bytes32' },
+    { name: 'orderData', type: 'bytes' },
+]
+
 export async function encodeOnchainCrosschainOrderData(
   onchainCrosschainOrderData: OnchainCrosschainOrderData,
 ) {
@@ -148,4 +175,48 @@ export async function encodeOnchainCrosschainOrder(
     ],
     [onchainCrosschainOrder],
   )
+}
+
+export async function createOnchainCrosschainOrder(
+  intent: Intent,
+): Promise<OnchainCrosschainOrder> {
+  const onchainCrosschainOrderData = {
+    route: intent.route,
+    creator: intent.reward.creator,
+    prover: intent.reward.prover,
+    nativeValue: intent.reward.nativeValue,
+    tokens: intent.reward.tokens,
+  }
+  const onchainCrosschainOrder: OnchainCrosschainOrder = {
+    fillDeadline: intent.reward.deadline,
+    orderDataType: onchainCrosschainOrderDataTypehash,
+    orderData: onchainCrosschainOrderData,
+  }
+  return onchainCrosschainOrder
+}
+
+export async function createGaslessCrosschainOrder(
+  intent: Intent,
+  originSettler: string,
+): Promise<GaslessCrosschainOrderStruct> {
+  const gaslessCrosschainOrderData = {
+    destination: intent.route.destination,
+    inbox: intent.route.inbox,
+    routeTokens: intent.route.tokens,
+    calls: intent.route.calls,
+    prover: intent.reward.prover,
+    nativeValue: intent.reward.nativeValue,
+    rewardTokens: intent.reward.tokens,
+  }
+  const gaslessCrosschainOrder: GaslessCrosschainOrder = {
+    originSettler: originSettler,
+    user: intent.reward.creator,
+    nonce: intent.route.salt,
+    originChainId: intent.route.source,
+    openDeadline: intent.reward.deadline,
+    fillDeadline: intent.reward.deadline,
+    orderDataType: gaslessCrosschainOrderDataTypehash,
+    orderData: gaslessCrosschainOrderData,
+  }
+  return gaslessCrosschainOrder
 }
