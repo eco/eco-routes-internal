@@ -3,116 +3,129 @@
 pragma solidity ^0.8.26;
 
 import {ISemver} from "./ISemver.sol";
-import {IVaultStorage} from "./IVaultStorage.sol";
 
 import {Intent, Reward, Call, TokenAmount} from "../types/Intent.sol";
 
 /**
  * @title IIntentSource
- * @notice Interface for managing cross-chain intents and their associated rewards on the source chain
- * @dev This contract works in conjunction with an inbox contract on the destination chain
- *      and a prover contract for verification. It handles intent creation, funding,
- *      and reward distribution.
+ * @notice Interface for the source chain portion of the Eco Protocol's intent system
+ * @dev Used to create intents and withdraw their associated rewards. Works with an inbox
+ * contract on the destination chain and verifies fulfillment via a prover contract
  */
-interface IIntentSource is ISemver, IVaultStorage {
+interface IIntentSource is ISemver {
     /**
-     * @notice Indicates an attempt to fund an intent on an incorrect chain
-     * @param intentHash The hash of the intent that was incorrectly targeted
+     * @notice Thrown when funding an intent is attempted on a chain that isn't the source chain
      */
-    error WrongSourceChain(bytes32 intentHash);
+    error WrongSourceChain();
 
     /**
-     * @notice Indicates a failed native token transfer during reward distribution
-     * @param intentHash The hash of the intent whose reward transfer failed
-     */
-    error NativeRewardTransferFailed(bytes32 intentHash);
-
-    /**
-     * @notice Indicates an attempt to publish a duplicate intent
-     * @param intentHash The hash of the pre-existing intent
-     */
-    error IntentAlreadyExists(bytes32 intentHash);
-
-    /**
-     * @notice Indicates an attempt to fund an already funded intent
-     * @param intentHash The hash of the previously funded intent
-     */
-    error IntentAlreadyFunded(bytes32 intentHash);
-
-    /**
-     * @notice Indicates insufficient native token payment for the required reward
-     * @param intentHash The hash of the intent with insufficient funding
-     */
-    error InsufficientNativeReward(bytes32 intentHash);
-
-    /**
-     * @notice Indicates an invalid attempt to fund with native tokens
-     * @param intentHash The hash of the intent that cannot accept native tokens
-     */
-    error CannotFundForWithNativeReward(bytes32 intentHash);
-
-    /**
-     * @notice Indicates an unauthorized reward withdrawal attempt
-     * @param _hash The hash of the intent with protected rewards
+     * @notice Thrown when an unauthorized address attempts to withdraw intent rewards
+     * @param _hash Hash of the intent (key in intents mapping)
      */
     error UnauthorizedWithdrawal(bytes32 _hash);
 
     /**
-     * @notice Indicates an attempt to withdraw already claimed rewards
-     * @param _hash The hash of the intent with depleted rewards
+     * @notice Thrown when attempting to withdraw from an intent with already claimed rewards
+     * @param _hash Hash of the intent
      */
     error RewardsAlreadyWithdrawn(bytes32 _hash);
 
     /**
-     * @notice Indicates a premature withdrawal attempt before intent expiration
-     * @param intentHash The hash of the unexpired intent
+     * @notice Thrown when target addresses and calldata arrays have mismatched lengths or are empty
      */
-    error IntentNotExpired(bytes32 intentHash);
+    error CalldataMismatch();
 
     /**
-     * @notice Indicates a premature refund attempt before intent completion
-     * @param intentHash The hash of the unclaimed intent
+     * @notice Thrown when reward tokens and amounts arrays have mismatched lengths or are empty
      */
-    error IntentNotClaimed(bytes32 intentHash);
+    error RewardsMismatch();
 
     /**
-     * @notice Indicates an invalid token specified for refund
+     * @notice Thrown when batch withdrawal intent claimant doesn't match provided address
+     * @param _hash Hash of the mismatched intent
      */
-    error InvalidRefundToken();
+    error BadClaimant(bytes32 _hash);
 
     /**
-     * @notice Indicates mismatched array lengths in batch operations
+     * @notice Thrown when a token transfer fails
+     * @param _token Address of the token
+     * @param _to Intended recipient
+     * @param _amount Transfer amount
+     */
+    error TransferFailed(address _token, address _to, uint256 _amount);
+
+    /**
+     * @notice Thrown when a native token transfer fails
+     */
+    error NativeRewardTransferFailed();
+
+    /**
+     * @notice Thrown when attempting to publish an intent that already exists
+     * @param intentHash Hash of the intent that already exists in the system
+     */
+    error IntentAlreadyExists(bytes32 intentHash);
+
+    /**
+     * @notice Thrown when attempting to fund an intent that has already been funded
+     */
+    error IntentAlreadyFunded();
+
+    /**
+     * @notice Thrown when the sent native token amount is less than the required reward amount
+     */
+    error InsufficientNativeReward();
+
+    /**
+     * @notice Thrown when attempting to validate an intent that fails basic validation checks
+     * @dev This includes cases where the vault doesn't have sufficient balance or other validation failures
+     */
+    error InvalidIntent();
+
+    /**
+     * @notice Thrown when array lengths don't match in batch operations
+     * @dev Used specifically in batch withdraw operations when routeHashes and rewards arrays have different lengths
      */
     error ArrayLengthMismatch();
 
     /**
-     * @notice Signals partial funding of an intent with native tokens
-     * @param intentHash The hash of the partially funded intent
-     * @param fundingSource The address providing the partial funding
+     * @notice Status of an intent's reward claim
      */
-    event IntentPartiallyFunded(bytes32 intentHash, address fundingSource);
+    enum ClaimStatus {
+        Initial,
+        Claimed,
+        Refunded
+    }
 
     /**
-     * @notice Signals complete funding of an intent with native tokens
-     * @param intentHash The hash of the fully funded intent
-     * @param fundingSource The address providing the complete funding
+     * @notice State of an intent's reward claim
+     * @dev Tracks claimant address and claim status
+     */
+    struct ClaimState {
+        address claimant;
+        uint8 status;
+    }
+
+    /**
+     * @notice Emitted when an intent is funded with native tokens
+     * @param intentHash Hash of the funded intent
+     * @param fundingSource Address of the funder
      */
     event IntentFunded(bytes32 intentHash, address fundingSource);
 
     /**
-     * @notice Signals the creation of a new cross-chain intent
-     * @param hash Unique identifier of the intent
-     * @param salt Creator-provided uniqueness factor
-     * @param source Origin chain identifier
-     * @param destination Target chain identifier
-     * @param inbox Address of the receiving contract on the destination chain
-     * @param routeTokens Required tokens for executing destination chain calls
-     * @param calls Instructions to execute on the destination chain
-     * @param creator Intent originator address
-     * @param prover Verification contract address
-     * @param deadline Timestamp for reward claim eligibility
-     * @param nativeValue Native token reward amount
-     * @param rewardTokens ERC20 token rewards with amounts
+     * @notice Emitted when a new intent is created
+     * @param hash Hash of the created intent (key in intents mapping)
+     * @param salt Creator-provided nonce
+     * @param source Source chain ID
+     * @param destination Destination chain ID
+     * @param inbox Address of inbox contract on destination chain
+     * @param routeTokens Array of tokens required for execution of calls on destination chain
+     * @param calls Array of instruction calls to execute
+     * @param creator Address that created the intent
+     * @param prover Address of prover contract for validation
+     * @param deadline Timestamp by which intent must be fulfilled for reward claim
+     * @param nativeValue Amount of native tokens offered as reward
+     * @param rewardTokens Array of ERC20 tokens and amounts offered as rewards
      */
     event IntentCreated(
         bytes32 indexed hash,
@@ -130,52 +143,46 @@ interface IIntentSource is ISemver, IVaultStorage {
     );
 
     /**
-     * @notice Signals successful reward withdrawal
-     * @param _hash The hash of the claimed intent
-     * @param _recipient The address receiving the rewards
+     * @notice Emitted when rewards are successfully withdrawn
+     * @param _hash Hash of the claimed intent
+     * @param _recipient Address receiving the rewards
      */
     event Withdrawal(bytes32 _hash, address indexed _recipient);
 
     /**
-     * @notice Signals successful reward refund
-     * @param _hash The hash of the refunded intent
-     * @param _recipient The address receiving the refund
+     * @notice Emitted when rewards are successfully withdrawn
+     * @param _hash Hash of the claimed intent
+     * @param _recipient Address receiving the rewards
      */
     event Refund(bytes32 _hash, address indexed _recipient);
 
     /**
-     * @notice Retrieves the current reward claim status for an intent
-     * @param intentHash The hash of the queried intent
-     * @return status Current reward status
+     * @notice Gets the claim state for a given intent
+     * @param intentHash Hash of the intent to query
+     * @return Claim state struct containing claimant and status
      */
-    function getRewardStatus(
+    function getClaim(
         bytes32 intentHash
-    ) external view returns (RewardStatus status);
+    ) external view returns (ClaimState memory);
 
     /**
-     * @notice Retrieves the current state of an intent's vault
-     * @param intentHash The hash of the intent
-     * @return Current vault state
+     * @notice Gets the funding source for the intent funder
+     * @return Address of the native token funding source
      */
-    function getVaultState(
-        bytes32 intentHash
-    ) external view returns (VaultState memory);
+    function getFundingSource() external view returns (address);
 
     /**
-     * @notice Retrieves the permit contract for token transfers
-     * @param intentHash The hash of the intent
-     * @return Address of the permit contract
+     * @notice Gets the override token used for vault refunds
+     * @return Address of the vault refund token
      */
-    function getPermitContract(
-        bytes32 intentHash
-    ) external view returns (address);
+    function getRefundToken() external view returns (address);
 
     /**
-     * @notice Computes the hash components of an intent
-     * @param intent The intent to hash
-     * @return intentHash Combined hash of route and reward components
-     * @return routeHash Hash of the route specifications
-     * @return rewardHash Hash of the reward specifications
+     * @notice Calculates the hash components of an intent
+     * @param intent Intent to hash
+     * @return intentHash Combined hash of route and reward
+     * @return routeHash Hash of the route component
+     * @return rewardHash Hash of the reward component
      */
     function getIntentHash(
         Intent calldata intent
@@ -185,89 +192,64 @@ interface IIntentSource is ISemver, IVaultStorage {
         returns (bytes32 intentHash, bytes32 routeHash, bytes32 rewardHash);
 
     /**
-     * @notice Computes the deterministic vault address for an intent
-     * @param intent The intent to calculate the vault address for
-     * @return Predicted vault address
+     * @notice Calculates the deterministic address of the intent funder
+     * @param intent Intent to calculate funder address for
+     * @return Address of the intent funder
+     */
+    function intentFunderAddress(
+        Intent calldata intent
+    ) external view returns (address);
+
+    /**
+     * @notice Calculates the deterministic vault address for an intent
+     * @param intent Intent to calculate vault address for
+     * @return Predicted address of the intent vault
      */
     function intentVaultAddress(
         Intent calldata intent
     ) external view returns (address);
 
     /**
-     * @notice Creates a new cross-chain intent with associated rewards
-     * @dev Intent must be proven on source chain before expiration for valid reward claims
-     * @param intent The complete intent specification
-     * @return intentHash Unique identifier of the created intent
+     * @notice Funds an intent with native tokens and ERC20 tokens
+     * @dev Allows for permit calls to approve token transfers
+     * @param routeHash Hash of the route component
+     * @param reward Reward structure containing distribution details
+     * @param fundingAddress Address to fund the intent from
+     * @param recoverToken Address of the token to recover if sent to the vault
      */
-    function publish(
-        Intent calldata intent
-    ) external payable returns (bytes32 intentHash);
-
-    /**
-     * @notice Creates and funds an intent in a single transaction
-     * @param intent The complete intent specification
-     * @return intentHash Unique identifier of the created and funded intent
-     */
-    function publishAndFund(
-        Intent calldata intent
-    ) external payable returns (bytes32 intentHash);
-
-    /**
-     * @notice Funds an existing intent
-     * @param routeHash The hash of the intent's route component
-     * @param reward The reward specification
-     * @return intentHash The hash of the funded intent
-     */
-    function fund(
-        bytes32 routeHash,
-        Reward calldata reward
-    ) external returns (bytes32 intentHash);
-
-    /**
-     * @notice Funds an intent on behalf of another address using permit
-     * @param routeHash The hash of the intent's route component
-     * @param reward The reward specification
-     * @param fundingAddress The address providing the funding
-     * @param permitContract The permit contract address for external token approvals
-     * @param allowPartial Whether to accept partial funding
-     * @return intentHash The hash of the funded intent
-     */
-    function fundFor(
+    function fundIntent(
         bytes32 routeHash,
         Reward calldata reward,
         address fundingAddress,
-        address permitContract,
-        bool allowPartial
-    ) external returns (bytes32 intentHash);
+        address recoverToken
+    ) external payable;
 
     /**
-     * @notice Creates and funds an intent on behalf of another address
-     * @param intent The complete intent specification
-     * @param funder The address providing the funding
-     * @param permitContact The permit contract for token approvals
-     * @param allowPartial Whether to accept partial funding
-     * @return intentHash The hash of the created and funded intent
+     * @notice Creates an intent to execute instructions on a supported chain for rewards
+     * @dev Source chain proof must complete before expiry or rewards are unclaimable,
+     *      regardless of execution status. Solver manages timing of L1 data posting
+     * @param intent The complete intent struct
+     * @param fund Whether to transfer rewards to vault during creation
+     * @return intentHash Hash of the created intent
      */
-    function publishAndFundFor(
+    function publishIntent(
         Intent calldata intent,
-        address funder,
-        address permitContact,
-        bool allowPartial
+        bool fund
     ) external payable returns (bytes32 intentHash);
 
     /**
-     * @notice Checks if an intent's rewards are valid and fully funded
-     * @param intent The intent to validate
-     * @return True if the intent is properly funded
+     * @notice Verifies an intent's rewards are valid
+     * @param intent Intent to validate
+     * @return True if rewards are valid and funded
      */
     function isIntentFunded(
         Intent calldata intent
     ) external view returns (bool);
 
     /**
-     * @notice Claims rewards for a successfully fulfilled intent
-     * @param routeHash The hash of the intent's route component
-     * @param reward The reward specification
+     * @notice Withdraws reward funds for a fulfilled intent
+     * @param routeHash Hash of the intent's route
+     * @param reward Reward struct containing distribution details
      */
     function withdrawRewards(
         bytes32 routeHash,
@@ -275,9 +257,9 @@ interface IIntentSource is ISemver, IVaultStorage {
     ) external;
 
     /**
-     * @notice Claims rewards for multiple fulfilled intents
-     * @param routeHashes Array of route component hashes
-     * @param rewards Array of corresponding reward specifications
+     * @notice Batch withdraws rewards for multiple intents
+     * @param routeHashes Array of route hashes
+     * @param rewards Array of reward structs
      */
     function batchWithdraw(
         bytes32[] calldata routeHashes,
@@ -285,20 +267,12 @@ interface IIntentSource is ISemver, IVaultStorage {
     ) external;
 
     /**
-     * @notice Returns rewards to the intent creator
-     * @param routeHash The hash of the intent's route component
-     * @param reward The reward specification
+     * @notice Refunds rewards back to the intent creator
+     * @param routeHash Hash of the intent's route
+     * @param reward Reward struct containing distribution details
+     * @param token Optional token to refund if incorrectly sent to vault
      */
-    function refund(bytes32 routeHash, Reward calldata reward) external;
-
-    /**
-     * @notice Recovers mistakenly transferred tokens from the intent vault
-     * @dev Token must not be part of the intent's reward structure
-     * @param routeHash The hash of the intent's route component
-     * @param reward The reward specification
-     * @param token The address of the token to recover
-     */
-    function recoverToken(
+    function refundIntent(
         bytes32 routeHash,
         Reward calldata reward,
         address token

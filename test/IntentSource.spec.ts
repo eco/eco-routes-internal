@@ -9,12 +9,13 @@ import {
   Inbox,
 } from '../typechain-types'
 import { time, loadFixture } from '@nomicfoundation/hardhat-network-helpers'
-import { keccak256, BytesLike, ZeroAddress } from 'ethers'
+import { keccak256, BytesLike, ZeroAddress, Provider } from 'ethers'
 import { encodeIdentifier, encodeTransfer } from '../utils/encode'
 import {
   encodeReward,
   encodeRoute,
   hashIntent,
+  intentFunderAddress,
   intentVaultAddress,
   Call,
   TokenAmount,
@@ -167,12 +168,12 @@ describe('Intent Source Test', (): void => {
       }
 
       await expect(
-        intentSource.connect(creator).publishAndFund({ route, reward }),
+        intentSource.connect(creator).publishIntent({ route, reward }, true),
       ).to.be.revertedWithCustomError(intentSource, 'WrongSourceChain')
     })
 
     it('creates properly with erc20 rewards', async () => {
-      await intentSource.connect(creator).publishAndFund({ route, reward })
+      await intentSource.connect(creator).publishIntent({ route, reward }, true)
 
       expect(await intentSource.isIntentFunded({ route, reward })).to.be.true
     })
@@ -181,11 +182,12 @@ describe('Intent Source Test', (): void => {
       const initialBalanceNative = await ethers.provider.getBalance(
         creator.address,
       )
-      await intentSource.connect(creator).publishAndFund(
+      await intentSource.connect(creator).publishIntent(
         {
           route,
           reward: { ...reward, nativeValue: rewardNativeEth },
         },
+        true,
         { value: rewardNativeEth * BigInt(2) },
       )
       expect(
@@ -226,7 +228,7 @@ describe('Intent Source Test', (): void => {
 
       await intentSource
         .connect(creator)
-        .publishAndFund(intent, { value: rewardNativeEth })
+        .publishIntent(intent, true, { value: rewardNativeEth })
 
       expect(
         await tokenA.balanceOf(await intentSource.intentVaultAddress(intent)),
@@ -250,7 +252,7 @@ describe('Intent Source Test', (): void => {
       await expect(
         intentSource
           .connect(creator)
-          .publishAndFund(intent, { value: rewardNativeEth }),
+          .publishIntent(intent, true, { value: rewardNativeEth }),
       )
         .to.emit(intentSource, 'IntentCreated')
         .withArgs(
@@ -319,7 +321,7 @@ describe('Intent Source Test', (): void => {
 
       await intentSource
         .connect(creator)
-        .publishAndFund(intent, { value: rewardNativeEth })
+        .publishIntent(intent, true, { value: rewardNativeEth })
     })
     context('before expiry, no proof', () => {
       it('cant be withdrawn', async () => {
@@ -388,7 +390,9 @@ describe('Intent Source Test', (): void => {
           .withArgs(intentHash, reward.creator)
 
         await expect(
-          intentSource.connect(otherPerson).refund(routeHash, reward),
+          intentSource
+            .connect(otherPerson)
+            .refundIntent(routeHash, reward, ZeroAddress),
         )
           .to.emit(intentSource, 'Refund')
           .withArgs(intentHash, reward.creator)
@@ -407,7 +411,9 @@ describe('Intent Source Test', (): void => {
         )
         expect(await intentSource.isIntentFunded(intent)).to.be.true
 
-        await intentSource.connect(otherPerson).refund(routeHash, reward)
+        await intentSource
+          .connect(otherPerson)
+          .refundIntent(routeHash, reward, ZeroAddress)
 
         expect(await intentSource.isIntentFunded(intent)).to.be.false
         expect(await tokenA.balanceOf(await creator.getAddress())).to.eq(
@@ -491,7 +497,7 @@ describe('Intent Source Test', (): void => {
 
         await intentSource
           .connect(creator)
-          .publishAndFund(intent, { value: rewardNativeEth })
+          .publishIntent(intent, true, { value: rewardNativeEth })
       })
       it('bricks if called before expiry by IntentCreator', async () => {
         await expect(
@@ -543,7 +549,7 @@ describe('Intent Source Test', (): void => {
 
         await intentSource
           .connect(creator)
-          .publishAndFund(intent, { value: rewardNativeEth })
+          .publishIntent(intent, true, { value: rewardNativeEth })
       })
       it('before expiry to claimant', async () => {
         const initialBalanceNative = await ethers.provider.getBalance(
@@ -656,7 +662,7 @@ describe('Intent Source Test', (): void => {
 
           tx = await intentSource
             .connect(creator)
-            .publishAndFund({ route, reward: rewards.at(-1)! })
+            .publishIntent({ route, reward: rewards.at(-1)! }, true)
           tx = await tx.wait()
         }
         const logs = await intentSource.queryFilter(
@@ -702,7 +708,7 @@ describe('Intent Source Test', (): void => {
 
           tx = await intentSource
             .connect(creator)
-            .publishAndFund({ route, reward: rewards.at(-1)! })
+            .publishIntent({ route, reward: rewards.at(-1)! }, true)
           tx = await tx.wait()
         }
         for (let i = 0; i < 3; ++i) {
@@ -726,7 +732,7 @@ describe('Intent Source Test', (): void => {
 
           tx = await intentSource
             .connect(creator)
-            .publishAndFund({ route, reward: rewards.at(-1)! })
+            .publishIntent({ route, reward: rewards.at(-1)! }, true)
           tx = await tx.wait()
         }
         const logs = await intentSource.queryFilter(
@@ -774,10 +780,13 @@ describe('Intent Source Test', (): void => {
             hashIntent({ route, reward: rewards.at(-1)! }).routeHash,
           )
 
-          tx = await intentSource.connect(creator).publishAndFund({
-            route,
-            reward: rewards.at(-1)!,
-          })
+          tx = await intentSource.connect(creator).publishIntent(
+            {
+              route,
+              reward: rewards.at(-1)!,
+            },
+            true,
+          )
           tx = await tx.wait()
         }
         for (let i = 0; i < 3; ++i) {
@@ -799,10 +808,13 @@ describe('Intent Source Test', (): void => {
             hashIntent({ route, reward: rewards.at(-1)! }).routeHash,
           )
 
-          tx = await intentSource.connect(creator).publishAndFund({
-            route,
-            reward: rewards.at(-1)!,
-          })
+          tx = await intentSource.connect(creator).publishIntent(
+            {
+              route,
+              reward: rewards.at(-1)!,
+            },
+            true,
+          )
           tx = await tx.wait()
         }
         for (let i = 0; i < 3; ++i) {
@@ -819,12 +831,11 @@ describe('Intent Source Test', (): void => {
             hashIntent({ route, reward: rewards.at(-1)! }).routeHash,
           )
 
-          tx = await intentSource.connect(creator).publishAndFund(
-            { route, reward: rewards.at(-1)! },
-            {
+          tx = await intentSource
+            .connect(creator)
+            .publishIntent({ route, reward: rewards.at(-1)! }, true, {
               value: rewardNativeEth,
-            },
-          )
+            })
           tx = await tx.wait()
         }
         const logs = await intentSource.queryFilter(
@@ -907,10 +918,13 @@ describe('Intent Source Test', (): void => {
           hashIntent({ route, reward: rewards.at(-1)! }).routeHash,
         )
 
-        tx = await intentSource.connect(creator).publishAndFund({
-          route,
-          reward: rewards.at(-1)!,
-        })
+        tx = await intentSource.connect(creator).publishIntent(
+          {
+            route,
+            reward: rewards.at(-1)!,
+          },
+          true,
+        )
         tx = await tx.wait()
       }
       for (let i = 0; i < 5; ++i) {
@@ -935,11 +949,12 @@ describe('Intent Source Test', (): void => {
           hashIntent({ route, reward: rewards.at(-1)! }).routeHash,
         )
 
-        tx = await intentSource.connect(creator).publishAndFund(
+        tx = await intentSource.connect(creator).publishIntent(
           {
             route,
             reward: rewards.at(-1)!,
           },
+          true,
           { value: rewardNativeEth },
         )
         await tx.wait()
@@ -1000,12 +1015,12 @@ describe('Intent Source Test', (): void => {
     })
 
     it('should compute valid intent funder address', async () => {
-      const predictedAddress = await intentVaultAddress(
+      const predictedAddress = await intentFunderAddress(
         await intentSource.getAddress(),
         { route, reward },
       )
 
-      const contractAddress = await intentSource.intentVaultAddress({
+      const contractAddress = await intentSource.intentFunderAddress({
         route,
         reward,
       })
@@ -1013,8 +1028,13 @@ describe('Intent Source Test', (): void => {
       expect(contractAddress).to.eq(predictedAddress)
     })
 
-    it('should fund intent with single token', async () => {
+    it('should fund intent with single token, refunding accidentally sent native', async () => {
+      const provider: Provider = intentSource.runner!.provider!
       rewardTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
+
+      const creatorInitialNativeBalance: bigint = await provider.getBalance(
+        creator.address,
+      )
 
       reward = {
         creator: creator.address,
@@ -1024,7 +1044,7 @@ describe('Intent Source Test', (): void => {
         tokens: rewardTokens,
       }
 
-      const intentFunder = await intentSource.intentVaultAddress({
+      const intentFunder = await intentSource.intentFunderAddress({
         route,
         reward,
       })
@@ -1041,12 +1061,18 @@ describe('Intent Source Test', (): void => {
       // Fund the intent
       await intentSource
         .connect(creator)
-        .fundFor(routeHash, reward, creator.address, ZeroAddress, false)
+        .fundIntent(routeHash, reward, creator.address, ZeroAddress, {
+          value: rewardNativeEth,
+        })
 
       expect(await intentSource.isIntentFunded({ route, reward })).to.be.true
 
       // Check vault balance
       expect(await tokenA.balanceOf(vaultAddress)).to.equal(mintAmount)
+      expect(await provider.getBalance(vaultAddress)).to.equal(0)
+      expect(await provider.getBalance(creator.address)).to.be.gt(
+        creatorInitialNativeBalance - rewardNativeEth,
+      )
     })
 
     it('should fund intent with multiple tokens', async () => {
@@ -1063,7 +1089,7 @@ describe('Intent Source Test', (): void => {
         tokens: rewardTokens,
       }
 
-      const intentFunder = await intentSource.intentVaultAddress({
+      const intentFunder = await intentSource.intentFunderAddress({
         route,
         reward,
       })
@@ -1081,7 +1107,7 @@ describe('Intent Source Test', (): void => {
       // Fund the intent
       await intentSource
         .connect(creator)
-        .fundFor(routeHash, reward, creator.address, ZeroAddress, false)
+        .fundIntent(routeHash, reward, creator.address, ZeroAddress)
 
       expect(await intentSource.isIntentFunded({ route, reward })).to.be.true
 
@@ -1101,7 +1127,7 @@ describe('Intent Source Test', (): void => {
         tokens: rewardTokens,
       }
 
-      const intentFunder = await intentSource.intentVaultAddress({
+      const intentFunder = await intentSource.intentFunderAddress({
         route,
         reward,
       })
@@ -1118,7 +1144,7 @@ describe('Intent Source Test', (): void => {
       // Fund the intent
       await intentSource
         .connect(creator)
-        .fundFor(routeHash, reward, creator.address, ZeroAddress, true)
+        .fundIntent(routeHash, reward, creator.address, ZeroAddress)
 
       expect(await intentSource.isIntentFunded({ route, reward })).to.be.false
 
@@ -1126,8 +1152,48 @@ describe('Intent Source Test', (): void => {
       expect(await tokenA.balanceOf(vaultAddress)).to.equal(mintAmount / 2)
     })
 
+    it('should fund native value correctly', async () => {
+      const nativeAmount = ethers.parseEther('1.0')
+
+      reward = {
+        creator: creator.address,
+        prover: otherPerson.address,
+        deadline: expiry,
+        nativeValue: nativeAmount,
+        tokens: [],
+      }
+
+      // Get vault address
+      const vaultAddress = await intentSource.intentVaultAddress({
+        route,
+        reward,
+      })
+
+      const initialBalanceNative = await ethers.provider.getBalance(
+        creator.getAddress(),
+      )
+      // Fund the intent with native value
+      await intentSource
+        .connect(creator)
+        .fundIntent(routeHash, reward, creator.address, ZeroAddress, {
+          value: nativeAmount * BigInt(2),
+        })
+
+      expect(await intentSource.isIntentFunded({ route, reward })).to.be.true
+
+      // Check vault native balance
+      expect(await ethers.provider.getBalance(vaultAddress)).to.equal(
+        nativeAmount,
+      )
+
+      expect(
+        (await ethers.provider.getBalance(creator.address)) >
+          initialBalanceNative - BigInt(2) * nativeAmount,
+      ).to.be.true
+    })
+
     it('should emit IntentFunded event', async () => {
-      const intentFunder = await intentSource.intentVaultAddress({
+      const intentFunder = await intentSource.intentFunderAddress({
         route,
         reward,
       })
@@ -1139,7 +1205,7 @@ describe('Intent Source Test', (): void => {
       await expect(
         intentSource
           .connect(creator)
-          .fundFor(routeHash, reward, creator.address, ZeroAddress, false),
+          .fundIntent(routeHash, reward, creator.address, ZeroAddress),
       )
         .to.emit(intentSource, 'IntentFunded')
         .withArgs(intentHash, creator.address)
@@ -1161,11 +1227,13 @@ describe('Intent Source Test', (): void => {
       }
 
       // Create and fund intent with zero amounts
-      await intentSource.connect(creator).publish({ route, reward })
+      await intentSource
+        .connect(creator)
+        .publishIntent({ route, reward }, false)
 
       await intentSource
         .connect(creator)
-        .fundFor(routeHash, reward, creator.address, ZeroAddress, false)
+        .fundIntent(routeHash, reward, creator.address, ZeroAddress)
 
       expect(await intentSource.isIntentFunded({ route, reward })).to.be.true
 
@@ -1188,7 +1256,7 @@ describe('Intent Source Test', (): void => {
       }
 
       // Create and fund intent initially
-      await intentSource.connect(creator).publishAndFund({ route, reward })
+      await intentSource.connect(creator).publishIntent({ route, reward }, true)
 
       // Try to fund again
       await tokenA.connect(creator).approve(intentSource, mintAmount)
@@ -1196,7 +1264,7 @@ describe('Intent Source Test', (): void => {
       // Should not transfer additional tokens since vault is already funded
       await intentSource
         .connect(creator)
-        .fundFor(routeHash, reward, creator.address, ZeroAddress, false)
+        .fundIntent(routeHash, reward, creator.address, ZeroAddress)
 
       expect(await intentSource.isIntentFunded({ route, reward })).to.be.true
 
@@ -1216,7 +1284,7 @@ describe('Intent Source Test', (): void => {
         nativeValue: 0n,
         tokens: rewardTokens,
       }
-      await intentSource.connect(creator).publishAndFund({ route, reward })
+      await intentSource.connect(creator).publishIntent({ route, reward }, true)
 
       expect(await intentSource.isIntentFunded({ route, reward })).to.be.true
 
