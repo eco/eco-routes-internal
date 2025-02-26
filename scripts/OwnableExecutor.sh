@@ -28,8 +28,8 @@ CHAIN_DATA=$(cat "$CHAIN_JSON")
 
 # Loop through each chain and deploy Ownable Executor
 for CHAIN_ID in "${CHAINS[@]}"; do
-    RPC_URL=$(echo "$CHAIN_DATA" | jq -r --arg CHAIN_ID "$CHAIN_ID" '.[$CHAIN_ID]')
-    
+    RPC_URL=$(echo "$CHAIN_DATA" | jq -r --arg CHAIN_ID "$CHAIN_ID" '.[$CHAIN_ID].url')
+
     if [[ "$RPC_URL" == "null" || -z "$RPC_URL" ]]; then
         echo "⚠️  Warning: No RPC URL found for Chain ID $CHAIN_ID. Skipping..."
         continue

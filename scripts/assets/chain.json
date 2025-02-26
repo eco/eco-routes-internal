@@ -1,46 +1,38 @@
 {
-  "1": "https://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
-  "11155111": "https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
-  "10": "https://opt-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
-  "11155420": "https://opt-sepolia.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
-  "8453": "https://base-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
-  "84532": "https://base-sepolia.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
-  "42161": "https://arb-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
-  "421614": "https://arb-sepolia.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
-  "137": "https://polygon-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
-  "80002": "https://polygon-amoy.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
-  "100": "https://gnosis-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
-  "10200": "https://gnosis-chaido.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
-  "56": "https://bnb-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
-  "97": "https://bnb-testnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
-  "43114": "https://avax-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
-  "43113": "https://avax-fuji.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
-  "534352": "https://scroll-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
-  "534351": "https://scroll-sepolia.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
-  "80085": "https://sonic-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
-  "80084": "https://sonic-blaze.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
-  "122": "https://rpc.fuse.io",
-  "123": "https://rpc.fusespark.io",
-  "666666666": "https://odyssey.ithaca.xyz",
-  "777777777": "https://rpc.garnetchain.com",
-  "17000": "https://holesky.drpc.org",
-  "478803": "https://berachain-bartio.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
-  "81457": "https://blast-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
-  "168587773": "https://blast-sepolia.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
-  "1440001": "https://worldchain-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
-  "1440002": "https://worldchain-sepolia.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
-  "88888888": "https://abstract-testnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
-  "167008": "https://taiko-mainnet.gateway.tenderly.co",
-  "167009": "https://taiko-hekla.gateway.tenderly.co",
-  "88881": "https://build.onbeam.com/rpc",
-  "88882": "https://build.onbeam.com/rpc/testnet",
-  "192837465": "https://testnet-rpc.monad.xyz",
-  "16718": "https://network.ambrosus.io",
-  "22031617": "https://network.ambrosus-test.io",
-  "10002000": "https://json-rpc.evm.iotaledger.net",
-  "10002001": "https://json-rpc.evm.testnet.iotaledger.net",
-  "56789": "https://rpc.soneium.org",
-  "56790": "https://rpc.minato.soneium.org",
-  "5000": "https://mantle-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
-  "5001": "https://rpc.sepolia.mantle.xyz"
+  "1": {
+    "url": "https://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
+    "mailbox": "0xc005dc82818d67AF737725bD4bf75435d065D239"
+  },
+  "10": {
+    "url": "https://opt-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
+    "mailbox": "0xd4C1905BB1D26BC93DAC913e13CaCC278CdCC80D"
+  },
+  "137": {
+    "url": "https://polygon-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
+    "mailbox": "0x5d934f4e2f797775e53561bB72aca21ba36B96BB"
+  },
+  "5000": {
+    "url": "https://mantle-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
+    "mailbox": "0x398633D19f4371e1DB5a8EFE90468eB70B1176AA"
+  },
+  "8453": {
+    "url": "https://base-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
+    "mailbox": "0xeA87ae93Fa0019a82A727bfd3eBd1cFCa8f64f1D"
+  },
+  "42161": {
+    "url": "https://arb-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
+    "mailbox": "0x979Ca5202784112f4738403dBec5D0F3B9daabB9"
+  },
+  "84532": {
+    "url": "https://base-sepolia.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
+    "mailbox": "0x6966b0E55883d49BFB24539356a2f8A673E02039"
+  },
+  "11155111": {
+    "url": "https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
+    "mailbox": "0xfFAEF09B3cd11D9b20d1a19bECca54EEC2884766"
+  },
+  "11155420": {
+    "url": "https://opt-sepolia.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
+    "mailbox": "0x6966b0E55883d49BFB24539356a2f8A673E02039"
+  }
 }
