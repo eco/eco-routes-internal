@@ -165,7 +165,7 @@ async function main() {
 
   /// INTENT SOURCE TRANSACTION FLOW ///
 
-  console.log('🏁 Starting full transaction flow...')
+  console.log('\n🏁 Starting full transaction flow...')
 
   const optimismTimestamp = await optimismProvider
     .getBlock('latest')
@@ -222,8 +222,8 @@ async function main() {
     route,
     reward,
   }
-
-  console.log('\n🔄 Approving tokens...')
+  console.log('\nINTENT ORIGINATION') 
+  console.log('🔄 Approving tokens...')
   const approvalTx = await optimismUSDC.approve(
     optimismIntentSource.getAddress(),
     network_info.optimism.usdcRewardAmount,
@@ -265,9 +265,9 @@ async function main() {
   console.log(`    IntentSource at ${network_info.optimism.intentSource}`)
   console.log(`    Destination Inbox at ${network_info.base.inbox}`)
   console.log(
-    `    Intent Request:  ${network_info.base.usdcAmount}  USDC to address ${baseWallet.address}`,
+    `    Intent Request:  ${(network_info.base.usdcAmount / Math.pow(10, network_info.base.usdcDecimals)).toFixed(3)}  USDC to address ${baseWallet.address}`,
   )
-  console.log(`    Reward:  ${network_info.optimism.usdcRewardAmount} USDC`)
+  console.log(`    Reward:  ${(network_info.optimism.usdcRewardAmount / Math.pow(10, network_info.optimism.usdcDecimals)).toFixed(3)} USDC`)
   console.log('    Transaction Hash: ', intentTxOptimism.hash)
   console.log('    Intent Hash: ', intentHash)
 
@@ -279,7 +279,8 @@ async function main() {
   }
 
   /// INBOX TRANSACTION FLOW ///
-  console.log('\n🔄 Approving tokens on base...')
+  console.log('\nINBOX SOLVE FLOW') 
+  console.log('🔄 Approving tokens on base...')
   const approvalTxBase = await baseUSDC.approve(
     network_info.base.inbox,
     network_info.base.usdcAmount,
@@ -323,7 +324,7 @@ async function main() {
     throw new Error('Transaction failed: Missing event parameters')
   }
 
-  console.log('\n✅ Fulfillment event emitted:')
+  console.log('✅ Fulfillment event emitted:')
   console.log('   Intent Hash:', eventIntentHash)
   console.log('   Source Chain:', eventSourceChain)
   console.log('   Claimant:', eventClaimant)
@@ -358,18 +359,19 @@ async function main() {
     localLogIndex,
   })
 
-  console.log('\n🚀 Proof request sent:', proofRequest)
+  console.log('\nPROVER TRANSACTION FLOW') 
+  console.log('🚀 Proof request sent:', proofRequest)
   console.log('🔄 Polling for proof generation...')
 
   const proof = await pollForProof(proofRequest.result)
 
-  console.log('🛸 Mission Control: Proof acquired')
+  console.log('\n🛸 Mission Control: Proof acquired')
   console.log('📜 Raw proof: ', proof.result.proof)
 
   // Convert base64 proof to hex
   const hexProof = base64ToHex(proof.result.proof)
   //   console.log('📜 Hex proof:', hexProof)
-  console.log('🔄 Converted proof to hex format')
+  console.log('\n🔄 Converted proof to hex format')
 
   /// POLYMER PROVER CONTRACT FLOW ///
   console.log('🔄 Validating proof...')
@@ -416,7 +418,7 @@ async function main() {
   console.log('   Transaction Hash: ', proveTx.hash)
 
   /// CLAIM REWARDS INTENT FLOW ///
-
+  console.log('\nCLAIM REWARDS INTENT FLOW') 
   const claimTx = await optimismIntentSource.withdrawRewards(
     calcRouteHash,
     reward,

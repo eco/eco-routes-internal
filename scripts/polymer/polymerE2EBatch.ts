@@ -62,7 +62,7 @@ async function main() {
   const op_testnet_explorer = 'https://sepolia-optimism.etherscan.io//tx/'
   const base_testnet_explorer = 'https://sepolia.basescan.org/tx/'
 
-  const batchSize = 3
+  const batchSize = 20
   const usdcAmount = Number(ethers.parseUnits('0.01', 6))
   const usdcRewardAmount = Number(ethers.parseUnits('0.0101', 6))
 
