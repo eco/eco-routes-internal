@@ -3,8 +3,8 @@ name: Eco Publish
 on:
   push:
     tags:
-      - "v[0-9].[0-9]+.[0-9]+-[a-z]+"
-      # matches v0.12.123-alpha
+      - "v[0-9].[0-9].[0-9]+(-[a-z]+)?"
+      # matches v0.12.123-alpha, v1.2.3
 
 jobs:
   buildAndTest:
@@ -93,7 +93,7 @@ jobs:
       - name: 🔧 Grant Execute Permission to MultiDeploy.sh
         run: chmod +x scripts/MultiDeploy.sh
       - name: 🔧 Grant Execute Permission to OwnableExecutor.sh
-        run: chmod +x scripts/OwnableExecutor.sh 
+        run: chmod +x scripts/OwnableExecutor.sh
       - name: 🔧 Grant Execute Permission to Verify.sh
         run: chmod +x scripts/Verify.sh
       - name: Install dependencies
@@ -101,7 +101,7 @@ jobs:
         with:
           cmd: install
       - name: 🔄 Deploy OwnableExecutor.sh
-        run: ./scripts/OwnableExecutor.sh 
+        run: ./scripts/OwnableExecutor.sh
       - name: 🔄 Deploy Contracts
         uses: borales/actions-yarn@v5
         with:
