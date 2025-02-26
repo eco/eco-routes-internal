@@ -263,3 +263,66 @@ main().catch((error) => {
   console.error(error)
   process.exitCode = 1
 })
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract TokenPool is Ownable {
+    // Mapping of allowed tokens
+    mapping(address => bool) public allowedTokens;
+    
+    // Mapping of user balances per token
+    mapping(address => mapping(address => uint256)) public balances;
+
+    event TokenAllowed(address indexed token, bool allowed);
+    event Deposited(address indexed user, address indexed token, uint256 amount);
+    event Withdrawn(address indexed user, address indexed token, uint256 amount);
+
+    constructor(address[] memory _initialTokens) {
+        // Initialize with a predefined list of tokens
+        for (uint256 i = 0; i < _initialTokens.length; i++) {
+            allowedTokens[_initialTokens[i]] = true;
+            emit TokenAllowed(_initialTokens[i], true);
+        }
+    }
+
+    // Owner can update allowed tokens
+    function setAllowedToken(address token, bool allowed) external onlyOwner {
+        allowedTokens[token] = allowed;
+        emit TokenAllowed(token, allowed);
+    }
+
+    // Deposit function
+    function deposit(address token, uint256 amount) external {
+        require(allowedTokens[token], "Token not allowed");
+        require(amount > 0, "Amount must be greater than 0");
+
+        // Transfer tokens from sender to this contract
+        require(IERC20(token).transferFrom(msg.sender, address(this), amount), "Transfer failed");
+
+        // Update user balance
+        balances[msg.sender][token] += amount;
+
+        emit Deposited(msg.sender, token, amount);
+    }
+
+    // Withdraw function
+    function withdraw(address token, uint256 amount) external {
+        require(balances[msg.sender][token] >= amount, "Insufficient balance");
+
+        // Deduct from user balance
+        balances[msg.sender][token] -= amount;
+
+        // Transfer tokens back to user
+        require(IERC20(token).transfer(msg.sender, amount), "Transfer failed");
+
+        emit Withdrawn(msg.sender, token, amount);
+    }
+
+    // Check balance of a user for a specific token
+    function getBalance(address user, address token) external view returns (uint256) {
+        return balances[user][token];
+    }
+}
