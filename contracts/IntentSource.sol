@@ -18,8 +18,7 @@ import {Vault} from "./Vault.sol";
  * @dev Used to create intents and withdraw associated rewards. Works in conjunction with
  *      an inbox contract on the destination chain. Verifies intent fulfillment through
  *      a prover contract on the source chain
- * @dev This contract should not hold any funds or hold any roles for other contracts,
- *      as it executes arbitrary calls to other contracts when funding intents.
+ * @dev This contract should not hold any funds or hold any roles for other contracts.
  */
 contract IntentSource is IIntentSource, Semver {
     using SafeERC20 for IERC20;
@@ -153,7 +152,7 @@ contract IntentSource is IIntentSource, Semver {
     }
 
     /**
-     * @notice Funds an intent for a user with allowance/permit
+     * @notice Funds an intent for a user with permit/allowance
      * @param routeHash Hash of the route component
      * @param reward Reward structure containing distribution details
      * @param funder Address to fund the intent from
@@ -189,6 +188,9 @@ contract IntentSource is IIntentSource, Semver {
     /**
      * @notice Creates and funds an intent using permit/allowance
      * @param intent The complete intent struct
+     * @param funder Address to fund the intent from
+     * @param permitContact Address of the permitContact instance
+     * @param allowPartial Whether to allow partial funding
      * @return intentHash Hash of the created and funded intent
      */
     function publishAndFundFor(
@@ -223,9 +225,9 @@ contract IntentSource is IIntentSource, Semver {
     }
 
     /**
-     * @notice Checks if an intent is properly funded
+     * @notice Checks if an intent is completely funded
      * @param intent Intent to validate
-     * @return True if intent is properly funded, false otherwise
+     * @return True if intent is completely funded, false otherwise
      */
     function isIntentFunded(
         Intent calldata intent
@@ -340,7 +342,7 @@ contract IntentSource is IIntentSource, Semver {
      * @dev Must not be among the intent's rewards
      * @param routeHash Hash of the intent's route
      * @param reward Reward structure of the intent
-     * @param token Optional token address for handling incorrect vault transfers
+     * @param token Token address for handling incorrect vault transfers
      */
     function recoverToken(
         bytes32 routeHash,
