@@ -62,6 +62,7 @@ for CHAIN_ID in "${CHAINS[@]}"; do
     # Construct Foundry command
     FOUNDRY_CMD="MAILBOX=\"$MAILBOX_CONTRACT\" SALT=\"$SALT\" DEPLOY_FILE=\"$DEPLOY_FILE\" forge script scripts/Deploy.s.sol \
             --rpc-url \"$RPC_URL\" \
+            --slow \
             --broadcast \
             --private-key \"$PRIVATE_KEY\""
 
