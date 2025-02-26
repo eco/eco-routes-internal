@@ -92,13 +92,17 @@ jobs:
         run: forge install
       - name: 🔧 Grant Execute Permission to MultiDeploy.sh
         run: chmod +x scripts/MultiDeploy.sh
+      - name: 🔧 Grant Execute Permission to OwnableExecutor.sh
+        run: chmod +x scripts/OwnableExecutor.sh 
       - name: 🔧 Grant Execute Permission to Verify.sh
         run: chmod +x scripts/Verify.sh
       - name: Install dependencies
         uses: borales/actions-yarn@v5
         with:
           cmd: install
-      - name: Deploy Contracts
+      - name: 🔄 Deploy OwnableExecutor.sh
+        run: ./scripts/OwnableExecutor.sh 
+      - name: 🔄 Deploy Contracts
         uses: borales/actions-yarn@v5
         with:
           cmd: deployForgeCI
