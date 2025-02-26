@@ -104,4 +104,4 @@ output/proofGenerationOutput.json
 .idea/
 
 broadcast/
-cache*
+cache_forge/
