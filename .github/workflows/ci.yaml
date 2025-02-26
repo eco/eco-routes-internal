@@ -22,12 +22,6 @@ jobs:
         with:
           cmd: install # will run `yarn install` command
 
-      - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
-
-      - name: Install Forge Dependencies
-        run: forge install
-
       - name: build project
         uses: borales/actions-yarn@v5
         with:
