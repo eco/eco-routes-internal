@@ -18,6 +18,10 @@ interface IVault is IVaultStorage {
         uint256 amount
     );
 
+    /**
+     * @notice Thrown when the vault is not able to properly reward the claimant
+     * @dev For edge cases where the reward balance is not sufficient etc
+     */
     event RewardTransferFailed(
         address indexed token,
         address indexed to,
