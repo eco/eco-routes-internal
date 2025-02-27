@@ -2,6 +2,7 @@
 pragma solidity ^0.8.20;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IMailbox} from "@hyperlane-xyz/core/contracts/interfaces/IMailbox.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IStablePool} from "./interfaces/IStablePool.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -14,21 +15,25 @@ contract StablePool is IStablePool, Ownable {
 
     address public immutable TOKEN;
 
-    mapping(address => uint256) public tokenThresholds;
+    address public immutable MAILBOX;
 
-    mapping(address => uint256) public tokenTotals;
+    address[] public allowedTokens;
+
+    mapping(address => uint256) public tokenThresholds;
 
     constructor(
         address _owner,
         address _litAgent,
         address _token,
+        address _mailbox,
         address[] memory _initialTokens
     ) Ownable(_owner) {
         LIT_AGENT = _litAgent;
         TOKEN = token;
+        MAILBOX = _mailbox;
         // Initialize with a predefined list of tokens
-        for (uint256 i = 0; i < _initialTokens.length; i++) {
-            allowedTokens[_initialTokens[i]] = true;
+        for (uint256 i = 0; i < _initialTokens.length; ++i) {
+            allowedTokens.push(_initialTokens[i]);
             emit TokenWhitelistChanged(_initialTokens[i], true);
         }
     }
@@ -49,6 +54,7 @@ contract StablePool is IStablePool, Ownable {
     function _deposit(address _token, uint256 _amount) internal {
         require(tokenWhitelist[_token], InvalidToken());
         tokenTotals[_token] += _amount;
+        total += _amount;
         IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
     }
 
@@ -90,5 +96,16 @@ contract StablePool is IStablePool, Ownable {
         address _token
     ) external view returns (WithdrawalQueueEntry[] memory) {
         return withdrawalQueues[_token];
+    }
+
+    function broadcastYieldInfo() external onlyLitAction{
+        uint256 localTokens = 0;
+        uint256 length = allowedTokens.length;
+        for (uint256 i = 0; i < length; ++i) {
+            localTokens += IERC20(allowedTokens[i]).balanceOf(address(this));
+        }
+        uint256 localShares = EcoDollar(TOKEN).totalShares();
+
+        // hyperlane broadcasting
     }
 }

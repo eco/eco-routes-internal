@@ -6,14 +6,14 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IMailbox} from "@hyperlane-xyz/core/contracts/interfaces/IMailbox.sol";
 // import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 
-contract RebasingToken is IERC20, Ownable {
+contract EcoDollar is IERC20, Ownable {
     uint256 public BASE = 1e6; // 1.0 initial scaling factor
 
     string private _name = "EcoDollar";
     string private _symbol = "eUSD";
     uint8 private _decimals = 6;
-
-    uint256 public rewardMultiplier;
+    
+    uint128 public rewardMultiplier;
 
     uint128 public totalShares;
 
@@ -112,25 +112,6 @@ contract RebasingToken is IERC20, Ownable {
         return _allowances[owner][spender];
     }
 
-    function rebase(int256 supplyChange) external onlyOwner {
-        if (supplyChange == 0) {
-            emit Rebased(_totalSupply, rewardMultiplier);
-            return;
-        }
-
-        if (supplyChange > 0) {
-            _totalSupply += uint256(supplyChange);
-        } else {
-            _totalSupply -= uint256(-supplyChange);
-        }
-
-        rewardMultiplier =
-            (_totalSupply * BASE) /
-            (_totalSupply - uint256(supplyChange));
-
-        emit Rebased(_totalSupply, rewardMultiplier);
-    }
-
     /**
      * @dev Private function to set the reward multiplier.
      * @param rewardMultiplier The new reward multiplier.
@@ -209,10 +190,5 @@ contract RebasingToken is IERC20, Ownable {
      */
     function convertToShares(uint256 _tokens) public view returns (uint256) {
         return (_shares * BASE) / rewardMultiplier;
-    }
-
-    function broadcast() external {
-        abi.encodePacked(totalShares, totalFees).sendTo;
-        IMailbox(MAILBOX).dispatch();
     }
 }
