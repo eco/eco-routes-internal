@@ -201,6 +201,16 @@ describe('Inbox Test', (): void => {
   })
 
   describe('fulfill when the intent is invalid', () => {
+    it('should revert if fulfillment is attempted on an incorrect destination chain', async () => {
+      route.destination = 123
+      await expect(
+        inbox
+          .connect(owner)
+          .fulfillStorage(route, rewardHash, dstAddr.address, intentHash),
+      )
+        .to.be.revertedWithCustomError(inbox, 'WrongChain')
+        .withArgs(123)
+    })
     it('should revert if solved by someone who isnt whitelisted when solving isnt public', async () => {
       expect(await inbox.isSolvingPublic()).to.be.false
       expect(await inbox.solverWhitelist(owner.address)).to.be.false
@@ -279,7 +289,7 @@ describe('Inbox Test', (): void => {
           .fulfillStorage(_route, rewardHash, dstAddr.address, _intentHash),
       ).to.be.revertedWithCustomError(inbox, 'IntentCallFailed')
     })
-    it('should revert if one of the targets is the mailbox', async () => {
+    it('should revert if any of the targets is the mailbox', async () => {
       await inbox.connect(owner).setMailbox(await mailbox.getAddress())
       const _route = {
         ...route,
@@ -298,6 +308,28 @@ describe('Inbox Test', (): void => {
           .connect(solver)
           .fulfillStorage(_route, rewardHash, dstAddr.address, _intentHash),
       ).to.be.revertedWithCustomError(inbox, 'CallToMailbox')
+    })
+    it('should revert if one of the targets is an EOA', async () => {
+      await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
+
+      const _route = {
+        ...route,
+        calls: [
+          {
+            target: solver.address,
+            data: await encodeTransfer(dstAddr.address, mintAmount * 100),
+            value: 0,
+          },
+        ],
+      }
+      const _intentHash = hashIntent({ route: _route, reward }).intentHash
+      await expect(
+        inbox
+          .connect(solver)
+          .fulfillStorage(_route, rewardHash, dstAddr.address, _intentHash),
+      )
+        .to.be.revertedWithCustomError(inbox, 'CallToEOA')
+        .withArgs(solver.address)
     })
     it('should not revert when called by a whitelisted solver', async () => {
       expect(await inbox.solverWhitelist(solver)).to.be.true
