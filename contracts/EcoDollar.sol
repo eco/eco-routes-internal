@@ -4,9 +4,10 @@ pragma solidity ^0.8.20;
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IEcoDollar} from "./interfaces/IEcoDollar.sol";
 import {IMailbox} from "@hyperlane-xyz/core/contracts/interfaces/IMailbox.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 // import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 
-contract EcoDollar is IEcoDollar, Ownable {
+contract EcoDollar is IEcoDollar, ERC20, Ownable {
     uint256 public BASE = 1e6; // 1.0 initial scaling factor
 
     string private _name = "EcoDollar";
@@ -40,15 +41,7 @@ contract EcoDollar is IEcoDollar, Ownable {
         rewardMultiplier = BASE;
     }
 
-    function name() public view returns (string memory) {
-        return _name;
-    }
-
-    function symbol() public view returns (string memory) {
-        return _symbol;
-    }
-
-    function decimals() public view returns (uint8) {
+    function decimals() public view override returns (uint8) {
         return _decimals;
     }
 
@@ -81,25 +74,18 @@ contract EcoDollar is IEcoDollar, Ownable {
     }
 
     function mint(address _account, uint256 _tokens) public onlyOwner {
-        if (_account == address(0)) {
-            revert ERC20InvalidReceiver(address(0));
-        }
-        _transferFrom(address(0), _account, _tokens);
+        _mint(_account, _tokens);
     }
 
     function burn(address _account, uint256 _tokens) public onlyOwner {
-        if (_account == address(0)) {
-            revert ERC20InvalidSender(address(0));
-        }
-        _transferFrom(_account, address(0), _tokens);
+        _burn(_account, _tokens);
     }
 
     function transfer(
         address recipient,
         uint256 amount
     ) public override returns (bool) {
-        _transferFrom(msg.sender, recipient, amount);
-        return true;
+        return super.transfer(recipient, amount);
     }
 
     function approve(
@@ -116,11 +102,7 @@ contract EcoDollar is IEcoDollar, Ownable {
         address recipient,
         uint256 amount
     ) public override returns (bool) {
-        require(
-            _allowances[sender][msg.sender] >= amount,
-            ERC20InsufficientAllowance(sender, amount, _shares[sender])
-        );
-        return _transferFrom(sender, recipient, amount);
+        return super.transferFrom(sender, recipient, amount);
     }
 
     function allowance(
@@ -161,11 +143,41 @@ contract EcoDollar is IEcoDollar, Ownable {
      * As such, users should be aware of who they're transacting with.
      * Sending tokens to a blocked account could result in those tokens becoming inaccessible.
      */
-    function _transferFrom(
+    function _update(
         address from,
         address to,
         uint256 amount
-    ) private returns (bool) {
+    ) internal override {
+        uint256 shares = convertToShares(amount);
+
+        if (from == address(0)) {
+            // Overflow check required: The rest of the code assumes that totalSupply never overflows
+            totalSha += shares;
+        } else {
+            uint256 fromBalance = _balances[from];
+            if (fromBalance < value) {
+                revert ERC20InsufficientBalance(from, fromBalance, value);
+            }
+            unchecked {
+                // Overflow not possible: value <= fromBalance <= totalSupply.
+                _balances[from] = fromBalance - value;
+            }
+        }
+
+        if (to == address(0)) {
+            unchecked {
+                // Overflow not possible: value <= totalSupply or value <= fromBalance <= totalSupply.
+                _totalSupply -= value;
+            }
+        } else {
+            unchecked {
+                // Overflow not possible: balance + value is at most totalSupply, which we know fits into a uint256.
+                _balances[to] += value;
+            }
+        }
+
+        emit Transfer(from, to, value);
+
         require(from != address(0), ERC20InvalidSender(from));
         require(to != address(0), ERC20InvalidReceiver(to));
 
