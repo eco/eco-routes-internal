@@ -9,7 +9,9 @@ interface IEcoDollar is IERC20, IERC20Errors {
 
     event Rebased(uint256 scalingFactor);
 
-    error InvalidSender();
+    error RewardMultiplierTooLow(uint256 _rewardMultiplier);
+
+    error InvalidSender();gasleft();
 
     function name() external view returns (string memory);
     function symbol() external view returns (string memory);

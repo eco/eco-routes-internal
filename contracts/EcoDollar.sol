@@ -17,8 +17,6 @@ contract EcoDollar is IEcoDollar, Ownable {
 
     uint256 public totalShares;
 
-    uint128 public totalFees;
-
     address public LIT_AGENT;
 
     address public immutable MAILBOX;
@@ -73,8 +71,7 @@ contract EcoDollar is IEcoDollar, Ownable {
      * @return The equivalent amount of tokens.
      */
     function convertToShares(uint256 _tokens) public view returns (uint256) {
-        uint256 shares = convertToShares(_tokens);
-        return (shares * BASE) / rewardMultiplier;
+        return (_tokens * BASE) / rewardMultiplier;
     }
 
     function balanceOf(
@@ -84,19 +81,17 @@ contract EcoDollar is IEcoDollar, Ownable {
     }
 
     function mint(address _account, uint256 _tokens) public onlyOwner {
-        uint256 shares = convertToShares(_tokens);
-        _shares[_account] += shares;
-        totalShares += shares;
-
-        emit Transfer(address(0), _account, shares);
+        if (_account == address(0)) {
+            revert ERC20InvalidReceiver(address(0));
+        }
+        _transferFrom(address(0), _account, _tokens);
     }
 
     function burn(address _account, uint256 _tokens) public onlyOwner {
-        uint256 shares = convertToShares(_tokens);
-        _shares[_account] -= shares;
-        totalShares -= shares;
-
-        emit Transfer(_account, address(0), shares);
+        if (_account == address(0)) {
+            revert ERC20InvalidSender(address(0));
+        }
+        _transferFrom(_account, address(0), _tokens);
     }
 
     function transfer(
@@ -104,8 +99,6 @@ contract EcoDollar is IEcoDollar, Ownable {
         uint256 amount
     ) public override returns (bool) {
         _transferFrom(msg.sender, recipient, amount);
-
-        emit Transfer(msg.sender, recipient, amount);
         return true;
     }
 
@@ -123,19 +116,11 @@ contract EcoDollar is IEcoDollar, Ownable {
         address recipient,
         uint256 amount
     ) public override returns (bool) {
-        uint256 adjustedAmount = (amount * BASE) / rewardMultiplier;
-        require(_shares[sender] >= adjustedAmount, "Insufficient balance");
         require(
             _allowances[sender][msg.sender] >= amount,
-            "Allowance exceeded"
+            ERC20InsufficientAllowance(sender, amount, _shares[sender])
         );
-
-        _shares[sender] -= adjustedAmount;
-        _shares[recipient] += adjustedAmount;
-        _allowances[sender][msg.sender] -= amount;
-
-        emit Transfer(sender, recipient, amount);
-        return true;
+        return _transferFrom(sender, recipient, amount);
     }
 
     function allowance(
@@ -147,10 +132,15 @@ contract EcoDollar is IEcoDollar, Ownable {
 
     /**
      *
-     * @param rewardMultiplier The new reward multiplier.
+     * @param _rewardMultiplier The new reward multiplier.
      */
-    function rebase(uint256 rewardMultiplier) external onlyOwner {
-        rewardMultiplier = rewardMultiplier;
+    function rebase(uint256 _rewardMultiplier) external onlyOwner {
+        // sanity check
+        require(
+            _rewardMultiplier > rewardMultiplier,
+            RewardMultiplierTooLow(_rewardMultiplier, rewardMultiplier)
+        );
+        rewardMultiplier = _rewardMultiplier;
 
         emit Rebased(rewardMultiplier);
     }
@@ -171,7 +161,11 @@ contract EcoDollar is IEcoDollar, Ownable {
      * As such, users should be aware of who they're transacting with.
      * Sending tokens to a blocked account could result in those tokens becoming inaccessible.
      */
-    function _transferFrom(address from, address to, uint256 amount) private {
+    function _transferFrom(
+        address from,
+        address to,
+        uint256 amount
+    ) private returns (bool) {
         require(from != address(0), ERC20InvalidSender(from));
         require(to != address(0), ERC20InvalidReceiver(to));
 
@@ -191,6 +185,7 @@ contract EcoDollar is IEcoDollar, Ownable {
             _shares[to] += shares;
         }
 
+        return true;
         // _afterTokenTransfer(from, to, amount);
     }
 }
