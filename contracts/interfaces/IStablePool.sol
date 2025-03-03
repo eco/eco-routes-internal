@@ -7,7 +7,7 @@ interface IStablePool {
         uint96 amount;
     }
 
-    event TokenWhitelistChanged(address indexed token, bool allowed);
+    event TokenThresholdChanged(address indexed token, uint256 threshold);
     event Deposited(
         address indexed user,
         address indexed token,
@@ -19,17 +19,26 @@ interface IStablePool {
         uint256 amount
     );
 
+    event AddedToWithdrawalQueue(
+        address indexed user,
+        WithdrawalQueueEntry entry
+    );
+
+    // this is basically an error state
+    event WithdrawalQueueThresholdReached(address token);
+
     // Custom Errors for Gas Efficiency
     error InvalidToken();
     error InvalidAmount();
-    error InsufficientTokenBalance(address _token);
+    error InsufficientTokenBalance(
+        address _token,
+        uint256 _balance,
+        uint256 _needed
+    );
     error TransferFailed();
 
-    function setAllowedToken(address token, bool allowed) external;
+    function updateThreshold(address token, uint256 allowed) external;
     function deposit(address token, uint256 amount) external;
     function withdraw(address token, uint256 amount) external;
-    function getBalance(
-        address user,
-        address token
-    ) external view returns (uint256);
+    function getBalance(address user) external view returns (uint256);
 }

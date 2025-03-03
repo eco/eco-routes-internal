@@ -7,56 +7,79 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IStablePool} from "./interfaces/IStablePool.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {EcoDollar} from "./EcoDollar.sol";
+import {IEcoDollar} from "./interfaces/IEcoDollar.sol";
+import {TokenAmount} from "./types/Intent.sol";
 
 contract StablePool is IStablePool, Ownable {
     using SafeERC20 for IERC20;
 
     address public immutable LIT_AGENT;
 
-    address public immutable TOKEN;
+    address public immutable REBASE_TOKEN;
 
     address public immutable MAILBOX;
 
     address[] public allowedTokens;
 
     mapping(address => uint256) public tokenThresholds;
-
+    // is there an advantage to combining these? probably not since accesses are pretty independent
     mapping(address => WithdrawalQueueEntry[]) public withdrawalQueues;
 
     constructor(
         address _owner,
         address _litAgent,
-        address _token,
+        address _rebaseToken,
         address _mailbox,
-        address[] memory _initialTokens
+        TokenAmount[] memory _initialTokens
     ) Ownable(_owner) {
         LIT_AGENT = _litAgent;
-        TOKEN = token;
+        REBASE_TOKEN = _rebaseToken;
         MAILBOX = _mailbox;
         // Initialize with a predefined list of tokens
         for (uint256 i = 0; i < _initialTokens.length; ++i) {
-            allowedTokens.push(_initialTokens[i]);
-            emit TokenWhitelistChanged(_initialTokens[i], true);
+            TokenAmount memory token = _initialTokens[i];
+            require(token.amount > 0, InvalidAmount());
+            require(token.token != address(0), InvalidToken());
+            require(tokenThresholds[token.token] == 0, InvalidToken());
+
+            allowedTokens.push(token.token);
+            tokenThresholds[token.token] = token.amount;
+            emit TokenThresholdChanged(token.token, token.amount);
         }
     }
 
     // Owner can update allowed tokens
-    function setAllowedToken(address _token, bool _allowed) external onlyOwner {
-        allowedTokens[_token] = _allowed;
-        emit TokenWhitelistChanged(_token, _allowed);
+    function updateThreshold(
+        address _token,
+        uint256 _threshold
+    ) external onlyOwner {
+        if (tokenThresholds[_token] == 0) {
+            //add new token
+            require(_threshold > 0, InvalidAmount());
+            allowedTokens.push(_token);
+            tokenThresholds[_token] = _threshold;
+            emit TokenThresholdChanged(_token, _threshold);
+        } else if (_threshold == 0) {
+            //remove existing token
+            tokenThresholds[_token] = 0;
+            _swapAndPopWhitelist(_token);
+            emit TokenThresholdChanged(_token, 0);
+        } else {
+            //update threshold
+            tokenThresholds[_token] = _threshold;
+            emit TokenThresholdChanged(_token, _threshold);
+        }
     }
 
     // Deposit function
-    function deposit(address _token, uint96 _amount) external {
+    function deposit(address _token, uint256 _amount) external {
         _deposit(_token, _amount);
-        EcoDollar(TOKEN).mint(LIT_AGENT, _amount);
+        EcoDollar(REBASE_TOKEN).mint(LIT_AGENT, _amount);
         emit Deposited(msg.sender, _token, _amount);
     }
 
-    function _deposit(address _token, uint96 _amount) internal {
-        require(tokenWhitelist[_token], InvalidToken());
-        tokenTotals[_token] += _amount;
-        total += _amount;
+    function _deposit(address _token, uint256 _amount) internal {
+        require(tokenThresholds[_token] > 0, InvalidToken());
         IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
     }
 
@@ -65,80 +88,81 @@ contract StablePool is IStablePool, Ownable {
      * @param _preferredToken The token to withdraw
      * @param _amount The amount to withdraw
      */
-    function withdraw(address _preferredToken, uint96 _amount) external {
-        uint256 tokenTotal = tokenTotals[_preferredToken];
+    function withdraw(address _preferredToken, uint256 _amount) external {
+        uint256 tokenBalance = IERC20(REBASE_TOKEN).balanceOf(msg.sender);
+
         require(
-            tokenTotal >= _amount,
-            InsufficientTokenBalance(_preferredToken)
+            tokenBalance >= _amount,
+            InsufficientTokenBalance(
+                _preferredToken,
+                tokenBalance,
+                _amount - tokenBalance
+            )
         );
 
-        IERC20(TOKEN).burn(msg.sender, _amount);
+        IEcoDollar(REBASE_TOKEN).burn(msg.sender, _amount);
 
-        if (tokenTotal > tokenThresholds[_preferredToken]) {
+        if (tokenBalance > tokenThresholds[_preferredToken]) {
             IERC20(_preferredToken).safeTransfer(msg.sender, _amount);
+            emit Withdrawn(msg.sender, _preferredToken, _amount);
         } else {
             // need to rebase, add to withdrawal queue
-            withdrawalQueues[_preferredToken].push(
-                WithdrawalQueueEntry(msg.sender, _amount)
+            WithdrawalQueueEntry memory entry = WithdrawalQueueEntry(
+                msg.sender,
+                uint96(_amount)
             );
+            withdrawalQueues[_preferredToken].push(entry);
+            emit AddedToWithdrawalQueue(_preferredToken, entry);
         }
-        IERC20(TOKEN).burn(msg.sender, _amount);
-
-        emit Withdrawn(msg.sender, _preferredToken, _amount);
+        IEcoDollar(REBASE_TOKEN).burn(msg.sender, _amount);
     }
 
-    // Check balance of a user for a specific _token
-    function getBalance(
-        address user,
-        address _token
-    ) external view returns (uint256) {
-        return IERC20(TOKEN).balanceOf(user);
+    // Check pool balance of a user
+    // Reflects most recent rebalance
+    function getBalance(address user) external view returns (uint256) {
+        return IERC20(REBASE_TOKEN).balanceOf(user);
     }
 
-    function getWithdrawalQueue(
-        address _token
-    ) external view returns (WithdrawalQueueEntry[] memory) {
-        return withdrawalQueues[_token];
-    }
-
-    function broadcastYieldInfo() external onlyLitAction {
+    // to be restricted
+    // assumes that intent fees are sent directly to the pool address
+    function broadcastYieldInfo() external {
         uint256 localTokens = 0;
         uint256 length = allowedTokens.length;
         for (uint256 i = 0; i < length; ++i) {
             localTokens += IERC20(allowedTokens[i]).balanceOf(address(this));
         }
-        uint256 localShares = EcoDollar(TOKEN).totalShares();
+        uint256 localShares = EcoDollar(REBASE_TOKEN).totalShares();
 
-        // hyperlane broadcasting
+        // TODO: hyperlane broadcasting
     }
 
     function processWithdrawalQueue(address token) public {
         uint256 queueLength = withdrawalQueues[token].length;
-        for (uint256 i = 0; i < queueLength; ++i) {
+        // investigate risk of griefing someone by constantly queueing withdrawals that will push the pool below threshold
+        // going through queue backwards to avoid writes
+        // can swap and pop if we cannot mitigate
+        for (uint256 i = queueLength; i > 0; --i) {
             WithdrawalQueueEntry storage entry = withdrawalQueues[token][i];
-            if (tokenTotals[token] > tokenThresholds[token]) {
-                IERC20(token).safeTransfer(entry.user, entry.amount);
-                tokenTotals[token] -= entry.amount;
+            IERC20 stable = IERC20(token);
+            if (stable.balanceOf(address(this)) > tokenThresholds[token]) {
+                stable.safeTransfer(entry.user, entry.amount);
+                withdrawalQueues[token].pop();
             } else {
+                // dip below threshold during withdrawal queue processing
+                emit WithdrawalQueueThresholdReached(token);
                 break;
             }
         }
-        for (uint256 i = 0; i < withdrawal.length; ++i) {
-            processWithdrawalQueueForToken(allowedTokens[i]);
-        }
-        uint256 threshold = tokenThresholds[token];
-        WithdrawalQueueEntry[] storage queue = withdrawalQueues[token];
-        uint256 length = queue.length;
-        for (uint256 i = 0; i < length; ++i) {
-            WithdrawalQueueEntry storage entry = queue[i];
-            if (tokenTotal > threshold) {
-                IERC20(token).safeTransfer(entry.user, entry.amount);
-                tokenTotal -= entry.amount;
-            } else {
-                break;
-            }
-        }
-        withdrawalQueues[token] = queue;
+    }
 
+    function _swapAndPopWhitelist(address _tokenToRemove) internal {
+        uint256 length = allowedTokens.length;
+        for (uint256 i = 0; i < length; ++i) {
+            if (allowedTokens[i] == _tokenToRemove) {
+                allowedTokens[i] = allowedTokens[length - 1];
+                allowedTokens.pop();
+                break;
+            }
+        }
     }
 }

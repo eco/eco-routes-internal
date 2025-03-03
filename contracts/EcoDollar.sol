@@ -12,10 +12,10 @@ contract EcoDollar is IEcoDollar, Ownable {
     string private _name = "EcoDollar";
     string private _symbol = "eUSD";
     uint8 private _decimals = 6;
-    
-    uint128 public rewardMultiplier;
 
-    uint128 public totalShares;
+    uint256 public rewardMultiplier;
+
+    uint256 public totalShares;
 
     uint128 public totalFees;
 
@@ -23,12 +23,20 @@ contract EcoDollar is IEcoDollar, Ownable {
 
     address public immutable MAILBOX;
 
+    // in shares
     mapping(address => uint256) private _shares;
+
+    // in tokens
     mapping(address => mapping(address => uint256)) private _allowances;
 
     event Rebased(uint256 newTotalSupply, uint256 rewardMultiplier);
 
-    constructor(address _owner, address _litAgent, address _mailbox) Ownable(_owner) {
+    //owner is the pool
+    constructor(
+        address _owner,
+        address _litAgent,
+        address _mailbox
+    ) Ownable(_owner) {
         LIT_AGENT = _litAgent;
         MAILBOX = _mailbox;
         rewardMultiplier = BASE;
@@ -47,10 +55,31 @@ contract EcoDollar is IEcoDollar, Ownable {
     }
 
     function totalSupply() public view override returns (uint256) {
-        return _totalSupply;
+        return convertToTokens(totalShares);
     }
 
-    function balanceOf(address _account) public view override returns (uint256) {
+    /**
+     * @notice Converts an amount of _shares to tokens.
+     * @param _shares The amount of _shares to convert.
+     * @return The equivalent amount of tokens.
+     */
+    function convertToTokens(uint256 _shares) public view returns (uint256) {
+        return (_shares * rewardMultiplier) / BASE;
+    }
+
+    /**
+     * @notice Converts an amount of _shares to tokens.
+     * @param _tokens The amount of _shares to convert.
+     * @return The equivalent amount of tokens.
+     */
+    function convertToShares(uint256 _tokens) public view returns (uint256) {
+        uint256 shares = convertToShares(_tokens);
+        return (shares * BASE) / rewardMultiplier;
+    }
+
+    function balanceOf(
+        address _account
+    ) public view override returns (uint256) {
         return (_shares[_account] * rewardMultiplier) / BASE;
     }
 
@@ -74,11 +103,7 @@ contract EcoDollar is IEcoDollar, Ownable {
         address recipient,
         uint256 amount
     ) public override returns (bool) {
-        uint256 adjustedAmount = (amount * BASE) / rewardMultiplier;
-        require(_shares[msg.sender] >= adjustedAmount, "Insufficient balance");
-
-        _shares[msg.sender] -= adjustedAmount;
-        _shares[recipient] += adjustedAmount;
+        _transferFrom(msg.sender, recipient, amount);
 
         emit Transfer(msg.sender, recipient, amount);
         return true;
@@ -121,22 +146,13 @@ contract EcoDollar is IEcoDollar, Ownable {
     }
 
     /**
-     * @dev Private function to set the reward multiplier.
+     *
      * @param rewardMultiplier The new reward multiplier.
      */
-    function _setRewardMultiplier(uint256 rewardMultiplier) private {
+    function rebase(uint256 rewardMultiplier) external onlyOwner {
         rewardMultiplier = rewardMultiplier;
 
-        emit RewardMultiplier(rewardMultiplier);
-    }
-
-    /**
-     * @notice Converts an amount of _shares to tokens.
-     * @param _shares The amount of _shares to convert.
-     * @return The equivalent amount of tokens.
-     */
-    function convertToTokens(uint256 _shares) public view returns (uint256) {
-        return (_shares * rewardMultiplier) / BASE;
+        emit Rebased(rewardMultiplier);
     }
 
     /**
@@ -155,48 +171,26 @@ contract EcoDollar is IEcoDollar, Ownable {
      * As such, users should be aware of who they're transacting with.
      * Sending tokens to a blocked account could result in those tokens becoming inaccessible.
      */
-    function _transfer(address from, address to, uint256 amount) private {
-        if (from == address(0)) {
-            revert ERC20InvalidSender(from);
-        }
-        if (to == address(0)) {
-            revert ERC20InvalidReceiver(to);
-        }
+    function _transferFrom(address from, address to, uint256 amount) private {
+        require(from != address(0), ERC20InvalidSender(from));
+        require(to != address(0), ERC20InvalidReceiver(to));
 
-        // _beforeTokenTransfer(from, to, amount);
+        uint256 balance = balanceOf(from);
+        require(
+            balance >= amount,
+            ERC20InsufficientBalance(from, amount, amount - balance)
+        );
 
-        uint256 _shares = convertToShares(amount);
+        uint256 shares = convertToShares(amount);
         uint256 fromShares = _shares[from];
 
-        if (fromShares < _shares) {
-            revert ERC20InsufficientBalance(from, fromShares, _shares);
-        }
-
         unchecked {
-            _shares[from] = fromShares - _shares;
+            _shares[from] = fromShares - shares;
             // Overflow not possible: the sum of all _shares is capped by totalShares, and the sum is preserved by
             // decrementing then incrementing.
-            _shares[to] += _shares;
+            _shares[to] += shares;
         }
 
         // _afterTokenTransfer(from, to, amount);
-    }
-
-    /**
-     * @notice Converts an amount of _shares to tokens.
-     * @param _shares The amount of _shares to convert.
-     * @return The equivalent amount of tokens.
-     */
-    function convertToTokens(uint256 _shares) public view returns (uint256) {
-        return (_shares * rewardMultiplier) / BASE;
-    }
-
-    /**
-     * @notice Converts an amount of _shares to tokens.
-     * @param _tokens The amount of _shares to convert.
-     * @return The equivalent amount of tokens.
-     */
-    function convertToShares(uint256 _tokens) public view returns (uint256) {
-        return (_shares * BASE) / rewardMultiplier;
     }
 }
