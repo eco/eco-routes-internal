@@ -2,6 +2,11 @@
 pragma solidity ^0.8.20;
 
 interface IStablePool {
+    struct WithdrawalQueueEntry {
+        address user;
+        uint96 amount;
+    }
+
     event TokenWhitelistChanged(address indexed token, bool allowed);
     event Deposited(
         address indexed user,

@@ -2,11 +2,11 @@
 pragma solidity ^0.8.20;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IEcoDollar} from "./interfaces/IEcoDollar.sol";
 import {IMailbox} from "@hyperlane-xyz/core/contracts/interfaces/IMailbox.sol";
 // import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 
-contract EcoDollar is IERC20, Ownable {
+contract EcoDollar is IEcoDollar, Ownable {
     uint256 public BASE = 1e6; // 1.0 initial scaling factor
 
     string private _name = "EcoDollar";
@@ -60,6 +60,14 @@ contract EcoDollar is IERC20, Ownable {
         totalShares += shares;
 
         emit Transfer(address(0), _account, shares);
+    }
+
+    function burn(address _account, uint256 _tokens) public onlyOwner {
+        uint256 shares = convertToShares(_tokens);
+        _shares[_account] -= shares;
+        totalShares -= shares;
+
+        emit Transfer(_account, address(0), shares);
     }
 
     function transfer(
@@ -155,7 +163,7 @@ contract EcoDollar is IERC20, Ownable {
             revert ERC20InvalidReceiver(to);
         }
 
-        _beforeTokenTransfer(from, to, amount);
+        // _beforeTokenTransfer(from, to, amount);
 
         uint256 _shares = convertToShares(amount);
         uint256 fromShares = _shares[from];
@@ -171,7 +179,7 @@ contract EcoDollar is IERC20, Ownable {
             _shares[to] += _shares;
         }
 
-        _afterTokenTransfer(from, to, amount);
+        // _afterTokenTransfer(from, to, amount);
     }
 
     /**

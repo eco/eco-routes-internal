@@ -21,6 +21,8 @@ contract StablePool is IStablePool, Ownable {
 
     mapping(address => uint256) public tokenThresholds;
 
+    mapping(address => WithdrawalQueueEntry[]) public withdrawalQueues;
+
     constructor(
         address _owner,
         address _litAgent,
@@ -45,13 +47,13 @@ contract StablePool is IStablePool, Ownable {
     }
 
     // Deposit function
-    function deposit(address _token, uint256 _amount) external {
+    function deposit(address _token, uint96 _amount) external {
         _deposit(_token, _amount);
         EcoDollar(TOKEN).mint(LIT_AGENT, _amount);
         emit Deposited(msg.sender, _token, _amount);
     }
 
-    function _deposit(address _token, uint256 _amount) internal {
+    function _deposit(address _token, uint96 _amount) internal {
         require(tokenWhitelist[_token], InvalidToken());
         tokenTotals[_token] += _amount;
         total += _amount;
@@ -63,7 +65,7 @@ contract StablePool is IStablePool, Ownable {
      * @param _preferredToken The token to withdraw
      * @param _amount The amount to withdraw
      */
-    function withdraw(address _preferredToken, uint256 _amount) external {
+    function withdraw(address _preferredToken, uint96 _amount) external {
         uint256 tokenTotal = tokenTotals[_preferredToken];
         require(
             tokenTotal >= _amount,
@@ -75,6 +77,7 @@ contract StablePool is IStablePool, Ownable {
         if (tokenTotal > tokenThresholds[_preferredToken]) {
             IERC20(_preferredToken).safeTransfer(msg.sender, _amount);
         } else {
+            // need to rebase, add to withdrawal queue
             withdrawalQueues[_preferredToken].push(
                 WithdrawalQueueEntry(msg.sender, _amount)
             );
@@ -98,7 +101,7 @@ contract StablePool is IStablePool, Ownable {
         return withdrawalQueues[_token];
     }
 
-    function broadcastYieldInfo() external onlyLitAction{
+    function broadcastYieldInfo() external onlyLitAction {
         uint256 localTokens = 0;
         uint256 length = allowedTokens.length;
         for (uint256 i = 0; i < length; ++i) {
@@ -107,5 +110,35 @@ contract StablePool is IStablePool, Ownable {
         uint256 localShares = EcoDollar(TOKEN).totalShares();
 
         // hyperlane broadcasting
+    }
+
+    function processWithdrawalQueue(address token) public {
+        uint256 queueLength = withdrawalQueues[token].length;
+        for (uint256 i = 0; i < queueLength; ++i) {
+            WithdrawalQueueEntry storage entry = withdrawalQueues[token][i];
+            if (tokenTotals[token] > tokenThresholds[token]) {
+                IERC20(token).safeTransfer(entry.user, entry.amount);
+                tokenTotals[token] -= entry.amount;
+            } else {
+                break;
+            }
+        }
+        for (uint256 i = 0; i < withdrawal.length; ++i) {
+            processWithdrawalQueueForToken(allowedTokens[i]);
+        }
+        uint256 threshold = tokenThresholds[token];
+        WithdrawalQueueEntry[] storage queue = withdrawalQueues[token];
+        uint256 length = queue.length;
+        for (uint256 i = 0; i < length; ++i) {
+            WithdrawalQueueEntry storage entry = queue[i];
+            if (tokenTotal > threshold) {
+                IERC20(token).safeTransfer(entry.user, entry.amount);
+                tokenTotal -= entry.amount;
+            } else {
+                break;
+            }
+        }
+        withdrawalQueues[token] = queue;
+
     }
 }
