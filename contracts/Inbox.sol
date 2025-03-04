@@ -23,7 +23,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
     using SafeERC20 for IERC20;
 
     // Mapping of intent hash on the src chain to its fulfillment
-    mapping(bytes32 => address) public fulfilled;
+    mapping(bytes32 => ClaimantAndBatcherReward) public fulfilled;
 
     // Mapping of solvers to if they are whitelisted
     mapping(address => bool) public solverWhitelist;
@@ -260,8 +260,10 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
     ) public payable {
         uint256 size = _intentHashes.length;
         address[] memory claimants = new address[](size);
+        uint256 reward = 0;
         for (uint256 i = 0; i < size; ++i) {
-            address claimant = fulfilled[_intentHashes[i]];
+            address claimant = fulfilled[_intentHashes[i]].claimant;
+            reward += fulfilled[_intentHashes[i]].reward;
             if (claimant == address(0)) {
                 revert IntentNotFulfilled(_intentHashes[i]);
             }
@@ -282,13 +284,11 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
         if (msg.value < fee) {
             revert InsufficientFee(fee);
         }
-        if (msg.value > fee) {
-            (bool success, ) = payable(msg.sender).call{value: msg.value - fee}(
-                ""
-            );
-            if (!success) {
-                revert NativeTransferFailed();
-            }
+        (bool success, ) = payable(msg.sender).call{
+            value: msg.value + reward - fee
+        }("");
+        if (!success) {
+            revert NativeTransferFailed();
         }
         if (_postDispatchHook == address(0)) {
             IMailbox(mailbox).dispatch{value: fee}(
@@ -413,14 +413,17 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
         if (intentHash != _expectedHash) {
             revert InvalidHash(_expectedHash);
         }
-        if (fulfilled[intentHash] != address(0)) {
+        if (fulfilled[intentHash].claimant != address(0)) {
             revert IntentAlreadyFulfilled(intentHash);
         }
         if (_claimant == address(0)) {
             revert ZeroClaimant();
         }
 
-        fulfilled[intentHash] = _claimant;
+        fulfilled[intentHash] = ClaimantAndBatcherReward(
+            _claimant,
+            uint96(msg.value)
+        );
         emit Fulfillment(_expectedHash, _route.source, _claimant);
 
         uint256 routeTokenCount = _route.tokens.length;
