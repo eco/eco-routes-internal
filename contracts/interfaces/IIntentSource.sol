@@ -329,6 +329,7 @@ interface IIntentSource is ISemver, IVaultStorage {
      * @param claimant Address that will receive the rewards
      */
     function pushWithdraw(
+        bytes32 intentHash,
         bytes32 routeHash,
         Reward calldata reward,
         address claimant
@@ -342,6 +343,7 @@ interface IIntentSource is ISemver, IVaultStorage {
      * @param claimants Array of addresses to receive the rewards
      */
     function batchPushWithdraw(
+        bytes32[] calldata intentHashes,
         bytes32[] calldata routeHashes,
         Reward[] calldata rewards,
         address[] calldata claimants

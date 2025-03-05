@@ -367,7 +367,7 @@ contract PolymerProver is BaseProver, Semver {
                 claimants[i] = claimant;
                 totalIntentHashes++;
             }
-            IIntentSource(INTENT_SOURCE).batchPushWithdraw(routeHashes[startingIndex:totalIntentHashes], rewards, claimants);
+            IIntentSource(INTENT_SOURCE).batchPushWithdraw(intentHashes, routeHashes[startingIndex:totalIntentHashes], rewards, claimants);
         }
     }
 

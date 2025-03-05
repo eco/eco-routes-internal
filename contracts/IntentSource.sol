@@ -282,18 +282,14 @@ contract IntentSource is IIntentSource, Semver {
 
     /**
      * @notice Allows a prover to directly push a withdrawal for a fulfilled intent
-     * @dev Only callable by the intent's designated prover contract
+     * @dev Only callable by the intent's designated prover contract. Reverts if caller is not the prover,
+     * if claimant is zero address, or if rewards were already claimed/refunded.
      * @param routeHash Hash of the intent's route component
-     * @param reward Reward structure containing prover address and reward details
+     * @param reward Reward structure containing prover address and reward details  
      * @param claimant Address that will receive the rewards
-     * @custom:throws UnauthorizedProver if caller is not the intent's prover
-     * @custom:throws UnauthorizedWithdrawal if claimant is zero address
-     * @custom:throws RewardsAlreadyWithdrawn if rewards were already claimed/refunded
+     * @custom:error UnauthorizedProver Thrown if caller is not the intent's designated prover
      */
-    function pushWithdraw(bytes32 routeHash, Reward calldata reward, address claimant) public {
-        bytes32 rewardHash = keccak256(abi.encode(reward));
-        bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
-
+    function pushWithdraw(bytes32 intentHash, bytes32 routeHash, Reward calldata reward, address claimant) public {
         if (reward.prover != msg.sender) {
             revert UnauthorizedProver(msg.sender);
         }
@@ -303,21 +299,22 @@ contract IntentSource is IIntentSource, Semver {
 
     /**
      * @notice Batch processes multiple direct withdrawals from a prover
-     * @dev Calls pushWithdraw for each intent in the arrays
+     * @dev Calls pushWithdraw for each intent in the arrays. All arrays must be the same length.
      * @param routeHashes Array of route hashes for the intents
      * @param rewards Array of reward structures for the intents
      * @param claimants Array of addresses to receive the rewards
-     * @custom:throws ArrayLengthMismatch if input array lengths don't match
+     * @custom:error ArrayLengthMismatch Thrown if input array lengths don't match
      */
-    function batchPushWithdraw(bytes32[] calldata routeHashes, Reward[] calldata rewards, address[] calldata claimants) external {
-        uint256 length = routeHashes.length;
+    function batchPushWithdraw(bytes32[] calldata intentHashes, bytes32[] calldata routeHashes, Reward[] calldata rewards, address[] calldata claimants) external {
+        uint256 length = intentHashes.length;
 
-        if (length != rewards.length) {
+        //make more efficent later 
+        if (length != routeHashes.length || length != rewards.length || length != claimants.length) {
             revert ArrayLengthMismatch();
         }
 
         for (uint256 i = 0; i < length; ++i) {
-            pushWithdraw(routeHashes[i], rewards[i], claimants[i]);
+            pushWithdraw(intentHashes[i], routeHashes[i], rewards[i], claimants[i]);
         }
     }
     
