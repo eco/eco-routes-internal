@@ -956,5 +956,67 @@ describe('Inbox Test', (): void => {
       expect(await erc20.balanceOf(dstAddr.address)).to.equal(mintAmount)
     })
 
+    it('constructPackedMessage should work for multiple intents', async () => {
+      await inbox
+        .connect(solver)
+        .fulfillSilent(
+          route,
+          rewardHash,
+          dstAddr.address,
+          intentHash,
+        )
+      const newTokenAmount = 12345
+      const newTimeDelta = 1123
+
+      ;({
+        calls: otherCalls,
+        route,
+        reward,
+        intent,
+        routeHash,
+        rewardHash,
+        intentHash: otherHash,
+      } = await createIntentData(newTokenAmount, newTimeDelta))
+      await erc20.mint(solver.address, newTokenAmount)
+      await erc20
+        .connect(solver)
+        .approve(await inbox.getAddress(), newTokenAmount)
+
+      await inbox
+        .connect(solver)
+        .fulfillSilent(
+          route,
+          rewardHash,
+          dstAddr.address,
+          otherHash,
+        )
+
+      const packedHashes = ethers.solidityPacked(
+        ['bytes32','bytes32'],
+        [intentHash, otherHash]
+      );
+      const packedMessage = ethers.solidityPacked(
+        ['bool','uint16','uint160'],
+        [true, 2, dstAddr.address]
+      );
+
+      const messageBody = ethers.concat([packedMessage, packedHashes]);
+
+      console.log("Message Body:", messageBody);
+      
+      const result = await inbox
+        .connect(solver)
+        .constructPackedMessage(
+          [intentHash, otherHash],
+          true
+        )
+      console.log("Constructed Message:", result)
+      expect(result).to.equal(messageBody)
+    })
   })
+
+  //todo multiple claimants
+  //boolean true and false
+  //other edge cases
+  
 })

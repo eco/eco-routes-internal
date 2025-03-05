@@ -435,7 +435,60 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
         for (uint256 i = 0; i < size; ++i) {
             batchStorageEmit(_proveBatches[i].destinationChainID, _proveBatches[i].intentHashes);
         }
-    }   
+    }  
+
+    // this function is used to construct the packed message efficently. it packs the intent hashes and claimants into a single bytes
+    // object. It does this very lazily, meaning that it will keep packing for a given claimant until the claimant changes. 
+    // This is done to save processing gas, but requires that the caller of this function sorts the intent hashes by claimant. 
+    // if they fail to do so, the function will end up including the same claimant multiple times in the packed message.
+    // The alternative to this would be lots of really inefficient loops that scale poorly with the number of intent hashes.
+    // _claimAndBatch is a boolean that tells the prover if it should just claim the intents instead of marking them as proven, 
+    // which skips the intermediate step of saving the intent hashes in storage to the prover. 
+
+    // eventually we can construct the message in assembly to save gas
+    function constructPackedMessage(bytes32[] calldata _intentHashes, bool _batchThenClaim) public view returns (bytes memory) {
+        // check that the number of intent hashes is less than 65536
+        // we might not need to check that _intentHashes fits in uint16 because calldata is limited
+        // and you can't post 2.09mb in a transaction? 
+        require(_intentHashes.length < 65536, "IntentHashArrayTooLong");
+        uint16 size = uint16(_intentHashes.length);
+        bytes memory message;
+
+        // load the first intent hash and check if it has been fulfilled
+        uint16 startIndex = 0;
+        address currentClaimant = fulfilled[_intentHashes[0]];
+        if (currentClaimant == address(0)) {
+            revert IntentNotFulfilled(_intentHashes[0]);
+        }
+
+        for (uint16 i = 1; i < size; ++i) {
+            address loopClaimant = fulfilled[_intentHashes[i]];
+            if (loopClaimant == address(0)) {
+                revert IntentNotFulfilled(_intentHashes[i]);
+            }
+            if (loopClaimant != currentClaimant) {
+                uint16 chunkSize = i - startIndex;
+                // Combine these operations to reduce memory allocations
+                message = abi.encodePacked(
+                    message, 
+                    chunkSize, 
+                    currentClaimant,
+                    _intentHashes[startIndex:i]
+                );
+                startIndex = i;
+                currentClaimant = loopClaimant;
+            }
+        }
+        
+        // Add the last chunk directly to the message with the flag
+        return abi.encodePacked(
+            _batchThenClaim,
+            message,
+            size - startIndex,  // Final chunk size
+            currentClaimant,
+            _intentHashes[startIndex:size]
+        );
+    }
 
     /**
      * @notice Internal function to fulfill intents
