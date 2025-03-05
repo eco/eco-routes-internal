@@ -106,7 +106,7 @@ contract PolymerProver is BaseProver, Semver {
         Reward memory reward = _toReward(proverReward);
 
         validateIntentHash(routeHash, reward, intentHash);
-        IIntentSource(INTENT_SOURCE).pushWithdraw(routeHash, reward, claimant);
+        IIntentSource(INTENT_SOURCE).pushWithdraw(intentHash, routeHash, reward, claimant);
     }
 
     /**
@@ -134,7 +134,7 @@ contract PolymerProver is BaseProver, Semver {
             validateIntentHash(routeHashes[i], rewards[i], intentHashes[i]);
         }
         
-        IIntentSource(INTENT_SOURCE).batchPushWithdraw(routeHashes, rewards, claimants);
+        IIntentSource(INTENT_SOURCE).batchPushWithdraw(intentHashes, routeHashes, rewards, claimants);
     }
 
     /**
