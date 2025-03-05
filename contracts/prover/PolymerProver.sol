@@ -81,13 +81,15 @@ contract PolymerProver is BaseProver, Semver {
     constructor(
         address _crossL2ProverV2,
         address _inbox,
-        uint32[] memory _supportedChainIds
+        uint32[] memory _supportedChainIds,
+        address _intentSource
     ) {
         CROSS_L2_PROVER_V2 = ICrossL2ProverV2(_crossL2ProverV2);
         INBOX = _inbox;
         for (uint32 i = 0; i < _supportedChainIds.length; i++) {
             supportedChainIds[_supportedChainIds[i]] = true;
         }
+        INTENT_SOURCE = _intentSource;
     }
 
     /**
@@ -296,11 +298,13 @@ contract PolymerProver is BaseProver, Semver {
     }
 
     function validatePackedAndClaim(bytes calldata proof, bytes32[] calldata routeHashes, ProverReward[] calldata proverRewards) external {
+        if (routeHashes.length != proverRewards.length) revert SizeMismatch();
         _validatePackedAndClaim(proof, routeHashes, proverRewards);
     }
 
     function validateBatchPackedAndClaim(bytes[] calldata proofs, bytes32[][] calldata routeHashes, ProverReward[][] calldata proverRewards) external {
         for (uint256 i = 0; i < proofs.length; i++) {
+            if (routeHashes[i].length != proverRewards[i].length) revert SizeMismatch();
             _validatePackedAndClaim(proofs[i], routeHashes[i], proverRewards[i]);
         }
     }
@@ -326,49 +330,51 @@ contract PolymerProver is BaseProver, Semver {
 
     function decodeMessageandClaim(bytes memory messageBody, bytes32[] calldata routeHashes, ProverReward[] calldata proverRewards) internal {
         uint256 size = messageBody.length;
-        uint256 offset = 0;
-        uint256 totalIntentHashes = 0;
+        uint256 expectedSize = routeHashes.length;
 
-        //might be able to do this more efficently by checking 1-2 require instead of 3
+
+        uint256 offset = 0;
+        uint256 totalIntentCount = 0;
+        bytes32[] memory intentHashes = new bytes32[](expectedSize);
+        Reward[] memory rewards = new Reward[](expectedSize);
+        address[] memory claimants = new address[](expectedSize);
+
+        
         while (offset < size) {
-            //get chunkSize and check for truncation
+        
+            if (offset + 2 > size) revert("truncated chunkSize");
             uint16 chunkSize;
-            require(offset + 2 <= size, "truncated chunkSize");
-            assembly {
+            assembly { 
                 chunkSize := mload(add(messageBody, add(offset, 2)))
                 offset := add(offset, 2)
-            }
+                }
 
-            //get claimant address and check for truncation
-            require(offset + 20 <= size, "truncated claimant address");
+            if (offset + 20 > size) revert("truncated claimant address");
             address claimant;
-            assembly {
+            assembly { 
                 claimant := mload(add(messageBody, add(offset, 20)))
                 offset := add(offset, 20)
-            }
+                }
 
-            //get intentHash and check for truncation
 
-            require(offset + 32 * chunkSize <= size, "truncated intent set");
+            if (offset + 32 * chunkSize > size) revert("truncated intent set");
             bytes32 intentHash;
-            bytes32[] memory intentHashes = new bytes32[](chunkSize);
-            Reward[] memory rewards = new Reward[](chunkSize);
-            address[] memory claimants = new address[](chunkSize);
-            uint256 startingIndex = totalIntentHashes;
-            
             for (uint16 i = 0; i < chunkSize; i++) {
                 assembly {
                     intentHash := mload(add(messageBody, add(offset, 32)))
                     offset := add(offset, 32)
                 }
-                intentHashes[i] = intentHash;
-                rewards[i] = _toReward(proverRewards[totalIntentHashes]);
-                validateIntentHash(routeHashes[totalIntentHashes], rewards[i], intentHashes[i]);
-                claimants[i] = claimant;
-                totalIntentHashes++;
+                
+                intentHashes[totalIntentCount] = intentHash;
+                rewards[totalIntentCount] = _toReward(proverRewards[totalIntentCount]);
+                claimants[totalIntentCount] = claimant;
+                validateIntentHash(routeHashes[totalIntentCount], rewards[totalIntentCount], intentHashes[totalIntentCount]);
+                
+                totalIntentCount++;
             }
-            IIntentSource(INTENT_SOURCE).batchPushWithdraw(intentHashes, routeHashes[startingIndex:totalIntentHashes], rewards, claimants);
         }
+        if (totalIntentCount != expectedSize) revert SizeMismatch();
+        IIntentSource(INTENT_SOURCE).batchPushWithdraw(intentHashes, routeHashes, rewards, claimants);
     }
 
     /**
