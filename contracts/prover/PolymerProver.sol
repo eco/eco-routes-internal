@@ -170,7 +170,7 @@ contract PolymerProver is BaseProver, Semver {
      * @dev Internal method to validate proof using CrossL2ProverV2 and records proven intents
      * @param proof The proof data to validate
      */
-    function _validateProof(bytes calldata proof) internal {
+    function _validateProof(bytes calldata proof) internal returns (bytes32 intentHash, address claimant) {
         (
             uint32 chainId,
             address emittingContract,
@@ -204,7 +204,7 @@ contract PolymerProver is BaseProver, Semver {
 
         address claimant = address(uint160(uint256(topicsArray[3])));
 
-        return topicsArray[1], claimant
+        return (topicsArray[1], claimant);
     }
 
     /**
@@ -294,11 +294,16 @@ contract PolymerProver is BaseProver, Semver {
         }
     }
 
-    function validateAndClaimPacked(bytes calldata proof, bytes32[] calldata routeHashes, proverReward[] calldata proverRewards) external {
-        //pass
+    function validatePackedAndClaim(bytes calldata proof, bytes32[] calldata routeHashes, proverReward[] calldata proverRewards) external {
+        _validatePackedAndClaim(proof, routeHashes, proverRewards);
     }
 
-    function _validatePackedProof(bytes calldata proof, bytes32[] calldata intentHashes, proverReward[] calldata proverRewards) internal {
+    function validateBatchPackedAndClaim(bytes[] calldata proofs, bytes32[][] calldata routeHashes, proverReward[][] calldata proverRewards) external {
+        for (uint256 i = 0; i < proofs.length; i++) {
+            _validatePackedAndClaim(proofs[i], routeHashes[i], proverRewards[i]);
+        }
+    }
+    function _validatePackedAndClaim(bytes calldata proof, bytes32[] calldata routeHashes, proverReward[] calldata proverRewards) internal {
         (
             uint32 chainId,
             address emittingContract,
@@ -315,7 +320,54 @@ contract PolymerProver is BaseProver, Semver {
         //maybe add check that chainId from topics matches this chainId
         //but not needed because hash uniqueness is guaranteed by the source chain
 
-        decodeMessageandClaim(data, intentHashes, proverRewards);
+        decodeMessageandClaim(data, routeHashes, proverRewards);
+    }
+
+    function decodeMessageandClaim(bytes memory messageBody, bytes32[] calldata routeHashes, proverReward[] calldata proverRewards) internal {
+        uint256 size = messageBody.length;
+        uint256 offset = 0;
+        uint256 totalIntentHashes = 0;
+
+        //might be able to do this more efficently by checking 1-2 require instead of 3
+        while (offset < size) {
+            //get chunkSize and check for truncation
+            uint16 chunkSize;
+            require(offset + 2 <= size, "truncated chunkSize");
+            assembly {
+                chunkSize := mload(add(messageBody, add(offset, 2)))
+                offset := add(offset, 2)
+            }
+
+            //get claimant address and check for truncation
+            require(offset + 20 <= size, "truncated claimant address");
+            address claimant;
+            assembly {
+                claimant := mload(add(messageBody, add(offset, 20)))
+                offset := add(offset, 20)
+            }
+
+            //get intentHash and check for truncation
+
+            require(offset + 32 * chunkSize <= size, "truncated intent set");
+            bytes32 intentHash;
+            bytes32[] memory intentHashes = new bytes32[](chunkSize);
+            Reward[] memory rewards = new Reward[](chunkSize);
+            address[] memory claimants = new address[](chunkSize);
+            uint256 startingIndex = totalIntentHashes;
+            
+            for (uint16 i = 0; i < chunkSize; i++) {
+                assembly {
+                    intentHash := mload(add(messageBody, add(offset, 32)))
+                    offset := add(offset, 32)
+                }
+                intentHashes[i] = intentHash;
+                rewards[i] = _toReward(proverRewards[totalIntentHashes]);
+                validateIntentHash(routeHashes[totalIntentHashes], rewards[i], intentHashes[i]);
+                claimants[i] = claimant;
+                totalIntentHashes++;
+            }
+            IIntentSource(INTENT_SOURCE).batchPushWithdraw(routeHashes[startingIndex:totalIntentHashes], rewards, claimants);
+        }
     }
 
     /**

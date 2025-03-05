@@ -431,6 +431,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
     // This is done to save processing gas, but requires that the caller of this function sorts the intent hashes by claimant. 
     // if they fail to do so, the function will end up including the same claimant multiple times in the packed message.
     // The alternative to this would be lots of really inefficient loops that scale poorly with the number of intent hashes.
+    // also failing to sort will incur more gas on the destination chain when the prover is validating the proof.
 
     // _claimAndBatch is a boolean that tells the prover if it should just claim the intents instead of marking them as proven, 
     // which skips the intermediate step of saving the intent hashes in storage to the prover. I might take this out because I want to reuse this
