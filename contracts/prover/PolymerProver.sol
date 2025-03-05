@@ -85,6 +85,12 @@ contract PolymerProver is BaseProver, Semver {
         _validateProof(proof);
     }
 
+    // function validateAndClaim(bytes calldata proof) external {
+    //     _validateProof(proof);
+    // need to add the bytes32 routeHash, Reward calldata reward and then check against them both 
+    //     _claimRewards();
+    // }
+
     /**
      * @notice Validates multiple proofs in a batch
      * @dev Processes each proof sequentially
@@ -180,56 +186,48 @@ contract PolymerProver is BaseProver, Semver {
         //maybe add check that chainId from topics matches this chainId
         //but not needed because hash uniqueness is guaranteed by the source chain
 
-        //add decode messageBody to skip offset and length encoding
-        data = abi.decode(data, (bytes));
-        
-        (
-            bytes32[] memory hashes,
-            address[] memory claimants
-        ) = decodeMessageBody(data);
-
-        for (uint256 i = 0; i < hashes.length; i++) {
-            processIntent(hashes[i], claimants[i]);
-        }
+        decodeMessageandStore(data);
     }
 
     /**
-     * @notice Decodes a message body into intent hashes and claimants
-     * @dev Used to decode the data from the BatchToBeProven event
+     * @notice Decodes a message body into intent hashes and claimants and stores them
+     * @dev Used to decode the data from the BatchToBeProven event. The message body contains
+     * chunks of intent hashes grouped by claimant. Each chunk has a 2-byte size prefix,
+     * followed by a 20-byte claimant address, followed by the intent hashes.
      * @param messageBody The message body to decode
-     * @return intentHashes The array of intent hashes
-     * @return claimants The array of claimants
      */
-    function decodeMessageBody(
-        bytes memory messageBody
-    )
-        public
-        pure
-        returns (bytes32[] memory intentHashes, address[] memory claimants)
-    {
-        if (messageBody.length % 52 != 0) revert SizeMismatch(); // 32 bytes per hash + 20 per address
-        uint256 size = messageBody.length / 52;
-
-        intentHashes = new bytes32[](size);
-        claimants = new address[](size);
-
+    function decodeMessageandStore(bytes memory messageBody) internal {
+        uint256 size = messageBody.length;
         uint256 offset = 0;
-        for (uint256 i = 0; i < size; i++) {
-            bytes32 temp;
-            assembly {
-                temp := mload(add(messageBody, add(32, offset)))
-            }
-            intentHashes[i] = temp;
-            offset += 32;
-        }
 
-        for (uint256 i = 0; i < size; i++) {
-            address temp;
+        //might be able to do this more efficently by checking 1-2 require instead of 3
+        while (offset < size) {
+            //get chunkSize and check for truncation
+            uint16 chunkSize;
+            require(offset + 2 <= size, "truncated chunkSize");
             assembly {
-                temp := mload(add(messageBody, add(20, offset)))
+                chunkSize := mload(add(messageBody, add(offset, 2)))
+                offset := add(offset, 2)
             }
-            claimants[i] = temp;
-            offset += 20;
+
+            //get claimant address and check for truncation
+            require(offset + 20 <= size, "truncated claimant address");
+            address claimant;
+            assembly {
+                claimant := mload(add(messageBody, add(offset, 20)))
+                offset := add(offset, 20)
+            }
+
+            //get intentHash and check for truncation
+            require(offset + 32 * chunkSize <= size, "truncated intent set");
+            bytes32 intentHash;
+            for (uint16 i = 0; i < chunkSize; i++) {
+                assembly {
+                    intentHash := mload(add(messageBody, add(offset, 32)))
+                    offset := add(offset, 32)
+                }
+                processIntent(intentHash, claimant);
+            }
         }
     }
 

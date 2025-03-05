@@ -469,21 +469,22 @@ describe('PolymerProver Test', (): void => {
       ];
       claimants = [
         claimant.address,
-        claimant2.address,
-        claimant3.address
+        claimant.address,
+        claimant2.address
       ];
 
-      const packedHashes = ethers.solidityPacked(
-        ['bytes32','bytes32','bytes32'],
-        [intentHashes[0], intentHashes[1], intentHashes[2]]
-      );
-      const packedAddresses = ethers.solidityPacked(
-        ['uint160','uint160','uint160'],
-        [claimants[0], claimants[1], claimants[2]]
+      const packedClaimant1 = ethers.solidityPacked(
+        ['uint16','uint160','bytes32','bytes32'],
+        [2, claimant.address, intentHashes[0], intentHashes[1]]
       );
 
-      messageBody = ethers.concat([packedHashes, packedAddresses]);
-      messageBody = ethers.AbiCoder.defaultAbiCoder().encode(['bytes'], [messageBody]);
+      const packedClaimant2 = ethers.solidityPacked(
+        ['uint16','uint160','bytes32'],
+        [1, claimant2.address, intentHashes[2]]
+      );
+
+      messageBody = ethers.concat([packedClaimant1, packedClaimant2]);
+      console.log(messageBody);
     })
 
     it('should validate a single packed emit', async (): Promise<void> => {
@@ -506,7 +507,7 @@ describe('PolymerProver Test', (): void => {
       expect(emittingContract_returned).to.equal(inboxAddress);
       expect(topics_returned).to.equal(topics_packed);
       expect(data_returned).to.equal(messageBody);
-
+      console.log(data_returned);
 
       await expect(polymerProver.validatePacked(proof))
         .to.emit(polymerProver, 'IntentProven')
@@ -529,17 +530,22 @@ describe('PolymerProver Test', (): void => {
         claimant.address
       ];
 
-      const packedHashes = ethers.solidityPacked(
-        ['bytes32','bytes32','bytes32'],
-        [intentHashes[0], intentHashes[1], intentHashes[2]]
-      );
-      const packedAddresses = ethers.solidityPacked(
-        ['uint160','uint160','uint160'],
-        [claimants[0], claimants[1], claimants[2]]
+      const packedClaimant1 = ethers.solidityPacked(
+        ['uint16','uint160','bytes32'],
+        [1, claimant.address, intentHashes[0]]
       );
 
-      messageBody = ethers.concat([packedHashes, packedAddresses]);
-      messageBody = ethers.AbiCoder.defaultAbiCoder().encode(['bytes'], [messageBody]);
+      const packedClaimant2 = ethers.solidityPacked(
+        ['uint16','uint160','bytes32'],
+        [1, claimant2.address, intentHashes[1]]
+      );
+
+      const packedClaimant3 = ethers.solidityPacked(
+        ['uint16','uint160','bytes32'],
+        [1, claimant.address, intentHashes[2]]
+      );
+
+      messageBody = ethers.concat([packedClaimant1, packedClaimant2, packedClaimant3]);
 
       // set values for mock prover
       await testCrossL2ProverV2.setAll(
@@ -685,21 +691,21 @@ describe('PolymerProver Test', (): void => {
       ];
       const claimants1 = [
         claimant.address,
-        claimant2.address,
-        claimant3.address
+        claimant.address,
+        claimant2.address
       ];
 
       const packedHashes1 = ethers.solidityPacked(
-        ['bytes32','bytes32','bytes32'],
-        [intentHashes[0], intentHashes[1], intentHashes[2]]
-      );
-      const packedAddresses1 = ethers.solidityPacked(
-        ['uint160','uint160','uint160'],
-        [claimants[0], claimants[1], claimants[2]]
+        ['uint16','uint160','bytes32','bytes32'],
+        [2, claimants1[0], intentHashes[0], intentHashes[1]]
       );
 
-      const messageBody1bytes = ethers.concat([packedHashes1, packedAddresses1]);
-      const messageBody1 = ethers.AbiCoder.defaultAbiCoder().encode(['bytes'], [messageBody1bytes]);
+      const packedClaimant2 = ethers.solidityPacked(
+        ['uint16','uint160','bytes32'],
+        [1, claimants1[2], intentHashes[2]]
+      );
+
+      const messageBody1bytes = ethers.concat([packedHashes1, packedClaimant2]);
 
       const expectedHash4 = '0x' + '44'.repeat(32);
       const expectedHash5 = '0x' + '55'.repeat(32);
@@ -716,18 +722,22 @@ describe('PolymerProver Test', (): void => {
         claimant3.address
       ];
 
-      const packedHashes2 = ethers.solidityPacked(
-        ['bytes32','bytes32','bytes32'],
-        [intentHashes2[0], intentHashes2[1], intentHashes2[2]]
+      const packedClaimant4 = ethers.solidityPacked(
+        ['uint16','uint160','bytes32'],
+        [1, claimants2[0], intentHashes2[0]]
       );
 
-      const packedAddresses2 = ethers.solidityPacked(
-        ['uint160','uint160','uint160'],
-        [claimants2[0], claimants2[1], claimants2[2]]
+      const packedClaimant5 = ethers.solidityPacked(
+        ['uint16','uint160','bytes32'],
+        [1, claimants2[1], intentHashes2[1]]
       );
 
-      const messageBody2bytes = ethers.concat([packedHashes2, packedAddresses2]);
-      const messageBody2 = ethers.AbiCoder.defaultAbiCoder().encode(['bytes'], [messageBody2bytes]);
+      const packedClaimant6 = ethers.solidityPacked(  
+        ['uint16','uint160','bytes32'],
+        [1, claimants2[2], intentHashes2[2]]
+      );
+
+      const messageBody2bytes = ethers.concat([packedClaimant4, packedClaimant5, packedClaimant6]);
 
       const proofIndex = [1, 2];
       const proofs = proofIndex.map((index) => ethers.zeroPadValue(ethers.toBeHex(index), 32));
@@ -736,7 +746,7 @@ describe('PolymerProver Test', (): void => {
         chainIds[0], 
         inboxAddress,
         topics_packed, 
-        messageBody1
+        messageBody1bytes
       );
 
       let [chainId_returned1, emittingContract_returned1, topics_returned1, data_returned1] = 
@@ -745,13 +755,13 @@ describe('PolymerProver Test', (): void => {
       expect(chainId_returned1).to.equal(chainIds[0]);
       expect(emittingContract_returned1).to.equal(inboxAddress);
       expect(topics_returned1).to.equal(topics_packed);
-      expect(data_returned1).to.equal(messageBody1);
+      expect(data_returned1).to.equal(messageBody1bytes);
 
       await testCrossL2ProverV2.setAll(
         chainIds[1], 
         inboxAddress,
         topics_packed, 
-        messageBody2
+        messageBody2bytes
       );
 
 
@@ -761,7 +771,7 @@ describe('PolymerProver Test', (): void => {
       expect(chainId_returned2).to.equal(chainIds[1]);
       expect(emittingContract_returned2).to.equal(inboxAddress);
       expect(topics_returned2).to.equal(topics_packed);
-      expect(data_returned2).to.equal(messageBody2);
+      expect(data_returned2).to.equal(messageBody2bytes);
 
       await expect(polymerProver.validateBatchPacked(proofs))
         .to.emit(polymerProver, 'IntentProven')

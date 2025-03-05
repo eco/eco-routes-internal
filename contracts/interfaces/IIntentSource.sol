@@ -95,6 +95,12 @@ interface IIntentSource is ISemver, IVaultStorage {
     error ArrayLengthMismatch();
 
     /**
+     * @notice Indicates an unauthorized prover
+     * @param prover The address of the unauthorized prover
+     */
+    error UnauthorizedProver(address prover);
+
+    /**
      * @notice Signals partial funding of an intent
      * @param intentHash The hash of the partially funded intent
      * @param fundingSource The address providing the partial funding

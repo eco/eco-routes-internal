@@ -306,6 +306,73 @@ contract IntentSource is IIntentSource, Semver {
     }
 
     /**
+     * @notice Allows a prover to directly push a withdrawal for a fulfilled intent
+     * @dev Only callable by the intent's designated prover contract
+     * @param routeHash Hash of the intent's route component
+     * @param reward Reward structure containing prover address and reward details
+     * @param claimant Address that will receive the rewards
+     * @custom:throws UnauthorizedProver if caller is not the intent's prover
+     * @custom:throws UnauthorizedWithdrawal if claimant is zero address
+     * @custom:throws RewardsAlreadyWithdrawn if rewards were already claimed/refunded
+     */
+    function pushWithdraw(bytes32 routeHash, Reward calldata reward, address claimant) public {
+        bytes32 rewardHash = keccak256(abi.encode(reward));
+        bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
+
+        if (reward.prover != msg.sender) {
+            revert UnauthorizedProver(msg.sender);
+        }
+
+        VaultState memory state = vaults[intentHash].state;
+
+        // Claim the rewards if the intent has not been claimed
+        if (
+            claimant != address(0) &&
+            state.status != uint8(RewardStatus.Claimed) &&
+            state.status != uint8(RewardStatus.Refunded)
+        ) {
+            state.status = uint8(RewardStatus.Claimed);
+            state.mode = uint8(VaultMode.Claim);
+            state.allowPartialFunding = 0;
+            state.usePermit = 0;
+            state.target = claimant;
+            vaults[intentHash].state = state;
+
+            emit Withdrawal(intentHash, claimant);
+
+            new Vault{salt: routeHash}(intentHash, reward);
+
+            return;
+        }
+
+        if (claimant == address(0)) {
+            revert UnauthorizedWithdrawal(intentHash);
+        } else {
+            revert RewardsAlreadyWithdrawn(intentHash);
+        }
+    }
+
+    /**
+     * @notice Batch processes multiple direct withdrawals from a prover
+     * @dev Calls pushWithdraw for each intent in the arrays
+     * @param routeHashes Array of route hashes for the intents
+     * @param rewards Array of reward structures for the intents
+     * @param claimants Array of addresses to receive the rewards
+     * @custom:throws ArrayLengthMismatch if input array lengths don't match
+     */
+    function batchPushWithdraw(bytes32[] calldata routeHashes, Reward[] calldata rewards, address[] calldata claimants) external {
+        uint256 length = routeHashes.length;
+
+        if (length != rewards.length) {
+            revert ArrayLengthMismatch();
+        }
+
+        for (uint256 i = 0; i < length; ++i) {
+            pushWithdraw(routeHashes[i], rewards[i], claimants[i]);
+        }
+    }
+    
+    /**
      * @notice Refunds rewards to the intent creator
      * @param routeHash Hash of the intent's route
      * @param reward Reward structure of the intent

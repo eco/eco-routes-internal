@@ -37,6 +37,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
     struct proveBatch {
         uint256 destinationChainID;
         bytes32[] intentHashes;
+        bool batchThenClaim;
     }
 
     /**
@@ -408,19 +409,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
      */
     //TODO change to proveBatch struct
     function batchStorageEmit(uint256 _destinationChainID, bytes32[] calldata _intentHashes) public {   
-        uint256 size = _intentHashes.length;
-        bytes memory claimants;
-
-        for (uint256 i = 0; i < size; ++i) {
-            address claimant = fulfilled[_intentHashes[i]];
-            if (claimant == address(0)) {
-                revert IntentNotFulfilled(_intentHashes[i]);
-            }
-            claimants = abi.encodePacked(claimants, claimant);
-        }
-        //pack the intent hashes into a single event using abi.encodePacked
-        bytes memory messageBody = abi.encodePacked(_intentHashes, claimants);
-        emit BatchToBeProven(_destinationChainID, messageBody);
+        emit BatchToBeProven(_destinationChainID, constructPackedMessage(_intentHashes));
     }
     
     /**
@@ -446,9 +435,10 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
     // _claimAndBatch is a boolean that tells the prover if it should just claim the intents instead of marking them as proven, 
     // which skips the intermediate step of saving the intent hashes in storage to the prover. I might take this out because I want to reuse this
     // method for both hyperlane and polymer -- and hyperlane needs all the claim calldata here if we're going to claim 🧐🧐🧐🧐🧐🧐
+    // although -- I may have a way that we can use this method for both hyperlane and polymer 🤔🤔🤔🤔🤔🤔
 
     // eventually we can construct the message in assembly to save gas
-    function constructPackedMessage(bytes32[] calldata _intentHashes, bool _batchThenClaim) public view returns (bytes memory) {
+    function constructPackedMessage(bytes32[] calldata _intentHashes) public view returns (bytes memory) {
         // check that the number of intent hashes is less than 65536
         // we might not need to check that _intentHashes fits in uint16 because calldata is limited
         // and you can't post 2.09mb in a transaction? 
@@ -484,7 +474,6 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
         
         // Add the last chunk directly to the message with the flag
         return abi.encodePacked(
-            _batchThenClaim,
             message,
             size - startIndex,  // Final chunk size
             currentClaimant,

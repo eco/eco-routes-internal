@@ -904,12 +904,12 @@ describe('Inbox Test', (): void => {
         ['bytes32','bytes32'],
         [intentHash, otherHash]
       );
-      const packedAddresses = ethers.solidityPacked(
-        ['uint160','uint160'],
-        [dstAddr.address, dstAddr.address]
+      const packedMessage = ethers.solidityPacked(
+        ['uint16','uint160'],
+        [2, dstAddr.address]
       );
 
-      const messageBody = ethers.concat([packedHashes, packedAddresses]);
+      const messageBody = ethers.concat([packedMessage, packedHashes]);
       
       await expect(
         inbox
@@ -956,7 +956,7 @@ describe('Inbox Test', (): void => {
       expect(await erc20.balanceOf(dstAddr.address)).to.equal(mintAmount)
     })
 
-    it('constructPackedMessage should work for multiple intents', async () => {
+    it('batchStorageEmit should work for multiple intents and claimants', async () => {
       await inbox
         .connect(solver)
         .fulfillSilent(
@@ -987,36 +987,29 @@ describe('Inbox Test', (): void => {
         .fulfillSilent(
           route,
           rewardHash,
-          dstAddr.address,
+          solver.address,
           otherHash,
         )
 
-      const packedHashes = ethers.solidityPacked(
-        ['bytes32','bytes32'],
-        [intentHash, otherHash]
+      const claimant1Packing = ethers.solidityPacked(
+        ['uint16','uint160','bytes32'],
+        [1, dstAddr.address, intentHash]
       );
-      const packedMessage = ethers.solidityPacked(
-        ['bool','uint16','uint160'],
-        [true, 2, dstAddr.address]
+      const claimant2Packing = ethers.solidityPacked(
+        ['uint16','uint160','bytes32'],
+        [1, solver.address, otherHash]
       );
 
-      const messageBody = ethers.concat([packedMessage, packedHashes]);
+      const messageBody = ethers.concat([claimant1Packing, claimant2Packing]);
 
-      console.log("Message Body:", messageBody);
-      
-      const result = await inbox
-        .connect(solver)
-        .constructPackedMessage(
-          [intentHash, otherHash],
-          true
-        )
-      console.log("Constructed Message:", result)
-      expect(result).to.equal(messageBody)
+      await expect(
+        inbox
+          .connect(solver)
+          .batchStorageEmit( route.source,
+            [intentHash, otherHash]
+          ),
+      ).to.emit(inbox, 'BatchToBeProven').withArgs(route.source, messageBody)
     })
   })
 
-  //todo multiple claimants
-  //boolean true and false
-  //other edge cases
-  
 })
