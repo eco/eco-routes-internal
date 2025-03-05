@@ -330,6 +330,7 @@ describe('Intent Source Test', (): void => {
           intentSource.connect(otherPerson).withdrawRewards(routeHash, reward),
         ).to.be.revertedWithCustomError(intentSource, `UnauthorizedWithdrawal`)
       })
+      
     })
     context('before expiry, proof', () => {
       beforeEach(async (): Promise<void> => {

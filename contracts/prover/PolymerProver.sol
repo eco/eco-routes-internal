@@ -31,7 +31,7 @@ contract PolymerProver is BaseProver, Semver {
     error InvalidTopicsLength();
     error SizeMismatch();
 
-    struct proverReward {
+    struct ProverReward {
         address creator;
         uint256 deadline;
         uint256 nativeValue;
@@ -100,7 +100,7 @@ contract PolymerProver is BaseProver, Semver {
         processIntent(intentHash, claimant);
     }
 
-    function validateAndClaim(bytes calldata proof, bytes32 routeHash, Reward calldata proverReward) external {
+    function validateAndClaim(bytes calldata proof, bytes32 routeHash, ProverReward calldata proverReward) external {
         (bytes32 intentHash, address claimant) = _validateProof(proof);
 
         Reward memory reward = _toReward(proverReward);
@@ -116,11 +116,12 @@ contract PolymerProver is BaseProver, Semver {
      */
     function validateBatch(bytes[] calldata proofs) external {
         for (uint256 i = 0; i < proofs.length; i++) {
-            _validateProof(proofs[i]);
+            (bytes32 intentHash, address claimant) = _validateProof(proofs[i]);
+            processIntent(intentHash, claimant);
         }
     }
 
-    function validateBatchAndClaim(bytes[] calldata proofs, bytes32[] calldata routeHashes, proverReward[] calldata proverRewards) external {
+    function validateBatchAndClaim(bytes[] calldata proofs, bytes32[] calldata routeHashes, ProverReward[] calldata proverRewards) external {
         bytes32[] memory intentHashes = new bytes32[](proofs.length);
         address[] memory claimants = new address[](proofs.length);
         Reward[] memory rewards = new Reward[](proverRewards.length);
@@ -133,7 +134,7 @@ contract PolymerProver is BaseProver, Semver {
             validateIntentHash(routeHashes[i], rewards[i], intentHashes[i]);
         }
         
-        IIntentSource(INTENT_SOURCE).batchPushWithdraw(routeHashes, proverRewards, claimants);
+        IIntentSource(INTENT_SOURCE).batchPushWithdraw(routeHashes, rewards, claimants);
     }
 
     /**
@@ -155,7 +156,7 @@ contract PolymerProver is BaseProver, Semver {
      * @param _proverReward The proverReward struct to convert
      * @return reward The converted Reward struct
      */
-    function _toReward(proverReward memory _proverReward) internal view returns (Reward memory) {
+    function _toReward(ProverReward memory _proverReward) internal view returns (Reward memory) {
         return Reward(
             _proverReward.creator,
             address(this),
@@ -294,16 +295,16 @@ contract PolymerProver is BaseProver, Semver {
         }
     }
 
-    function validatePackedAndClaim(bytes calldata proof, bytes32[] calldata routeHashes, proverReward[] calldata proverRewards) external {
+    function validatePackedAndClaim(bytes calldata proof, bytes32[] calldata routeHashes, ProverReward[] calldata proverRewards) external {
         _validatePackedAndClaim(proof, routeHashes, proverRewards);
     }
 
-    function validateBatchPackedAndClaim(bytes[] calldata proofs, bytes32[][] calldata routeHashes, proverReward[][] calldata proverRewards) external {
+    function validateBatchPackedAndClaim(bytes[] calldata proofs, bytes32[][] calldata routeHashes, ProverReward[][] calldata proverRewards) external {
         for (uint256 i = 0; i < proofs.length; i++) {
             _validatePackedAndClaim(proofs[i], routeHashes[i], proverRewards[i]);
         }
     }
-    function _validatePackedAndClaim(bytes calldata proof, bytes32[] calldata routeHashes, proverReward[] calldata proverRewards) internal {
+    function _validatePackedAndClaim(bytes calldata proof, bytes32[] calldata routeHashes, ProverReward[] calldata proverRewards) internal {
         (
             uint32 chainId,
             address emittingContract,
@@ -323,7 +324,7 @@ contract PolymerProver is BaseProver, Semver {
         decodeMessageandClaim(data, routeHashes, proverRewards);
     }
 
-    function decodeMessageandClaim(bytes memory messageBody, bytes32[] calldata routeHashes, proverReward[] calldata proverRewards) internal {
+    function decodeMessageandClaim(bytes memory messageBody, bytes32[] calldata routeHashes, ProverReward[] calldata proverRewards) internal {
         uint256 size = messageBody.length;
         uint256 offset = 0;
         uint256 totalIntentHashes = 0;

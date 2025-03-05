@@ -256,33 +256,8 @@ contract IntentSource is IIntentSource, Semver {
         bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
 
         address claimant = BaseProver(reward.prover).provenIntents(intentHash);
-        VaultState memory state = vaults[intentHash].state;
-
-        // Claim the rewards if the intent has not been claimed
-        if (
-            claimant != address(0) &&
-            state.status != uint8(RewardStatus.Claimed) &&
-            state.status != uint8(RewardStatus.Refunded)
-        ) {
-            state.status = uint8(RewardStatus.Claimed);
-            state.mode = uint8(VaultMode.Claim);
-            state.allowPartialFunding = 0;
-            state.usePermit = 0;
-            state.target = claimant;
-            vaults[intentHash].state = state;
-
-            emit Withdrawal(intentHash, claimant);
-
-            new Vault{salt: routeHash}(intentHash, reward);
-
-            return;
-        }
-
-        if (claimant == address(0)) {
-            revert UnauthorizedWithdrawal(intentHash);
-        } else {
-            revert RewardsAlreadyWithdrawn(intentHash);
-        }
+        
+        _processWithdrawal(intentHash, routeHash, reward, claimant);
     }
 
     /**
@@ -323,33 +298,7 @@ contract IntentSource is IIntentSource, Semver {
             revert UnauthorizedProver(msg.sender);
         }
 
-        VaultState memory state = vaults[intentHash].state;
-
-        // Claim the rewards if the intent has not been claimed
-        if (
-            claimant != address(0) &&
-            state.status != uint8(RewardStatus.Claimed) &&
-            state.status != uint8(RewardStatus.Refunded)
-        ) {
-            state.status = uint8(RewardStatus.Claimed);
-            state.mode = uint8(VaultMode.Claim);
-            state.allowPartialFunding = 0;
-            state.usePermit = 0;
-            state.target = claimant;
-            vaults[intentHash].state = state;
-
-            emit Withdrawal(intentHash, claimant);
-
-            new Vault{salt: routeHash}(intentHash, reward);
-
-            return;
-        }
-
-        if (claimant == address(0)) {
-            revert UnauthorizedWithdrawal(intentHash);
-        } else {
-            revert RewardsAlreadyWithdrawn(intentHash);
-        }
+        _processWithdrawal(intentHash, routeHash, reward, claimant);
     }
 
     /**
@@ -752,6 +701,48 @@ contract IntentSource is IIntentSource, Semver {
         if (amount > 0) {
             (bool success, ) = payable(msg.sender).call{value: amount}("");
             if (!success) revert NativeRewardTransferFailed(intentHash);
+        }
+    }
+
+    /**
+     * @notice Internal function to process intent reward withdrawals
+     * @param intentHash Hash of the intent
+     * @param routeHash Hash of the route component
+     * @param reward Reward structure of the intent
+     * @param claimant Address that will receive the rewards
+     */
+    function _processWithdrawal(
+        bytes32 intentHash,
+        bytes32 routeHash,
+        Reward calldata reward,
+        address claimant
+    ) internal {
+        VaultState memory state = vaults[intentHash].state;
+
+        // Claim the rewards if the intent has not been claimed
+        if (
+            claimant != address(0) &&
+            state.status != uint8(RewardStatus.Claimed) &&
+            state.status != uint8(RewardStatus.Refunded)
+        ) {
+            state.status = uint8(RewardStatus.Claimed);
+            state.mode = uint8(VaultMode.Claim);
+            state.allowPartialFunding = 0;
+            state.usePermit = 0;
+            state.target = claimant;
+            vaults[intentHash].state = state;
+
+            emit Withdrawal(intentHash, claimant);
+
+            new Vault{salt: routeHash}(intentHash, reward);
+
+            return;
+        }
+
+        if (claimant == address(0)) {
+            revert UnauthorizedWithdrawal(intentHash);
+        } else {
+            revert RewardsAlreadyWithdrawn(intentHash);
         }
     }
 }
