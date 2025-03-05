@@ -10,6 +10,7 @@ import {
   Inbox,
   TestERC20,
   TestCrossL2ProverV2,
+  MockIntentSource
 } from '../typechain-types'
 import { encodeTransfer } from '../utils/encode'
 import { hashIntent, TokenAmount } from '../utils/intent'
@@ -18,6 +19,7 @@ describe('PolymerProver Test', (): void => {
   let polymerProver: PolymerProver
   let inbox: Inbox
   let testCrossL2ProverV2: TestCrossL2ProverV2
+  let mockIntentSource: MockIntentSource
   let owner: SignerWithAddress
   let solver: SignerWithAddress
   let claimant: SignerWithAddress
@@ -31,6 +33,7 @@ describe('PolymerProver Test', (): void => {
     polymerProver: PolymerProver
     inbox: Inbox
     testCrossL2ProverV2: TestCrossL2ProverV2
+    mockIntentSource: MockIntentSource
     owner: SignerWithAddress
     solver: SignerWithAddress
     claimant: SignerWithAddress
@@ -47,14 +50,19 @@ describe('PolymerProver Test', (): void => {
       await ethers.getContractFactory('TestCrossL2ProverV2')
     ).deploy(chainIds[0], await inbox.getAddress(), emptyTopics, emptyData)
 
+    const mockIntentSource = await (
+      await ethers.getContractFactory('MockIntentSource')
+    ).deploy()
+
     const polymerProver = await (
       await ethers.getContractFactory('PolymerProver')
-    ).deploy(await testCrossL2ProverV2.getAddress(), await inbox.getAddress(), chainIds)
+    ).deploy(await testCrossL2ProverV2.getAddress(), await inbox.getAddress(), chainIds, await mockIntentSource.getAddress())
 
     return {
       polymerProver,
       inbox,
       testCrossL2ProverV2,
+      mockIntentSource,
       owner,
       solver,
       claimant,
@@ -64,7 +72,7 @@ describe('PolymerProver Test', (): void => {
   }
 
   beforeEach(async (): Promise<void> => {
-    ({ polymerProver, inbox, testCrossL2ProverV2, owner, solver, claimant, claimant2, claimant3 } = await loadFixture(deployPolymerProverFixture));
+    ({ polymerProver, inbox, testCrossL2ProverV2, mockIntentSource, solver, claimant, claimant2, claimant3 } = await loadFixture(deployPolymerProverFixture));
   })
   
   describe('Single emit', (): void => {

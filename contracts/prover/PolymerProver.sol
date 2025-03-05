@@ -325,20 +325,24 @@ contract PolymerProver is BaseProver, Semver {
         //maybe add check that chainId from topics matches this chainId
         //but not needed because hash uniqueness is guaranteed by the source chain
 
-        decodeMessageandClaim(data, routeHashes, proverRewards);
+        uint256 expectedSize = routeHashes.length;
+        (bytes32[] memory intentHashes, address[] memory claimants) = decodeMessageBeforeClaim(data, expectedSize);
+
+        Reward[] memory rewards = new Reward[](expectedSize);
+        for (uint256 i = 0; i < expectedSize; i++) {
+            rewards[i] = _toReward(proverRewards[i]);
+            validateIntentHash(routeHashes[i], rewards[i], intentHashes[i]);
+        }   
+        IIntentSource(INTENT_SOURCE).batchPushWithdraw(intentHashes, routeHashes, rewards, claimants);
     }
 
-    function decodeMessageandClaim(bytes memory messageBody, bytes32[] calldata routeHashes, ProverReward[] calldata proverRewards) internal {
+    function decodeMessageBeforeClaim(bytes memory messageBody, uint256 expectedSize) internal pure returns (bytes32[] memory intentHashes, address[] memory claimants) {
         uint256 size = messageBody.length;
-        uint256 expectedSize = routeHashes.length;
-
 
         uint256 offset = 0;
         uint256 totalIntentCount = 0;
-        bytes32[] memory intentHashes = new bytes32[](expectedSize);
-        Reward[] memory rewards = new Reward[](expectedSize);
-        address[] memory claimants = new address[](expectedSize);
-
+        intentHashes = new bytes32[](expectedSize);
+        claimants = new address[](expectedSize);
         
         while (offset < size) {
         
@@ -364,17 +368,13 @@ contract PolymerProver is BaseProver, Semver {
                     intentHash := mload(add(messageBody, add(offset, 32)))
                     offset := add(offset, 32)
                 }
-                
                 intentHashes[totalIntentCount] = intentHash;
-                rewards[totalIntentCount] = _toReward(proverRewards[totalIntentCount]);
                 claimants[totalIntentCount] = claimant;
-                validateIntentHash(routeHashes[totalIntentCount], rewards[totalIntentCount], intentHashes[totalIntentCount]);
-                
                 totalIntentCount++;
             }
         }
         if (totalIntentCount != expectedSize) revert SizeMismatch();
-        IIntentSource(INTENT_SOURCE).batchPushWithdraw(intentHashes, routeHashes, rewards, claimants);
+        return (intentHashes, claimants);
     }
 
     /**
