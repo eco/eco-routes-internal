@@ -320,4 +320,30 @@ interface IIntentSource is ISemver, IVaultStorage {
         Reward calldata reward,
         address token
     ) external;
+
+    /**
+     * @notice Allows a prover to directly push a withdrawal for a fulfilled intent
+     * @dev Only callable by the intent's designated prover contract
+     * @param routeHash Hash of the intent's route component
+     * @param reward Reward structure containing prover address and reward details
+     * @param claimant Address that will receive the rewards
+     */
+    function pushWithdraw(
+        bytes32 routeHash,
+        Reward calldata reward,
+        address claimant
+    ) external;
+
+    /**
+     * @notice Batch processes multiple direct withdrawals from a prover
+     * @dev Calls pushWithdraw for each intent in the arrays
+     * @param routeHashes Array of route hashes for the intents
+     * @param rewards Array of reward structures for the intents
+     * @param claimants Array of addresses to receive the rewards
+     */
+    function batchPushWithdraw(
+        bytes32[] calldata routeHashes,
+        Reward[] calldata rewards,
+        address[] calldata claimants
+    ) external;
 }

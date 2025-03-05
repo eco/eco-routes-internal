@@ -3,6 +3,8 @@ pragma solidity ^0.8.26;
 import {BaseProver} from "./BaseProver.sol";
 import {Semver} from "../libs/Semver.sol";
 import {ICrossL2ProverV2} from "../interfaces/ICrossL2ProverV2.sol";
+import {IIntentSource} from "../interfaces/IIntentSource.sol";
+import {Reward, TokenAmount} from "../types/Intent.sol";
 
 /**
  * @title PolymerProver
@@ -29,6 +31,12 @@ contract PolymerProver is BaseProver, Semver {
     error InvalidTopicsLength();
     error SizeMismatch();
 
+    struct proverReward {
+        address creator;
+        uint256 deadline;
+        uint256 nativeValue;
+        TokenAmount[] tokens;
+    }
     /**
      * @notice Address of local Polymer CrossL2ProverV2 contract
      * @dev Immutable contract reference used to validate cross-chain proofs
@@ -40,6 +48,12 @@ contract PolymerProver is BaseProver, Semver {
      * @dev Immutable reference to verify proof origin
      */
     address public immutable INBOX;
+
+    /**
+     * @notice Address of local IntentSource contract
+     * @dev Immutable reference to verify proof origin
+     */
+    address public immutable INTENT_SOURCE;
 
     /**
      * @notice Mapping of supported source chain IDs
@@ -82,14 +96,18 @@ contract PolymerProver is BaseProver, Semver {
      * @param proof The proof data for CROSS_L2_PROVER_V2 to validate
      */
     function validate(bytes calldata proof) external {
-        _validateProof(proof);
+        (bytes32 intentHash, address claimant) = _validateProof(proof);
+        processIntent(intentHash, claimant);
     }
 
-    // function validateAndClaim(bytes calldata proof) external {
-    //     _validateProof(proof);
-    // need to add the bytes32 routeHash, Reward calldata reward and then check against them both 
-    //     _claimRewards();
-    // }
+    function validateAndClaim(bytes calldata proof, bytes32 routeHash, Reward calldata proverReward) external {
+        (bytes32 intentHash, address claimant) = _validateProof(proof);
+
+        Reward memory reward = _toReward(proverReward);
+
+        validateIntentHash(routeHash, reward, intentHash);
+        IIntentSource(INTENT_SOURCE).pushWithdraw(routeHash, reward, claimant);
+    }
 
     /**
      * @notice Validates multiple proofs in a batch
@@ -100,6 +118,51 @@ contract PolymerProver is BaseProver, Semver {
         for (uint256 i = 0; i < proofs.length; i++) {
             _validateProof(proofs[i]);
         }
+    }
+
+    function validateBatchAndClaim(bytes[] calldata proofs, bytes32[] calldata routeHashes, proverReward[] calldata proverRewards) external {
+        bytes32[] memory intentHashes = new bytes32[](proofs.length);
+        address[] memory claimants = new address[](proofs.length);
+        Reward[] memory rewards = new Reward[](proverRewards.length);
+
+        for (uint256 i = 0; i < proofs.length; i++) {
+            (bytes32 intentHash, address claimant) = _validateProof(proofs[i]);
+            intentHashes[i] = intentHash;
+            claimants[i] = claimant;
+            rewards[i] = _toReward(proverRewards[i]);
+            validateIntentHash(routeHashes[i], rewards[i], intentHashes[i]);
+        }
+        
+        IIntentSource(INTENT_SOURCE).batchPushWithdraw(routeHashes, proverRewards, claimants);
+    }
+
+    /**
+     * @notice Validates that a calculated intent hash matches the expected intent hash
+     * @dev Calculates the intent hash from route hash and reward, then compares with expected hash
+     * @param routeHash The route hash component of the intent
+     * @param reward The reward structure to encode
+     * @param expectedIntentHash The expected intent hash to compare against
+     */
+    function validateIntentHash(bytes32 routeHash, Reward memory reward, bytes32 expectedIntentHash) internal pure {
+        bytes32 calculatedRewardHash = keccak256(abi.encode(reward));
+        bytes32 calculatedIntentHash = keccak256(abi.encodePacked(routeHash, calculatedRewardHash));
+        if (calculatedIntentHash != expectedIntentHash) revert("Intent hash mismatch");
+    }
+
+    /**
+     * @notice Converts a proverReward struct to a Reward struct
+     * @dev Sets the prover field to this contract's address
+     * @param _proverReward The proverReward struct to convert
+     * @return reward The converted Reward struct
+     */
+    function _toReward(proverReward memory _proverReward) internal view returns (Reward memory) {
+        return Reward(
+            _proverReward.creator,
+            address(this),
+            _proverReward.deadline,
+            _proverReward.nativeValue,
+            _proverReward.tokens
+        );
     }
 
     /**
@@ -141,7 +204,7 @@ contract PolymerProver is BaseProver, Semver {
 
         address claimant = address(uint160(uint256(topicsArray[3])));
 
-        processIntent(topicsArray[1], claimant);
+        return topicsArray[1], claimant
     }
 
     /**
@@ -229,6 +292,30 @@ contract PolymerProver is BaseProver, Semver {
                 processIntent(intentHash, claimant);
             }
         }
+    }
+
+    function validateAndClaimPacked(bytes calldata proof, bytes32[] calldata routeHashes, proverReward[] calldata proverRewards) external {
+        //pass
+    }
+
+    function _validatePackedProof(bytes calldata proof, bytes32[] calldata intentHashes, proverReward[] calldata proverRewards) internal {
+        (
+            uint32 chainId,
+            address emittingContract,
+            bytes memory topics,
+            bytes memory data
+        ) = CROSS_L2_PROVER_V2.validateEvent(proof);
+
+        // revert checks (might not need chainId check)
+        checkInboxContract(emittingContract);
+        checkSupportedChainId(chainId);
+        checkTopicLength(topics, 64); //signature and chainId
+        checkTopicSignature(bytes32(topics), BATCH_PROOF_SELECTOR);
+
+        //maybe add check that chainId from topics matches this chainId
+        //but not needed because hash uniqueness is guaranteed by the source chain
+
+        decodeMessageandClaim(data, intentHashes, proverRewards);
     }
 
     /**
