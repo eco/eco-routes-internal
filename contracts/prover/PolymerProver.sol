@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
 import {BaseProver} from "./BaseProver.sol";
@@ -65,6 +66,8 @@ contract PolymerProver is BaseProver, Semver {
             supportedChainIds[_supportedChainIds[i]] = true;
         }
     }
+
+    // ------------- STANDARD PROOF VALIDATION -------------
 
     /**
      * @notice Validates a single proof
@@ -142,85 +145,7 @@ contract PolymerProver is BaseProver, Semver {
         );
     }
 
-    /**
-     * @notice Validates that a calculated intent hash matches the expected intent hash
-     * @param routeHash The route hash component of the intent
-     * @param reward The reward structure to encode
-     * @param expectedIntentHash The expected intent hash to compare against
-     */
-    function validateIntentHash(
-        bytes32 routeHash,
-        Reward memory reward,
-        bytes32 expectedIntentHash
-    ) internal pure {
-        bytes32 calculatedRewardHash = keccak256(abi.encode(reward));
-        bytes32 calculatedIntentHash = keccak256(
-            abi.encodePacked(routeHash, calculatedRewardHash)
-        );
-        if (calculatedIntentHash != expectedIntentHash)
-            revert IntentHashMismatch();
-    }
-
-    /**
-     * @notice Converts a proverReward struct to a Reward struct
-     * @param _proverReward The proverReward struct to convert
-     * @return Reward struct with this contract as the prover
-     */
-    function _toReward(
-        ProverReward memory _proverReward
-    ) internal view returns (Reward memory) {
-        return Reward(
-            _proverReward.creator,
-            address(this),
-            _proverReward.deadline,
-            _proverReward.nativeValue,
-            _proverReward.tokens
-        );
-    }
-
-    /**
-     * @notice Core proof validation logic
-     * @param proof The proof data to validate
-     * @return intentHash Hash of the proven intent
-     * @return claimant Address that fulfilled the intent
-     */
-    function _validateProof(
-        bytes calldata proof
-    ) internal returns (bytes32 intentHash, address claimant) {
-        (
-            uint32 chainId,
-            address emittingContract,
-            bytes memory topics,
-            bytes memory data
-        ) = CROSS_L2_PROVER_V2.validateEvent(proof);
-
-        checkInboxContract(emittingContract);
-        checkSupportedChainId(chainId);
-        checkTopicLength(topics, 128);
-
-        bytes32[] memory topicsArray = new bytes32[](4);
-
-        // Use assembly for efficient memory operations when splitting topics
-        assembly {
-            let topicsPtr := add(topics, 32)
-            for {
-                let i := 0
-            } lt(i, 4) {
-                i := add(i, 1)
-            } {
-                mstore(
-                    add(add(topicsArray, 32), mul(i, 32)),
-                    mload(add(topicsPtr, mul(i, 32)))
-                )
-            }
-        }
-
-        checkTopicSignature(topicsArray[0], PROOF_SELECTOR);
-        claimant = address(uint160(uint256(topicsArray[3])));
-        return (topicsArray[1], claimant);
-    }
-
-    // Packed proof validation functions
+    // ------------- PACKED PROOF VALIDATION -------------
 
     /**
      * @notice Validates a packed format proof
@@ -275,6 +200,61 @@ contract PolymerProver is BaseProver, Semver {
                 proverRewards[i]
             );
         }
+    }
+
+    // ------------- INTERFACE IMPLEMENTATION -------------
+
+    /**
+     * @notice Returns the proof type used by this prover
+     * @dev Implementation of IProver interface method
+     * @return ProofType The type of proof mechanism (Polymer)
+     */
+    function getProofType() external pure override returns (ProofType) {
+        return PROOF_TYPE;
+    }
+
+    // ------------- INTERNAL FUNCTIONS - PROOF VALIDATION -------------
+
+    /**
+     * @notice Core proof validation logic
+     * @param proof The proof data to validate
+     * @return intentHash Hash of the proven intent
+     * @return claimant Address that fulfilled the intent
+     */
+    function _validateProof(
+        bytes calldata proof
+    ) internal returns (bytes32 intentHash, address claimant) {
+        (
+            uint32 chainId,
+            address emittingContract,
+            bytes memory topics,
+            bytes memory data
+        ) = CROSS_L2_PROVER_V2.validateEvent(proof);
+
+        checkInboxContract(emittingContract);
+        checkSupportedChainId(chainId);
+        checkTopicLength(topics, 128);
+
+        bytes32[] memory topicsArray = new bytes32[](4);
+
+        // Use assembly for efficient memory operations when splitting topics
+        assembly {
+            let topicsPtr := add(topics, 32)
+            for {
+                let i := 0
+            } lt(i, 4) {
+                i := add(i, 1)
+            } {
+                mstore(
+                    add(add(topicsArray, 32), mul(i, 32)),
+                    mload(add(topicsPtr, mul(i, 32)))
+                )
+            }
+        }
+
+        checkTopicSignature(topicsArray[0], PROOF_SELECTOR);
+        claimant = address(uint160(uint256(topicsArray[3])));
+        return (topicsArray[1], claimant);
     }
 
     /**
@@ -339,6 +319,60 @@ contract PolymerProver is BaseProver, Semver {
             claimants
         );
     }
+
+    // ------------- INTERNAL FUNCTIONS - INTENT PROCESSING -------------
+
+    /**
+     * @notice Processes a single intent proof
+     * @param intentHash Hash of the intent being proven
+     * @param claimant Address that fulfilled the intent and should receive rewards
+     */
+    function processIntent(bytes32 intentHash, address claimant) internal {
+        if (provenIntents[intentHash] != address(0)) {
+            emit IntentAlreadyProven(intentHash);
+        } else {
+            provenIntents[intentHash] = claimant;
+            emit IntentProven(intentHash, claimant);
+        }
+    }
+
+    /**
+     * @notice Validates that a calculated intent hash matches the expected intent hash
+     * @param routeHash The route hash component of the intent
+     * @param reward The reward structure to encode
+     * @param expectedIntentHash The expected intent hash to compare against
+     */
+    function validateIntentHash(
+        bytes32 routeHash,
+        Reward memory reward,
+        bytes32 expectedIntentHash
+    ) internal pure {
+        bytes32 calculatedRewardHash = keccak256(abi.encode(reward));
+        bytes32 calculatedIntentHash = keccak256(
+            abi.encodePacked(routeHash, calculatedRewardHash)
+        );
+        if (calculatedIntentHash != expectedIntentHash)
+            revert IntentHashMismatch();
+    }
+
+    /**
+     * @notice Converts a proverReward struct to a Reward struct
+     * @param _proverReward The proverReward struct to convert
+     * @return Reward struct with this contract as the prover
+     */
+    function _toReward(
+        ProverReward memory _proverReward
+    ) internal view returns (Reward memory) {
+        return Reward(
+            _proverReward.creator,
+            address(this),
+            _proverReward.deadline,
+            _proverReward.nativeValue,
+            _proverReward.tokens
+        );
+    }
+
+    // ------------- INTERNAL FUNCTIONS - MESSAGE DECODING -------------
 
     /**
      * @notice Decodes a message body into intent hashes and claimants and stores them
@@ -432,43 +466,39 @@ contract PolymerProver is BaseProver, Semver {
         return (intentHashes, claimants);
     }
 
-    /**
-     * @notice Processes a single intent proof
-     * @param intentHash Hash of the intent being proven
-     * @param claimant Address that fulfilled the intent and should receive rewards
-     */
-    function processIntent(bytes32 intentHash, address claimant) internal {
-        if (provenIntents[intentHash] != address(0)) {
-            emit IntentAlreadyProven(intentHash);
-        } else {
-            provenIntents[intentHash] = claimant;
-            emit IntentProven(intentHash, claimant);
-        }
-    }
+    // ------------- INTERNAL FUNCTIONS - VALIDATION HELPERS -------------
 
-    // Validation helper functions
+    /**
+     * @notice Validates that a topic signature matches the expected selector
+     * @param topic The topic signature to check
+     * @param selector The expected selector
+     */
     function checkTopicSignature(bytes32 topic, bytes32 selector) internal pure {
         if (topic != selector) revert InvalidEventSignature();
     }
 
+    /**
+     * @notice Validates that the emitting contract is the expected inbox
+     * @param emittingContract The contract that emitted the event
+     */
     function checkInboxContract(address emittingContract) internal view {
         if (emittingContract != INBOX) revert InvalidEmittingContract();
     }
 
+    /**
+     * @notice Validates that the chain ID is supported by this prover
+     * @param chainId The chain ID to check
+     */
     function checkSupportedChainId(uint32 chainId) internal view {
         if (!supportedChainIds[chainId]) revert UnsupportedChainId();
     }
 
+    /**
+     * @notice Validates that the topics have the expected length
+     * @param topics The topics to check
+     * @param length The expected length
+     */
     function checkTopicLength(bytes memory topics, uint256 length) internal pure {
         if (topics.length != length) revert InvalidTopicsLength();
-    }
-
-    /**
-     * @notice Returns the proof type used by this prover
-     * @dev Implementation of IProver interface method
-     * @return ProofType The type of proof mechanism (Polymer)
-     */
-    function getProofType() external pure override returns (ProofType) {
-        return PROOF_TYPE;
     }
 }
