@@ -102,13 +102,22 @@ contract PolymerProver is BaseProver, Semver {
         processIntent(intentHash, claimant);
     }
 
-    function validateAndClaim(bytes calldata proof, bytes32 routeHash, ProverReward calldata proverReward) external {
+    function validateAndClaim(
+        bytes calldata proof,
+        bytes32 routeHash,
+        ProverReward calldata proverReward
+    ) external {
         (bytes32 intentHash, address claimant) = _validateProof(proof);
 
         Reward memory reward = _toReward(proverReward);
 
         validateIntentHash(routeHash, reward, intentHash);
-        IIntentSource(INTENT_SOURCE).pushWithdraw(intentHash, routeHash, reward, claimant);
+        IIntentSource(INTENT_SOURCE).pushWithdraw(
+            intentHash,
+            routeHash,
+            reward,
+            claimant
+        );
     }
 
     /**
@@ -123,7 +132,11 @@ contract PolymerProver is BaseProver, Semver {
         }
     }
 
-    function validateBatchAndClaim(bytes[] calldata proofs, bytes32[] calldata routeHashes, ProverReward[] calldata proverRewards) external {
+    function validateBatchAndClaim(
+        bytes[] calldata proofs,
+        bytes32[] calldata routeHashes,
+        ProverReward[] calldata proverRewards
+    ) external {
         bytes32[] memory intentHashes = new bytes32[](proofs.length);
         address[] memory claimants = new address[](proofs.length);
         Reward[] memory rewards = new Reward[](proverRewards.length);
@@ -135,8 +148,13 @@ contract PolymerProver is BaseProver, Semver {
             rewards[i] = _toReward(proverRewards[i]);
             validateIntentHash(routeHashes[i], rewards[i], intentHashes[i]);
         }
-        
-        IIntentSource(INTENT_SOURCE).batchPushWithdraw(intentHashes, routeHashes, rewards, claimants);
+
+        IIntentSource(INTENT_SOURCE).batchPushWithdraw(
+            intentHashes,
+            routeHashes,
+            rewards,
+            claimants
+        );
     }
 
     /**
@@ -146,10 +164,17 @@ contract PolymerProver is BaseProver, Semver {
      * @param reward The reward structure to encode
      * @param expectedIntentHash The expected intent hash to compare against
      */
-    function validateIntentHash(bytes32 routeHash, Reward memory reward, bytes32 expectedIntentHash) internal pure {
+    function validateIntentHash(
+        bytes32 routeHash,
+        Reward memory reward,
+        bytes32 expectedIntentHash
+    ) internal pure {
         bytes32 calculatedRewardHash = keccak256(abi.encode(reward));
-        bytes32 calculatedIntentHash = keccak256(abi.encodePacked(routeHash, calculatedRewardHash));
-        if (calculatedIntentHash != expectedIntentHash) revert("Intent hash mismatch");
+        bytes32 calculatedIntentHash = keccak256(
+            abi.encodePacked(routeHash, calculatedRewardHash)
+        );
+        if (calculatedIntentHash != expectedIntentHash)
+            revert("Intent hash mismatch");
     }
 
     /**
@@ -158,14 +183,17 @@ contract PolymerProver is BaseProver, Semver {
      * @param _proverReward The proverReward struct to convert
      * @return reward The converted Reward struct
      */
-    function _toReward(ProverReward memory _proverReward) internal view returns (Reward memory) {
-        return Reward(
-            _proverReward.creator,
-            address(this),
-            _proverReward.deadline,
-            _proverReward.nativeValue,
-            _proverReward.tokens
-        );
+    function _toReward(
+        ProverReward memory _proverReward
+    ) internal view returns (Reward memory) {
+        return
+            Reward(
+                _proverReward.creator,
+                address(this),
+                _proverReward.deadline,
+                _proverReward.nativeValue,
+                _proverReward.tokens
+            );
     }
 
     /**
@@ -173,7 +201,9 @@ contract PolymerProver is BaseProver, Semver {
      * @dev Internal method to validate proof using CrossL2ProverV2 and records proven intents
      * @param proof The proof data to validate
      */
-    function _validateProof(bytes calldata proof) internal returns (bytes32 intentHash, address claimant) {
+    function _validateProof(
+        bytes calldata proof
+    ) internal returns (bytes32 intentHash, address claimant) {
         (
             uint32 chainId,
             address emittingContract,
@@ -297,18 +327,35 @@ contract PolymerProver is BaseProver, Semver {
         }
     }
 
-    function validatePackedAndClaim(bytes calldata proof, bytes32[] calldata routeHashes, ProverReward[] calldata proverRewards) external {
+    function validatePackedAndClaim(
+        bytes calldata proof,
+        bytes32[] calldata routeHashes,
+        ProverReward[] calldata proverRewards
+    ) external {
         if (routeHashes.length != proverRewards.length) revert SizeMismatch();
         _validatePackedAndClaim(proof, routeHashes, proverRewards);
     }
 
-    function validateBatchPackedAndClaim(bytes[] calldata proofs, bytes32[][] calldata routeHashes, ProverReward[][] calldata proverRewards) external {
+    function validateBatchPackedAndClaim(
+        bytes[] calldata proofs,
+        bytes32[][] calldata routeHashes,
+        ProverReward[][] calldata proverRewards
+    ) external {
         for (uint256 i = 0; i < proofs.length; i++) {
-            if (routeHashes[i].length != proverRewards[i].length) revert SizeMismatch();
-            _validatePackedAndClaim(proofs[i], routeHashes[i], proverRewards[i]);
+            if (routeHashes[i].length != proverRewards[i].length)
+                revert SizeMismatch();
+            _validatePackedAndClaim(
+                proofs[i],
+                routeHashes[i],
+                proverRewards[i]
+            );
         }
     }
-    function _validatePackedAndClaim(bytes calldata proof, bytes32[] calldata routeHashes, ProverReward[] calldata proverRewards) internal {
+    function _validatePackedAndClaim(
+        bytes calldata proof,
+        bytes32[] calldata routeHashes,
+        ProverReward[] calldata proverRewards
+    ) internal {
         (
             uint32 chainId,
             address emittingContract,
@@ -326,40 +373,53 @@ contract PolymerProver is BaseProver, Semver {
         //but not needed because hash uniqueness is guaranteed by the source chain
 
         uint256 expectedSize = routeHashes.length;
-        (bytes32[] memory intentHashes, address[] memory claimants) = decodeMessageBeforeClaim(data, expectedSize);
+        (
+            bytes32[] memory intentHashes,
+            address[] memory claimants
+        ) = decodeMessageBeforeClaim(data, expectedSize);
 
         Reward[] memory rewards = new Reward[](expectedSize);
         for (uint256 i = 0; i < expectedSize; i++) {
             rewards[i] = _toReward(proverRewards[i]);
             validateIntentHash(routeHashes[i], rewards[i], intentHashes[i]);
-        }   
-        IIntentSource(INTENT_SOURCE).batchPushWithdraw(intentHashes, routeHashes, rewards, claimants);
+        }
+        IIntentSource(INTENT_SOURCE).batchPushWithdraw(
+            intentHashes,
+            routeHashes,
+            rewards,
+            claimants
+        );
     }
 
-    function decodeMessageBeforeClaim(bytes memory messageBody, uint256 expectedSize) internal pure returns (bytes32[] memory intentHashes, address[] memory claimants) {
+    function decodeMessageBeforeClaim(
+        bytes memory messageBody,
+        uint256 expectedSize
+    )
+        internal
+        pure
+        returns (bytes32[] memory intentHashes, address[] memory claimants)
+    {
         uint256 size = messageBody.length;
 
         uint256 offset = 0;
         uint256 totalIntentCount = 0;
         intentHashes = new bytes32[](expectedSize);
         claimants = new address[](expectedSize);
-        
+
         while (offset < size) {
-        
             if (offset + 2 > size) revert("truncated chunkSize");
             uint16 chunkSize;
-            assembly { 
+            assembly {
                 chunkSize := mload(add(messageBody, add(offset, 2)))
                 offset := add(offset, 2)
-                }
+            }
 
             if (offset + 20 > size) revert("truncated claimant address");
             address claimant;
-            assembly { 
+            assembly {
                 claimant := mload(add(messageBody, add(offset, 20)))
                 offset := add(offset, 20)
-                }
-
+            }
 
             if (offset + 32 * chunkSize > size) revert("truncated intent set");
             bytes32 intentHash;
