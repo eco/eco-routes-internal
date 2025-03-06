@@ -30,6 +30,7 @@ contract PolymerProver is BaseProver, Semver {
     error InvalidEmittingContract();
     error InvalidTopicsLength();
     error SizeMismatch();
+    error IntentHashMismatch();
 
     struct ProverReward {
         address creator;
@@ -118,6 +119,7 @@ contract PolymerProver is BaseProver, Semver {
             reward,
             claimant
         );
+        emit IntentProven(intentHash, claimant); //might want a new event, but I think its ok
     }
 
     /**
@@ -147,6 +149,7 @@ contract PolymerProver is BaseProver, Semver {
             claimants[i] = claimant;
             rewards[i] = _toReward(proverRewards[i]);
             validateIntentHash(routeHashes[i], rewards[i], intentHashes[i]);
+            emit IntentProven(intentHash, claimant); //might want a new event, but I think its ok
         }
 
         IIntentSource(INTENT_SOURCE).batchPushWithdraw(
@@ -174,7 +177,7 @@ contract PolymerProver is BaseProver, Semver {
             abi.encodePacked(routeHash, calculatedRewardHash)
         );
         if (calculatedIntentHash != expectedIntentHash)
-            revert("Intent hash mismatch");
+            revert IntentHashMismatch();
     }
 
     /**
@@ -382,6 +385,7 @@ contract PolymerProver is BaseProver, Semver {
         for (uint256 i = 0; i < expectedSize; i++) {
             rewards[i] = _toReward(proverRewards[i]);
             validateIntentHash(routeHashes[i], rewards[i], intentHashes[i]);
+            emit IntentProven(intentHashes[i], claimants[i]); 
         }
         IIntentSource(INTENT_SOURCE).batchPushWithdraw(
             intentHashes,
@@ -395,7 +399,7 @@ contract PolymerProver is BaseProver, Semver {
         bytes memory messageBody,
         uint256 expectedSize
     )
-        internal
+        public
         pure
         returns (bytes32[] memory intentHashes, address[] memory claimants)
     {

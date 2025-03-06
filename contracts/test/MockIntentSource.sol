@@ -24,10 +24,6 @@ contract MockIntentSource {
      * @param claimant Address that will receive the rewards
      */
     function pushWithdraw(bytes32 intentHash, bytes32 routeHash, Reward calldata reward, address claimant) public {
-        if (reward.prover != msg.sender) {
-            revert UnauthorizedProver(msg.sender);
-        }
-        
         emit PushWithdrawCalled(intentHash, routeHash, reward, claimant);
     }
 
@@ -44,16 +40,6 @@ contract MockIntentSource {
         Reward[] calldata rewards, 
         address[] calldata claimants
     ) external {
-        uint256 length = intentHashes.length;
-
-        if (length != routeHashes.length || length != rewards.length || length != claimants.length) {
-            revert ArrayLengthMismatch();
-        }
-
         emit BatchPushWithdrawCalled(intentHashes, routeHashes, rewards, claimants);
-
-        for (uint256 i = 0; i < length; ++i) {
-            pushWithdraw(intentHashes[i], routeHashes[i], rewards[i], claimants[i]);
-        }
     }
 }

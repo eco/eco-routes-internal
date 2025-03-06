@@ -13,7 +13,21 @@ import {
   MockIntentSource
 } from '../typechain-types'
 import { encodeTransfer } from '../utils/encode'
-import { hashIntent, TokenAmount } from '../utils/intent'
+import { TokenAmount, Reward } from '../utils/intent'
+
+export function hashIntent(routeHash: string, reward: Reward): string {
+  // Use the full Reward type for encoding, matching the Solidity abi.encode(reward)
+  const rewardHash = ethers.keccak256(
+    ethers.AbiCoder.defaultAbiCoder().encode(
+      ['tuple(address creator, address prover, uint256 deadline, uint256 nativeValue, tuple(address token, uint256 amount)[] tokens)'],
+      [reward]
+    )
+  );
+  
+  return ethers.keccak256(
+    ethers.solidityPacked(['bytes32', 'bytes32'], [routeHash, rewardHash])
+  );
+}
 
 describe('PolymerProver Test', (): void => {
   let polymerProver: PolymerProver
@@ -25,6 +39,7 @@ describe('PolymerProver Test', (): void => {
   let claimant: SignerWithAddress
   let claimant2: SignerWithAddress
   let claimant3: SignerWithAddress
+  let token: SignerWithAddress
   let chainIds: number[] = [10, 42161];
   let emptyTopics: string = "0x0000000000000000000000000000000000000000000000000000000000000000";
   let emptyData: string = "0x";
@@ -39,8 +54,9 @@ describe('PolymerProver Test', (): void => {
     claimant: SignerWithAddress
     claimant2: SignerWithAddress
     claimant3: SignerWithAddress
+    token: SignerWithAddress
   }> {
-    const [owner, solver, claimant, claimant2, claimant3] = await ethers.getSigners()
+    const [owner, solver, claimant, claimant2, claimant3, token] = await ethers.getSigners()
 
     const inbox = await (
       await ethers.getContractFactory('Inbox')
@@ -67,12 +83,13 @@ describe('PolymerProver Test', (): void => {
       solver,
       claimant,
       claimant2,
-      claimant3
+      claimant3,
+      token
     }
   }
 
   beforeEach(async (): Promise<void> => {
-    ({ polymerProver, inbox, testCrossL2ProverV2, mockIntentSource, solver, claimant, claimant2, claimant3 } = await loadFixture(deployPolymerProverFixture));
+    ({ polymerProver, inbox, testCrossL2ProverV2, mockIntentSource, solver, claimant, claimant2, claimant3, token } = await loadFixture(deployPolymerProverFixture));
   })
   
   describe('Single emit', (): void => {
@@ -441,7 +458,223 @@ describe('PolymerProver Test', (): void => {
     })
   })
 
-  describe('packed emit', (): void => {
+  describe('Single / Batch emit and claim', (): void => {
+    let topics: string[];
+    let data: string;
+    let expectedHash: string;
+    let eventSignature: string;
+    let badEventSignature: string;
+    let routeHash: string;
+    let proverReward: PolymerProver.ProverRewardStruct;
+    let reward: Reward;
+    beforeEach(async (): Promise<void> => {
+        eventSignature = ethers.id('ToBeProven(bytes32,uint256,address)');
+        badEventSignature = ethers.id('BadEventSignature(bytes32,uint256,address)');
+        const creator = claimant2.address;
+        proverReward = {
+            creator: creator,
+            deadline: 1111,
+            nativeValue: 1n,
+            tokens: [{
+                token: await token.getAddress(),
+                amount: 10
+            }]
+        };
+
+        routeHash = '0x' + '11'.repeat(32);
+        reward = {
+            creator: creator,
+            prover: await polymerProver.getAddress(),
+            deadline: 1111,
+            nativeValue: 1n,
+            tokens: [{
+                token: await token.getAddress(),
+                amount: 10
+            }]
+        };
+        expectedHash = hashIntent(routeHash, reward);
+        data = '0x';
+        topics = [
+            eventSignature, 
+            expectedHash, 
+            ethers.zeroPadValue(ethers.toBeHex(chainIds[0]), 32), 
+            ethers.zeroPadValue(claimant.address, 32)
+        ];
+    })
+
+    it('should validate and claim a single emit and revert on hash mismatch', async (): Promise<void> => {
+      const topicsPacked = ethers.solidityPacked(
+        ["bytes32", "bytes32", "bytes32", "bytes32"],
+        topics
+      );
+
+      const inboxAddress = await inbox.getAddress();
+      await testCrossL2ProverV2.setAll(
+        chainIds[0], 
+        inboxAddress,
+        topicsPacked, 
+        data
+      );
+
+      const proofIndex = 1;
+      const proof = ethers.zeroPadValue(ethers.toBeHex(proofIndex), 32);
+
+      const [chainId_returned, emittingContract_returned, topics_returned, data_returned] = 
+        await testCrossL2ProverV2.validateEvent(proof);
+
+      expect(chainId_returned).to.equal(chainIds[0]);
+      expect(emittingContract_returned).to.equal(inboxAddress);
+      expect(topics_returned).to.equal(topicsPacked);
+      expect(data_returned).to.equal(data);
+
+    // Convert tokens array to array format for each token
+    const tokensArray = reward.tokens.map(token => [
+      token.token,
+      token.amount
+    ]);
+    
+    // Convert reward object to array format with converted tokens array
+    const rewardArray = [
+      reward.creator,
+      reward.prover,
+      reward.deadline,
+      reward.nativeValue,
+      tokensArray
+    ];
+
+    await expect(polymerProver.validateAndClaim(proof, routeHash, proverReward))
+      .to.emit(polymerProver, 'IntentProven')
+      .withArgs(expectedHash, claimant.address)
+      .to.emit(mockIntentSource, 'PushWithdrawCalled')
+      .withArgs(expectedHash, routeHash, rewardArray, claimant.address);
+
+    await expect(polymerProver.validateAndClaim(proof, '0x' + '7b'.repeat(32), proverReward))
+    .to.be.revertedWithCustomError(polymerProver, 'IntentHashMismatch');
+    })
+
+    it('should validate and claim a batch of emits and revert on hash mismatch', async (): Promise<void> => {
+      //setup second hash and rewards
+      const creator2 = claimant2.address;
+      let proverReward2 = {
+          creator: creator2,
+          deadline: 2222,
+          nativeValue: 2n,
+          tokens: [{
+              token: await token.getAddress(),
+              amount: 22
+          }]
+      };
+
+      let routeHash2 = '0x' + '22'.repeat(32);
+      let reward2 = {
+          creator: creator2,
+          prover: await polymerProver.getAddress(),
+          deadline: 2222,
+          nativeValue: 2n,
+          tokens: [{
+              token: await token.getAddress(),
+              amount: 22
+          }]
+      };
+      let expectedHash2 = hashIntent(routeHash2, reward2);
+      let data2 = '0x';
+      let topics2 = [
+          eventSignature, 
+          expectedHash2, 
+          ethers.zeroPadValue(ethers.toBeHex(chainIds[1]), 32), 
+          ethers.zeroPadValue(claimant2.address, 32)
+      ];
+
+      const topicsPacked = ethers.solidityPacked(
+        ["bytes32", "bytes32", "bytes32", "bytes32"],
+        topics
+      );
+
+      const topicsPacked2 = ethers.solidityPacked(
+        ["bytes32", "bytes32", "bytes32", "bytes32"],
+        topics2
+      );
+
+      const inboxAddress = await inbox.getAddress();
+      await testCrossL2ProverV2.setAll(
+        chainIds[0], 
+        inboxAddress,
+        topicsPacked, 
+        data
+      );
+
+      await testCrossL2ProverV2.setAll(
+        chainIds[0], 
+        inboxAddress,
+        topicsPacked2, 
+        data2
+      );
+
+      const proofIndex = 1;
+      const proof = ethers.zeroPadValue(ethers.toBeHex(proofIndex), 32);
+
+      const [chainId_returned, emittingContract_returned, topics_returned, data_returned] = 
+        await testCrossL2ProverV2.validateEvent(proof);
+
+      expect(chainId_returned).to.equal(chainIds[0]);
+      expect(emittingContract_returned).to.equal(inboxAddress);
+      expect(topics_returned).to.equal(topicsPacked);
+      expect(data_returned).to.equal(data);
+
+      const proofIndex2 = 2;
+      const proof2 = ethers.zeroPadValue(ethers.toBeHex(proofIndex2), 32);
+
+      const [chainId_returned2, emittingContract_returned2, topics_returned2, data_returned2] = 
+        await testCrossL2ProverV2.validateEvent(proof2);
+
+      expect(chainId_returned2).to.equal(chainIds[0]);
+      expect(emittingContract_returned2).to.equal(inboxAddress);
+      expect(topics_returned2).to.equal(topicsPacked2);
+      expect(data_returned2).to.equal(data2);
+
+    // Convert tokens array to array format for each token
+    const tokensArray = reward.tokens.map(token => [
+      token.token,
+      token.amount
+    ]);
+    
+    // Convert reward object to array format with converted tokens array
+    const rewardArray = [
+      reward.creator,
+      reward.prover,
+      reward.deadline,
+      reward.nativeValue,
+      tokensArray
+    ];
+
+    const tokensArray2 = reward2.tokens.map(token => [
+      token.token,
+      token.amount
+    ]);
+
+    const rewardArray2 = [
+      reward2.creator,
+      reward2.prover,
+      reward2.deadline,
+      reward2.nativeValue,
+      tokensArray2
+    ];
+
+    await expect(polymerProver.validateBatchAndClaim([proof, proof2], [routeHash, routeHash2], [proverReward, proverReward2]))
+      .to.emit(polymerProver, 'IntentProven')
+      .withArgs(expectedHash, claimant.address)
+      .to.emit(polymerProver, 'IntentProven')
+      .withArgs(expectedHash2, claimant2.address)
+      .to.emit(mockIntentSource, 'BatchPushWithdrawCalled')
+      .withArgs([expectedHash, expectedHash2], [routeHash, routeHash2], [rewardArray, rewardArray2], [claimant.address, claimant2.address]);
+
+
+    await expect(polymerProver.validateBatchAndClaim([proof, proof2], [ethers.hexlify(ethers.randomBytes(32)), ethers.hexlify(ethers.randomBytes(32))], [proverReward, proverReward2]))
+    .to.be.revertedWithCustomError(polymerProver, 'IntentHashMismatch');
+    })
+  })
+  
+  describe('Packed emit', (): void => {
     let topics: string[];
     let topics_packed: string;
     let data: string;
@@ -492,7 +725,6 @@ describe('PolymerProver Test', (): void => {
       );
 
       messageBody = ethers.concat([packedClaimant1, packedClaimant2]);
-      console.log(messageBody);
     })
 
     it('should validate a single packed emit', async (): Promise<void> => {
@@ -515,7 +747,6 @@ describe('PolymerProver Test', (): void => {
       expect(emittingContract_returned).to.equal(inboxAddress);
       expect(topics_returned).to.equal(topics_packed);
       expect(data_returned).to.equal(messageBody);
-      console.log(data_returned);
 
       await expect(polymerProver.validatePacked(proof))
         .to.emit(polymerProver, 'IntentProven')
@@ -628,7 +859,7 @@ describe('PolymerProver Test', (): void => {
         eventSignature, 
         expectedHash, 
         ethers.zeroPadValue(ethers.toBeHex(chainIds[0]), 32), 
-      ];
+    ];
 
       topics_packed = ethers.solidityPacked(
           ["bytes32", "bytes32", "bytes32"],
@@ -795,5 +1026,186 @@ describe('PolymerProver Test', (): void => {
         .to.emit(polymerProver, 'IntentProven')
         .withArgs(intentHashes2[2], claimants2[2]);
     })
+  })
+  describe('Packed emit and claim', (): void => {
+    let topics: string[];
+    let topics_packed: string;
+    let data: string;
+    let expectedHash: string;
+    let expectedHash2: string;
+    let expectedHash3: string;
+    let eventSignature: string;
+    let inboxAddress: string;
+    let intentHashes: string[];
+    let claimants: string[];
+    let messageBody: string;
+    let routeHashes: string[];
+    let proverRewardArray: PolymerProver.ProverRewardStruct[];
+    let rewardArray: Reward[];
+    let polymerProverAddress: string;
+    let creator: string;
+
+    beforeEach(async (): Promise<void> => {
+      eventSignature = inbox.interface.getEvent('BatchToBeProven').topicHash;
+      
+      let routeHash1 = '0x' + '11'.repeat(32);
+      let routeHash2 = '0x' + '22'.repeat(32);
+      let routeHash3 = '0x' + '33'.repeat(32);
+      topics = [
+          eventSignature, 
+          ethers.zeroPadValue(ethers.toBeHex(chainIds[0]), 32)
+      ];
+
+      topics_packed = ethers.solidityPacked(
+          ["bytes32", "bytes32"],
+          topics
+      );
+      inboxAddress = await inbox.getAddress();
+
+      routeHashes = [
+        routeHash1,
+        routeHash2,
+        routeHash3
+      ];
+      claimants = [
+        claimant.address,
+        claimant.address,
+        claimant2.address
+      ];
+
+      creator = claimant3.address;
+      polymerProverAddress = await polymerProver.getAddress();
+      const tokenAddress = await token.getAddress();
+      rewardArray = [];
+      intentHashes = [];
+      proverRewardArray = [];
+
+      for (let i = 0; i < claimants.length; i++) {
+        const proverReward: PolymerProver.ProverRewardStruct = {
+          creator: creator,
+          deadline: 1111,
+          nativeValue: BigInt(i + 1),
+          tokens: [{
+              token: tokenAddress,
+              amount: 10 * (i + 1)
+          }]
+        };
+        
+        const reward: Reward = {
+          creator: creator,
+          prover: polymerProverAddress,
+          deadline: 1111,
+          nativeValue: BigInt(i + 1),
+          tokens: [{
+              token: tokenAddress,
+              amount: 10 * (i + 1)
+          }]
+        };
+        
+        proverRewardArray.push(proverReward);
+        rewardArray.push(reward);
+        intentHashes.push(hashIntent(routeHashes[i], reward));
+      }
+
+    const packedClaimant1 = ethers.solidityPacked(
+        ['uint16','uint160','bytes32','bytes32'],
+        [2, claimant.address, intentHashes[0], intentHashes[1]]
+      );
+
+    const packedClaimant2 = ethers.solidityPacked(
+        ['uint16','uint160','bytes32'],
+        [1, claimant2.address, intentHashes[2]]
+      );
+
+      messageBody = ethers.concat([packedClaimant1, packedClaimant2]);
+    })
+
+    it('should validate a single packed emit and claim and revert if intent mismatch', async (): Promise<void> => {
+
+      // set values for mock prover
+      await testCrossL2ProverV2.setAll(
+        chainIds[0], 
+        inboxAddress,
+        topics_packed, 
+        messageBody
+      );
+
+      const proofIndex = 1;
+      const proof = ethers.zeroPadValue(ethers.toBeHex(proofIndex), 32);
+      
+      const [chainId_returned, emittingContract_returned, topics_returned, data_returned] = 
+        await testCrossL2ProverV2.validateEvent(proof);
+
+      expect(chainId_returned).to.equal(chainIds[0]);
+      expect(emittingContract_returned).to.equal(inboxAddress);
+      expect(topics_returned).to.equal(topics_packed);
+      expect(data_returned).to.equal(messageBody);
+
+
+      const formattedRewardArray = rewardArray.map(reward => {
+        const tokensArrayFormat = reward.tokens.map(token => [
+          token.token,
+          token.amount
+        ]);
+        return [
+          reward.creator,
+          reward.prover,
+          reward.deadline,
+          reward.nativeValue,
+          tokensArrayFormat
+        ];
+      });
+
+      await expect(polymerProver.validatePackedAndClaim(proof, routeHashes, proverRewardArray))
+        .to.emit(polymerProver, 'IntentProven')
+        .withArgs(intentHashes[0], claimants[0])
+        .to.emit(polymerProver, 'IntentProven')
+        .withArgs(intentHashes[1], claimants[1])
+        .to.emit(polymerProver, 'IntentProven')
+        .withArgs(intentHashes[2], claimants[2])
+        .to.emit(mockIntentSource, 'BatchPushWithdrawCalled')
+        .withArgs(intentHashes, routeHashes, formattedRewardArray, claimants);
+
+      await expect(polymerProver.validatePackedAndClaim(proof, ['0x' + '45'.repeat(32), '0x' + '55'.repeat(32), '0x' + '66'.repeat(32)], proverRewardArray))
+        .to.be.revertedWithCustomError(polymerProver, 'IntentHashMismatch');
+    })
+    it('should revert check size mismatch of route hashes and prover rewards', async (): Promise<void> => {
+    })
+
+    it('should revert for invalid emitting contract', async (): Promise<void> => {
+    })
+
+    it('should revert for invalid chainId', async (): Promise<void> => {
+    })
+
+    it('should revert for topics length not 2', async (): Promise<void> => {
+    })
+
+    it('should revert for invalid event signature', async (): Promise<void> => {
+    })
+
+    it('should allow a batch of packed emits to be proven', async (): Promise<void> => {
+    })
+
+  })
+  describe('messageBeforeClaim', (): void => {
+    it('happy path should work', async (): Promise<void> => {
+    })
+
+    it('variations on happy path should work', async (): Promise<void> => {
+    })
+    
+    it('should revert for truncated size', async (): Promise<void> => {
+    })
+
+    it('should revert for truncated claimant address', async (): Promise<void> => {
+    })
+
+    it('should revert for truncated intent set', async (): Promise<void> => {
+    })
+
+    it('should revert for size mismatch', async (): Promise<void> => {
+    })
+
   })
 })

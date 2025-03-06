@@ -73,10 +73,10 @@ out/
 typechain/
 .DS_Store
 tmp/
+.cursorrules
 
 # Nishaad's poke script
 executeInstructions.ts
-
 
 #Publish artifacts
 package
