@@ -12,72 +12,44 @@ import {Reward, TokenAmount} from "../types/Intent.sol";
  * @dev Processes proof messages from Polymer's CrossL2ProverV2 and records proven intents
  */
 contract PolymerProver is BaseProver, Semver {
-    /**
-     * @notice Constant indicating this contract uses Polymer for proving
-     */
+    // Constants
     ProofType public constant PROOF_TYPE = ProofType.Polymer;
-
-    /**
-     * @notice Emitted when attempting to prove an already-proven intent
-     * @dev Event instead of error to allow batch processing to continue
-     * @param _intentHash Hash of the already proven intent
-     */
+    bytes32 public constant PROOF_SELECTOR = keccak256("ToBeProven(bytes32,uint256,address)");
+    bytes32 public constant BATCH_PROOF_SELECTOR = keccak256("BatchToBeProven(uint256,bytes)");
+    
+    // Events
     event IntentAlreadyProven(bytes32 _intentHash);
-
-    // write custom errors
+    
+    // Errors
     error InvalidEventSignature();
     error UnsupportedChainId();
     error InvalidEmittingContract();
     error InvalidTopicsLength();
     error SizeMismatch();
     error IntentHashMismatch();
-
+    
+    // Structs
     struct ProverReward {
         address creator;
         uint256 deadline;
         uint256 nativeValue;
         TokenAmount[] tokens;
     }
-    /**
-     * @notice Address of local Polymer CrossL2ProverV2 contract
-     * @dev Immutable contract reference used to validate cross-chain proofs
-     */
+    
+    // Immutable state variables
     ICrossL2ProverV2 public immutable CROSS_L2_PROVER_V2;
-
-    /**
-     * @notice Address of local Inbox contract
-     * @dev Immutable reference to verify proof origin
-     */
     address public immutable INBOX;
-
-    /**
-     * @notice Address of local IntentSource contract
-     * @dev Immutable reference to verify proof origin
-     */
     address public immutable INTENT_SOURCE;
-
-    /**
-     * @notice Mapping of supported source chain IDs
-     * @dev Chain IDs that this prover accepts proofs from
-     */
+    
+    // State variables
     mapping(uint32 => bool) public supportedChainIds;
 
     /**
-     * @notice Keccak256 hash of the event signature for intent proofs
-     * @dev Used to validate proof event topics
-     */
-    bytes32 public constant PROOF_SELECTOR =
-        keccak256("ToBeProven(bytes32,uint256,address)");
-
-    bytes32 public constant BATCH_PROOF_SELECTOR =
-        keccak256("BatchToBeProven(uint256,bytes)");
-
-    /**
      * @notice Initializes the PolymerProver contract
-     * @dev Sets up core contract references and supported chain IDs
      * @param _crossL2ProverV2 Address of the Polymer CrossL2ProverV2 contract
      * @param _inbox Address of the Inbox contract that emits proof events
      * @param _supportedChainIds Array of chain IDs that this prover will accept proofs from
+     * @param _intentSource Address of the IntentSource contract
      */
     constructor(
         address _crossL2ProverV2,
@@ -87,15 +59,15 @@ contract PolymerProver is BaseProver, Semver {
     ) {
         CROSS_L2_PROVER_V2 = ICrossL2ProverV2(_crossL2ProverV2);
         INBOX = _inbox;
+        INTENT_SOURCE = _intentSource;
+        
         for (uint32 i = 0; i < _supportedChainIds.length; i++) {
             supportedChainIds[_supportedChainIds[i]] = true;
         }
-        INTENT_SOURCE = _intentSource;
     }
 
     /**
      * @notice Validates a single proof
-     * @dev External function called to validate single event proof
      * @param proof The proof data for CROSS_L2_PROVER_V2 to validate
      */
     function validate(bytes calldata proof) external {
@@ -103,13 +75,18 @@ contract PolymerProver is BaseProver, Semver {
         processIntent(intentHash, claimant);
     }
 
+    /**
+     * @notice Validates a proof and claims the reward
+     * @param proof The proof data to validate
+     * @param routeHash The route hash component of the intent
+     * @param proverReward The reward structure for the intent
+     */
     function validateAndClaim(
         bytes calldata proof,
         bytes32 routeHash,
         ProverReward calldata proverReward
     ) external {
         (bytes32 intentHash, address claimant) = _validateProof(proof);
-
         Reward memory reward = _toReward(proverReward);
 
         validateIntentHash(routeHash, reward, intentHash);
@@ -124,8 +101,7 @@ contract PolymerProver is BaseProver, Semver {
 
     /**
      * @notice Validates multiple proofs in a batch
-     * @dev Processes each proof sequentially
-     * @param proofs Array of proof data for CROSS_L2_PROVER_V2 to validate
+     * @param proofs Array of proof data to validate
      */
     function validateBatch(bytes[] calldata proofs) external {
         for (uint256 i = 0; i < proofs.length; i++) {
@@ -134,6 +110,12 @@ contract PolymerProver is BaseProver, Semver {
         }
     }
 
+    /**
+     * @notice Validates multiple proofs in a batch and claims rewards
+     * @param proofs Array of proof data to validate
+     * @param routeHashes Array of route hashes corresponding to each proof
+     * @param proverRewards Array of reward structures corresponding to each proof
+     */
     function validateBatchAndClaim(
         bytes[] calldata proofs,
         bytes32[] calldata routeHashes,
@@ -162,7 +144,6 @@ contract PolymerProver is BaseProver, Semver {
 
     /**
      * @notice Validates that a calculated intent hash matches the expected intent hash
-     * @dev Calculates the intent hash from route hash and reward, then compares with expected hash
      * @param routeHash The route hash component of the intent
      * @param reward The reward structure to encode
      * @param expectedIntentHash The expected intent hash to compare against
@@ -182,27 +163,26 @@ contract PolymerProver is BaseProver, Semver {
 
     /**
      * @notice Converts a proverReward struct to a Reward struct
-     * @dev Sets the prover field to this contract's address
      * @param _proverReward The proverReward struct to convert
-     * @return reward The converted Reward struct
+     * @return Reward struct with this contract as the prover
      */
     function _toReward(
         ProverReward memory _proverReward
     ) internal view returns (Reward memory) {
-        return
-            Reward(
-                _proverReward.creator,
-                address(this),
-                _proverReward.deadline,
-                _proverReward.nativeValue,
-                _proverReward.tokens
-            );
+        return Reward(
+            _proverReward.creator,
+            address(this),
+            _proverReward.deadline,
+            _proverReward.nativeValue,
+            _proverReward.tokens
+        );
     }
 
     /**
      * @notice Core proof validation logic
-     * @dev Internal method to validate proof using CrossL2ProverV2 and records proven intents
      * @param proof The proof data to validate
+     * @return intentHash Hash of the proven intent
+     * @return claimant Address that fulfilled the intent
      */
     function _validateProof(
         bytes calldata proof
@@ -214,14 +194,13 @@ contract PolymerProver is BaseProver, Semver {
             bytes memory data
         ) = CROSS_L2_PROVER_V2.validateEvent(proof);
 
-        // revert checks (might not need chainId check)
         checkInboxContract(emittingContract);
         checkSupportedChainId(chainId);
         checkTopicLength(topics, 128);
 
         bytes32[] memory topicsArray = new bytes32[](4);
 
-        // Use assembly for efficient memory operations when splitting topics per example
+        // Use assembly for efficient memory operations when splitting topics
         assembly {
             let topicsPtr := add(topics, 32)
             for {
@@ -237,15 +216,14 @@ contract PolymerProver is BaseProver, Semver {
         }
 
         checkTopicSignature(topicsArray[0], PROOF_SELECTOR);
-
-        address claimant = address(uint160(uint256(topicsArray[3])));
-
+        claimant = address(uint160(uint256(topicsArray[3])));
         return (topicsArray[1], claimant);
     }
 
+    // Packed proof validation functions
+
     /**
      * @notice Validates a packed format proof
-     * @dev Currently unimplemented
      * @param proof The packed proof data to validate
      */
     function validatePacked(bytes calldata proof) external {
@@ -254,7 +232,6 @@ contract PolymerProver is BaseProver, Semver {
 
     /**
      * @notice Validates multiple packed format proofs in a batch
-     * @dev Currently unimplemented
      * @param proofs Array of packed proof data to validate
      */
     function validateBatchPacked(bytes[] calldata proofs) external {
@@ -264,72 +241,11 @@ contract PolymerProver is BaseProver, Semver {
     }
 
     /**
-     * @notice Internal function to validate a packed proof
-     * @dev Currently unimplemented
+     * @notice Validates a packed proof and claims rewards
      * @param proof The packed proof data to validate
+     * @param routeHashes Array of route hashes corresponding to intents in the proof
+     * @param proverRewards Array of reward structures corresponding to intents in the proof
      */
-    function _validatePackedProof(bytes calldata proof) internal {
-        (
-            uint32 chainId,
-            address emittingContract,
-            bytes memory topics,
-            bytes memory data
-        ) = CROSS_L2_PROVER_V2.validateEvent(proof);
-
-        // revert checks (might not need chainId check)
-        checkInboxContract(emittingContract);
-        checkSupportedChainId(chainId);
-        checkTopicLength(topics, 64); //signature and chainId
-        checkTopicSignature(bytes32(topics), BATCH_PROOF_SELECTOR);
-
-        //maybe add check that chainId from topics matches this chainId
-        //but not needed because hash uniqueness is guaranteed by the source chain
-
-        decodeMessageandStore(data);
-    }
-
-    /**
-     * @notice Decodes a message body into intent hashes and claimants and stores them
-     * @dev Used to decode the data from the BatchToBeProven event. The message body contains
-     * chunks of intent hashes grouped by claimant. Each chunk has a 2-byte size prefix,
-     * followed by a 20-byte claimant address, followed by the intent hashes.
-     * @param messageBody The message body to decode
-     */
-    function decodeMessageandStore(bytes memory messageBody) internal {
-        uint256 size = messageBody.length;
-        uint256 offset = 0;
-
-        //might be able to do this more efficently by checking 1-2 require instead of 3
-        while (offset < size) {
-            //get chunkSize and check for truncation
-            uint16 chunkSize;
-            require(offset + 2 <= size, "truncated chunkSize");
-            assembly {
-                chunkSize := mload(add(messageBody, add(offset, 2)))
-                offset := add(offset, 2)
-            }
-
-            //get claimant address and check for truncation
-            require(offset + 20 <= size, "truncated claimant address");
-            address claimant;
-            assembly {
-                claimant := mload(add(messageBody, add(offset, 20)))
-                offset := add(offset, 20)
-            }
-
-            //get intentHash and check for truncation
-            require(offset + 32 * chunkSize <= size, "truncated intent set");
-            bytes32 intentHash;
-            for (uint16 i = 0; i < chunkSize; i++) {
-                assembly {
-                    intentHash := mload(add(messageBody, add(offset, 32)))
-                    offset := add(offset, 32)
-                }
-                processIntent(intentHash, claimant);
-            }
-        }
-    }
-
     function validatePackedAndClaim(
         bytes calldata proof,
         bytes32[] calldata routeHashes,
@@ -339,6 +255,12 @@ contract PolymerProver is BaseProver, Semver {
         _validatePackedAndClaim(proof, routeHashes, proverRewards);
     }
 
+    /**
+     * @notice Validates multiple packed proofs in a batch and claims rewards
+     * @param proofs Array of packed proof data to validate
+     * @param routeHashes 2D array of route hashes corresponding to intents in each proof
+     * @param proverRewards 2D array of reward structures corresponding to intents in each proof
+     */
     function validateBatchPackedAndClaim(
         bytes[] calldata proofs,
         bytes32[][] calldata routeHashes,
@@ -354,6 +276,33 @@ contract PolymerProver is BaseProver, Semver {
             );
         }
     }
+
+    /**
+     * @notice Internal function to validate a packed proof
+     * @param proof The packed proof data to validate
+     */
+    function _validatePackedProof(bytes calldata proof) internal {
+        (
+            uint32 chainId,
+            address emittingContract,
+            bytes memory topics,
+            bytes memory data
+        ) = CROSS_L2_PROVER_V2.validateEvent(proof);
+
+        checkInboxContract(emittingContract);
+        checkSupportedChainId(chainId);
+        checkTopicLength(topics, 64);
+        checkTopicSignature(bytes32(topics), BATCH_PROOF_SELECTOR);
+
+        decodeMessageandStore(data);
+    }
+
+    /**
+     * @notice Internal function to validate a packed proof and prepare for claiming
+     * @param proof The packed proof data to validate
+     * @param routeHashes Array of route hashes corresponding to intents in the proof
+     * @param proverRewards Array of reward structures corresponding to intents in the proof
+     */
     function _validatePackedAndClaim(
         bytes calldata proof,
         bytes32[] calldata routeHashes,
@@ -366,14 +315,10 @@ contract PolymerProver is BaseProver, Semver {
             bytes memory data
         ) = CROSS_L2_PROVER_V2.validateEvent(proof);
 
-        // revert checks (might not need chainId check)
         checkInboxContract(emittingContract);
         checkSupportedChainId(chainId);
         checkTopicLength(topics, 64); //signature and chainId
         checkTopicSignature(bytes32(topics), BATCH_PROOF_SELECTOR);
-
-        //maybe add check that chainId from topics matches this chainId
-        //but not needed because hash uniqueness is guaranteed by the source chain
 
         uint256 expectedSize = routeHashes.length;
         (
@@ -395,6 +340,51 @@ contract PolymerProver is BaseProver, Semver {
         );
     }
 
+    /**
+     * @notice Decodes a message body into intent hashes and claimants and stores them
+     * @param messageBody The message body to decode
+     */
+    function decodeMessageandStore(bytes memory messageBody) internal {
+        uint256 size = messageBody.length;
+        uint256 offset = 0;
+
+        while (offset < size) {
+            // Get chunkSize and check for truncation
+            uint16 chunkSize;
+            require(offset + 2 <= size, "truncated chunkSize");
+            assembly {
+                chunkSize := mload(add(messageBody, add(offset, 2)))
+                offset := add(offset, 2)
+            }
+
+            // Get claimant address and check for truncation
+            require(offset + 20 <= size, "truncated claimant address");
+            address claimant;
+            assembly {
+                claimant := mload(add(messageBody, add(offset, 20)))
+                offset := add(offset, 20)
+            }
+
+            // Get intentHash and check for truncation
+            require(offset + 32 * chunkSize <= size, "truncated intent set");
+            bytes32 intentHash;
+            for (uint16 i = 0; i < chunkSize; i++) {
+                assembly {
+                    intentHash := mload(add(messageBody, add(offset, 32)))
+                    offset := add(offset, 32)
+                }
+                processIntent(intentHash, claimant);
+            }
+        }
+    }
+
+    /**
+     * @notice Decodes a message body into intent hashes and claimants for claiming
+     * @param messageBody The message body to decode
+     * @param expectedSize Expected number of intents to decode
+     * @return intentHashes Array of decoded intent hashes
+     * @return claimants Array of corresponding claimant addresses
+     */
     function decodeMessageBeforeClaim(
         bytes memory messageBody,
         uint256 expectedSize
@@ -404,9 +394,9 @@ contract PolymerProver is BaseProver, Semver {
         returns (bytes32[] memory intentHashes, address[] memory claimants)
     {
         uint256 size = messageBody.length;
-
         uint256 offset = 0;
         uint256 totalIntentCount = 0;
+        
         intentHashes = new bytes32[](expectedSize);
         claimants = new address[](expectedSize);
 
@@ -437,13 +427,13 @@ contract PolymerProver is BaseProver, Semver {
                 totalIntentCount++;
             }
         }
+        
         if (totalIntentCount != expectedSize) revert SizeMismatch();
         return (intentHashes, claimants);
     }
 
     /**
      * @notice Processes a single intent proof
-     * @dev Updates proven intent mapping and emits event if not already proven
      * @param intentHash Hash of the intent being proven
      * @param claimant Address that fulfilled the intent and should receive rewards
      */
@@ -456,10 +446,8 @@ contract PolymerProver is BaseProver, Semver {
         }
     }
 
-    function checkTopicSignature(
-        bytes32 topic,
-        bytes32 selector
-    ) internal pure {
+    // Validation helper functions
+    function checkTopicSignature(bytes32 topic, bytes32 selector) internal pure {
         if (topic != selector) revert InvalidEventSignature();
     }
 
@@ -471,10 +459,7 @@ contract PolymerProver is BaseProver, Semver {
         if (!supportedChainIds[chainId]) revert UnsupportedChainId();
     }
 
-    function checkTopicLength(
-        bytes memory topics,
-        uint256 length
-    ) internal pure {
+    function checkTopicLength(bytes memory topics, uint256 length) internal pure {
         if (topics.length != length) revert InvalidTopicsLength();
     }
 
