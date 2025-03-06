@@ -202,17 +202,6 @@ contract PolymerProver is BaseProver, Semver {
         }
     }
 
-    // ------------- INTERFACE IMPLEMENTATION -------------
-
-    /**
-     * @notice Returns the proof type used by this prover
-     * @dev Implementation of IProver interface method
-     * @return ProofType The type of proof mechanism (Polymer)
-     */
-    function getProofType() external pure override returns (ProofType) {
-        return PROOF_TYPE;
-    }
-
     // ------------- INTERNAL FUNCTIONS - PROOF VALIDATION -------------
 
     /**
@@ -501,4 +490,16 @@ contract PolymerProver is BaseProver, Semver {
     function checkTopicLength(bytes memory topics, uint256 length) internal pure {
         if (topics.length != length) revert InvalidTopicsLength();
     }
+
+    // ------------- INTERFACE IMPLEMENTATION -------------
+
+    /**
+     * @notice Returns the proof type used by this prover
+     * @dev Implementation of IProver interface method
+     * @return ProofType The type of proof mechanism (Polymer)
+     */
+    function getProofType() external pure override returns (ProofType) {
+        return PROOF_TYPE;
+    }
+
 }
