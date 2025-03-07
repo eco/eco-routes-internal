@@ -12,7 +12,7 @@ import {IInbox} from "./interfaces/IInbox.sol";
 import {Route, TokenAmount} from "./types/Intent.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
-contract StablePool is IStablePool, Ownable 
+contract StablePool is IStablePool, Ownable {
     using SafeERC20 for IERC20;
     using ECDSA for bytes32;
 
@@ -142,7 +142,7 @@ contract StablePool is IStablePool, Ownable
         bytes calldata _litSignature
     ) external payable {
         require(msg.sender == INBOX, InvalidCaller(msg.sender, INBOX));
-        require(!litPaused, LitPaused());
+        require(!litPaused, PoolClosedForCleaning());
         require(
             LIT_AGENT == _intentHash.recover(_litSignature),
             InvalidSignature(_intentHash, _litSignature)
@@ -205,13 +205,13 @@ contract StablePool is IStablePool, Ownable
         address[] memory newTokens = new address[](oldLength); //protects against such cases, but leaves gaps in the array. not a huge problem though, as the array is only in memory, and these methods are not expected to be used often.
 
         for (uint256 i = 0; i < delistLength; ++i) {
-            tokenThresholds[_toDelist[i]] = 0;
+            tokenThresholds[_tokensToDelist[i]] = 0;
         }
         uint256 counter = 0;
         for (uint256 i = 0; i < oldLength; ++i) {
             bool remains = true;
             for (uint256 j = 0; j < delistLength; ++j) {
-                if (_currentTokens[i] == _toDelist[j]) {
+                if (_currentTokens[i] == _tokensToDelist[j]) {
                     remains = false;
                     break;
                 }
@@ -259,10 +259,15 @@ contract StablePool is IStablePool, Ownable
     function broadcastYieldInfo(
         address[] calldata _tokens
     ) external onlyOwner checkTokenList(_tokens) {
+        uint256 length = _tokens.length;
         uint256 localTokens = 0;
         for (uint256 i = 0; i < length; ++i) {
             localTokens += IERC20(_tokens[i]).balanceOf(address(this));
         }
+
+        // preserves the few bips of buffer we have to account for slippage and costs
+        localTokens = (localTokens * mintRate) / MINT_RATE_DENOMINATOR;
+
         uint256 localShares = EcoDollar(REBASE_TOKEN).totalShares();
 
         // TODO: hyperlane broadcasting
@@ -357,4 +362,4 @@ contract StablePool is IStablePool, Ownable
 
         emit AddedToWithdrawalQueue(_token, entry);
     }
-
+}

@@ -21,7 +21,7 @@ interface IStablePool {
     event LitPaused();
     event LitUnpaused();
 
-    event MintRatechanged(uint256 _newRate);
+    event MintRateChanged(uint256 _newRate);
 
     event WhitelistUpdated(address[] _newWhitelist);
     event TokenThresholdsChanged(TokenAmount[] _newThresholds);
@@ -62,7 +62,7 @@ interface IStablePool {
     error UseUpdateThreshold();
 
     error InvalidCaller(address _caller, address _expectedCaller);
-    error LitPaused();
+    error PoolClosedForCleaning();
     error InvalidSignature(bytes32 _hash, bytes _signature);
     error InvalidTokensHash(bytes32 _expectedHash);
 
