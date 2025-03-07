@@ -78,6 +78,15 @@ contract IntentCompressor {
         bytes32 routeHash = keccak256(abi.encode(route));
         bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
 
+        require(
+            route.tokens.length == 1,
+            "Cannot fulfill intent multiple tokens"
+        );
+
+        // Approve route token
+        TokenAmount memory routeToken = route.tokens[0];
+        IERC20(routeToken.token).approve(address(INBOX), routeToken.amount);
+
         if (encodedFulfillment.proveType == 1) {
             return
                 INBOX.fulfillHyperBatched(
