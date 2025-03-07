@@ -391,9 +391,9 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
      * @notice Changes minimum reward for batcher
      * @param _minBatcherReward New minimum reward
      */
-    function changeMinBatcherReward(uint96 _minBatcherReward) public onlyOwner {
+    function setMinBatcherReward(uint96 _minBatcherReward) public onlyOwner {
         minBatcherReward = _minBatcherReward;
-        emit MinBatcherRewardChanged(_minBatcherReward);
+        emit MinBatcherRewardSet(_minBatcherReward);
     }
 
     /**

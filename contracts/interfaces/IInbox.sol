@@ -85,7 +85,11 @@ interface IInbox is ISemver {
      */
     event MailboxSet(address indexed _mailbox);
 
-    event MinBatcherRewardChanged(uint96 _minBatcherReward);
+    /**
+     * @notice Emitted when minimum batcher reward is set
+     * @param _minBatcherReward new minimum batcher reward
+     */
+    event MinBatcherRewardSet(uint96 _minBatcherReward);
 
     /**
      * @notice Emitted when solver whitelist status changes
