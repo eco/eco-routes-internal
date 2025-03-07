@@ -207,7 +207,9 @@ describe('Inbox Test', (): void => {
     })
     it('lets owner set minBatchReward', async () => {
       expect(await inbox.minBatcherReward()).to.eq(minBatcherReward)
-      await inbox.connect(owner).setMinBatcherReward(54321)
+      await expect(inbox.connect(owner).setMinBatcherReward(54321))
+        .to.emit(inbox, 'MinBatcherRewardSet')
+        .withArgs(54321)
       expect(await inbox.minBatcherReward()).to.eq(54321)
     })
   })
