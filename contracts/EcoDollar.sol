@@ -17,8 +17,6 @@ contract EcoDollar is IEcoDollar, Ownable {
 
     uint256 public totalShares;
 
-    address public LIT_AGENT;
-
     address public immutable MAILBOX;
 
     // in shares
@@ -30,12 +28,7 @@ contract EcoDollar is IEcoDollar, Ownable {
     event Rebased(uint256 newTotalSupply, uint256 rewardMultiplier);
 
     //owner is the pool
-    constructor(
-        address _owner,
-        address _litAgent,
-        address _mailbox
-    ) Ownable(_owner) {
-        LIT_AGENT = _litAgent;
+    constructor(address _owner, address _mailbox) Ownable(_owner) {
         MAILBOX = _mailbox;
         rewardMultiplier = BASE;
     }
@@ -134,7 +127,10 @@ contract EcoDollar is IEcoDollar, Ownable {
      *
      * @param _rewardMultiplier The new reward multiplier
      */
-    function rebase(uint256 _rewardMultiplier) external onlyOwner {
+    function rebase(uint256 _rewardMultiplier) external {
+        // Rebase can only be called by the mailbox
+        // Need to think about what this looks like on the master chain
+        require(msg.sender == MAILBOX, InvalidRebase());
         // sanity check
         require(
             _rewardMultiplier > rewardMultiplier,
@@ -144,23 +140,7 @@ contract EcoDollar is IEcoDollar, Ownable {
 
         emit Rebased(rewardMultiplier);
     }
-
-    /**
-     * @dev Private function that transfers a specified number of tokens from one address to another.
-     * Emits a {Transfer} event.
-     *
-     * Requirements:
-     *
-     * - `to` cannot be the zero address.
-     * - the caller must have a balance of at least `amount`.
-     * @param from The address from which tokens will be transferred.
-     * @param to The address to which tokens will be transferred.
-     * @param amount The number of tokens to transfer.
-     *
-     * Note: This function does not prevent transfers to blocked accounts for gas efficiency.
-     * As such, users should be aware of who they're transacting with.
-     * Sending tokens to a blocked account could result in those tokens becoming inaccessible.
-     */
+    
     function _transferFrom(
         address from,
         address to,

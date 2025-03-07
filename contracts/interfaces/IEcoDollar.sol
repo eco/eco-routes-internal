@@ -12,7 +12,7 @@ interface IEcoDollar is IERC20, IERC20Errors {
         uint256 _minRewardMultiplier
     );
 
-    error InvalidSender();
+    error InvalidRebase();
 
     function totalSupply() external view returns (uint256);
     function balanceOf(address account) external view returns (uint256);
