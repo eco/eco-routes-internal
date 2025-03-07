@@ -42,7 +42,6 @@ describe('Inbox Test', (): void => {
   const timeDelta = 1000
   const mintAmount = 1000
   const sourceChainID = 123
-
   const minBatcherReward = 12345
 
   async function deployInboxFixture(): Promise<{

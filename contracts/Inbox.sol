@@ -165,7 +165,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
             _metadata,
             _postDispatchHook
         );
-        (bytes[] memory results, ) = _fulfill(
+        (bytes[] memory results, uint256 currentBalance) = _fulfill(
             _route,
             _rewardHash,
             _claimant,
@@ -177,7 +177,6 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
             uint96(0)
         );
 
-        uint256 currentBalance = address(this).balance;
         if (currentBalance < fee) {
             revert InsufficientFee(fee);
         }
