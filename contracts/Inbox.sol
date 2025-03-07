@@ -223,22 +223,23 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
         bytes32 _expectedHash,
         address _prover
     ) external payable returns (bytes[] memory) {
-        require(
-            msg.value >= minBatcherReward,
-            InsufficientBatcherReward(minBatcherReward)
-        );
         emit AddToBatch(_expectedHash, _route.source, _claimant, _prover);
 
-        (bytes[] memory results, uint256 remainingCallValue) = _fulfill(
+        (bytes[] memory results, uint256 remainingValue) = _fulfill(
             _route,
             _rewardHash,
             _claimant,
             _expectedHash
         );
+        
+        require(
+            remainingValue >= minBatcherReward,
+            InsufficientBatcherReward(minBatcherReward)
+        );
 
         fulfilled[_expectedHash] = ClaimantAndBatcherReward(
             _claimant,
-            uint96(remainingCallValue)
+            uint96(remainingValue)
         );
 
         return results;
@@ -424,7 +425,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
         bytes32 _rewardHash,
         address _claimant,
         bytes32 _expectedHash
-    ) internal returns (bytes[] memory, uint256 usedValue) {
+    ) internal returns (bytes[] memory, uint256) {
         if (_route.destination != block.chainid) {
             revert WrongChain(_route.destination);
         }
