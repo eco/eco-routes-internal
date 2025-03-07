@@ -12,9 +12,11 @@ import {IInbox} from "./interfaces/IInbox.sol";
 import {Route, TokenAmount} from "./types/Intent.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
-contract StablePool is IStablePool, Ownable {
+contract StablePool is IStablePool, Ownable 
     using SafeERC20 for IERC20;
     using ECDSA for bytes32;
+
+    uint256 public constant MINT_RATE_DENOMINATOR = 1e6;
 
     address public immutable LIT_AGENT;
 
@@ -25,6 +27,8 @@ contract StablePool is IStablePool, Ownable {
     address public immutable MAILBOX;
 
     bool public litPaused;
+
+    uint256 public mintRate;
 
     bytes32 public tokensHash;
 
@@ -48,12 +52,14 @@ contract StablePool is IStablePool, Ownable {
         address _inbox,
         address _rebaseToken,
         address _mailbox,
+        uint256 _mintRate,
         TokenAmount[] memory _initialTokens
     ) Ownable(_owner) {
         LIT_AGENT = _litAgent;
         INBOX = _inbox;
         REBASE_TOKEN = _rebaseToken;
         MAILBOX = _mailbox;
+        mintRate = _mintRate;
         address[] memory init;
         _addTokens(init, _initialTokens);
     }
@@ -64,6 +70,12 @@ contract StablePool is IStablePool, Ownable {
 
     function unpauseLit() external onlyOwner {
         litPaused = false;
+    }
+
+    function changeMintRate(uint256 _newMintRate) external onlyOwner {
+        require(_newMintRate <= MINT_RATE_DENOMINATOR, InvalidMintRate());
+        mintRate = _newMintRate;
+        emit MintRateChanged(_newMintRate);
     }
 
     function addTokens(
@@ -129,7 +141,7 @@ contract StablePool is IStablePool, Ownable {
     // Deposit function
     function deposit(address _token, uint256 _amount) external {
         _deposit(_token, _amount);
-        EcoDollar(REBASE_TOKEN).mint(LIT_AGENT, _amount);
+        EcoDollar(REBASE_TOKEN).mint(LIT_AGENT, _amount * mintRate / MINT_RATE_DENOMINATOR);
         emit Deposited(msg.sender, _token, _amount);
     }
 
@@ -292,4 +304,4 @@ contract StablePool is IStablePool, Ownable {
 
         emit AddedToWithdrawalQueue(_token, entry);
     }
-}
+
