@@ -76,11 +76,16 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
         override(IInbox, Eco7683DestinationSettler)
         returns (bytes[] memory)
     {
-        bytes[] memory result = _fulfill(
+        (bytes[] memory result, ) = _fulfill(
             _route,
             _rewardHash,
             _claimant,
             _expectedHash
+        );
+
+        fulfilled[_expectedHash] = ClaimantAndBatcherReward(
+            _claimant,
+            uint96(0)
         );
 
         emit ToBeProven(_expectedHash, _route.source, _claimant);
@@ -160,11 +165,16 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
             _metadata,
             _postDispatchHook
         );
-        bytes[] memory results = _fulfill(
+        (bytes[] memory results, ) = _fulfill(
             _route,
             _rewardHash,
             _claimant,
             _expectedHash
+        );
+
+        fulfilled[_expectedHash] = ClaimantAndBatcherReward(
+            _claimant,
+            uint96(0)
         );
 
         uint256 currentBalance = address(this).balance;
@@ -214,13 +224,22 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
         bytes32 _expectedHash,
         address _prover
     ) external payable returns (bytes[] memory) {
+        require(
+            msg.value >= minBatcherReward,
+            InsufficientBatcherReward(minBatcherReward)
+        );
         emit AddToBatch(_expectedHash, _route.source, _claimant, _prover);
 
-        bytes[] memory results = _fulfill(
+        (bytes[] memory results, uint256 remainingCallValue) = _fulfill(
             _route,
             _rewardHash,
             _claimant,
             _expectedHash
+        );
+
+        fulfilled[_expectedHash] = ClaimantAndBatcherReward(
+            _claimant,
+            uint96(remainingCallValue)
         );
 
         return results;
@@ -369,6 +388,10 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
         }
     }
 
+    /**
+     * @notice Changes minimum reward for batcher
+     * @param _minBatcherReward New minimum reward
+     */
     function changeMinBatcherReward(uint96 _minBatcherReward) public onlyOwner {
         minBatcherReward = _minBatcherReward;
         emit MinBatcherRewardChanged(_minBatcherReward);
@@ -402,7 +425,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
         bytes32 _rewardHash,
         address _claimant,
         bytes32 _expectedHash
-    ) internal returns (bytes[] memory) {
+    ) internal returns (bytes[] memory, uint256 usedValue) {
         if (_route.destination != block.chainid) {
             revert WrongChain(_route.destination);
         }
@@ -423,15 +446,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
             IntentAlreadyFulfilled(intentHash)
         );
         require(_claimant != address(0), ZeroClaimant());
-        require(
-            msg.value >= minBatcherReward,
-            InsufficientBatcherReward(minBatcherReward)
-        );
 
-        fulfilled[intentHash] = ClaimantAndBatcherReward(
-            _claimant,
-            uint96(msg.value)
-        );
         emit Fulfillment(_expectedHash, _route.source, _claimant);
 
         uint256 routeTokenCount = _route.tokens.length;
@@ -447,6 +462,9 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
 
         // Store the results of the calls
         bytes[] memory results = new bytes[](_route.calls.length);
+
+        // Remaining value after executing calls
+        uint256 remainingValue = msg.value;
 
         for (uint256 i = 0; i < _route.calls.length; ++i) {
             Call memory call = _route.calls[i];
@@ -469,9 +487,10 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
                     result
                 );
             }
+            remainingValue -= call.value;
             results[i] = result;
         }
-        return results;
+        return (results, remainingValue);
     }
 
     receive() external payable {}
