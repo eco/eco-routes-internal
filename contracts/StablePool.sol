@@ -28,8 +28,6 @@ contract StablePool is IStablePool, Ownable {
 
     bytes32 public tokensHash;
 
-    address[] public allowedTokens;
-
     mapping(address => uint256) public tokenThresholds;
 
     mapping(address => WithdrawalQueueInfo) public queueInfos;
@@ -81,7 +79,8 @@ contract StablePool is IStablePool, Ownable {
     ) external onlyOwner checkTokenList(_oldTokens) {
         uint256 oldLength = _oldTokens.length;
         uint256 delistLength = _toDelist.length;
-        address[] memory newTokens = new address[](oldLength - delistLength);
+        // address[] memory newTokens = new address[](oldLength - delistLength); //optimistic case where delist has no duplicates, no unlisted tokens
+        address[] memory newTokens = new address[](oldLength); //protects against such cases, but leaves gaps in the array. not a huge problem though, as the array is only in memory, and these methods are not expected to be used often. 
 
         for (uint256 i = 0; i < delistLength; ++i) {
             tokenThresholds[_toDelist[i]] = 0;
@@ -175,7 +174,6 @@ contract StablePool is IStablePool, Ownable {
         address[] calldata _tokens
     ) external onlyOwner checkTokenList(_tokens) {
         uint256 localTokens = 0;
-        uint256 length = allowedTokens.length;
         for (uint256 i = 0; i < length; ++i) {
             localTokens += IERC20(_tokens[i]).balanceOf(address(this));
         }
