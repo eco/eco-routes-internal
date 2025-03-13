@@ -7,7 +7,7 @@ import {IMailbox} from "@hyperlane-xyz/core/contracts/interfaces/IMailbox.sol";
 // import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 
 contract EcoDollar is IEcoDollar, Ownable {
-    uint256 public BASE = 1e6; // 1.0 initial scaling factor
+    uint256 public BASE = 1e18; // 1.0 initial scaling factor
 
     string private _name = "EcoDollar";
     string private _symbol = "eUSD";

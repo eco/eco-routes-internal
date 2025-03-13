@@ -17,7 +17,7 @@ contract StablePool is IStablePool, Ownable {
     using ECDSA for bytes32;
 
     // denominator for calculating mint rate
-    uint256 public constant MINT_RATE_DENOMINATOR = 1e6;
+    uint256 public constant MINT_RATE_DENOMINATOR = 1e18;
 
     // address of Lit agent
     address public immutable LIT_AGENT;
