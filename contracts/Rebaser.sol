@@ -3,17 +3,23 @@ pragma solidity ^0.8.0;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IMessageRecipient} from "@hyperlane-xyz/core/contracts/interfaces/IMessageRecipient.sol";
+import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
+import {IMailbox, IPostDispatchHook} from "@hyperlane-xyz/core/contracts/interfaces/IMailbox.sol";
 
 contract Rebaser is Ownable, IMessageRecipient {
+    using TypeCasts for bytes32;
+
     uint256 public constant BASE = 1e18; // 1.0 initial scaling factor
     // The local Hyperlane mailbox address, set once in the constructor (immutable).
     address public immutable MAILBOX;
 
-    address public immutable POOL;
+    bytes32 public immutable POOL;
 
-    address public immutable TOKEN;
+    bytes32 public immutable TOKEN;
 
-    uint256[] public chains;
+    address public immutable RELAYER; // relayer?
+
+    uint32[] public chains;
 
     /**
      * @notice Mapping of chain ID to the Hyperlane mailbox address for that chain.
@@ -23,14 +29,16 @@ contract Rebaser is Ownable, IMessageRecipient {
     mapping(uint256 => bool) public validChainIDs;
 
     //TODO: combine these as a struct
-    // Counter to track the number of chains to rebase
-    uint256 public validChainCount;
     // Counter with current number of chains that have sent in rebase values
     uint256 private currentChainCount;
     // current shares total
     uint256 private sharesTotal;
     // current balances total
     uint256 private balancesTotal;
+
+    event RebaseSent(uint256 _newMuliplier);
+
+    event ReceivedRebaseInformation(uint256 _chainId);
 
     /**
      * @dev Constructor. Sets the local MAILBOX address.
@@ -39,12 +47,14 @@ contract Rebaser is Ownable, IMessageRecipient {
     constructor(
         address _owner,
         address _mailbox,
-        address _pool,
-        address _token
+        bytes32 _pool,
+        bytes32 _token,
+        address _relayer
     ) Ownable(_owner) {
         MAILBOX = _mailbox;
         POOL = _pool;
         TOKEN = _token;
+        RELAYER = _relayer;
     }
 
     /**
@@ -58,16 +68,13 @@ contract Rebaser is Ownable, IMessageRecipient {
      * @param _isValid True if the chain should be considered valid, false otherwise.
      */
     function setChainIdStatus(
-        uint256 _chainId,
+        uint32 _chainId,
         bool _isValid
     ) external onlyOwner {
         if (validChainIDs[_chainId] != _isValid) {
             if (_isValid) {
-                validChainCount++;
                 chains.push(_chainId);
             } else {
-                validChainCount--;
-
                 uint256 index;
                 uint256 length = chains.length;
                 for (uint256 i = 0; i < length; i++) {
@@ -100,6 +107,11 @@ contract Rebaser is Ownable, IMessageRecipient {
         // Ensure only the local mailbox can call this
         require(msg.sender == MAILBOX, "Caller is not the local mailbox");
 
+        require(
+            _sender == POOL,
+            "sender is not the pool contract"
+        );
+
         // Check that the origin chain is valid (non-zero mailbox address)
         require(validChainIDs[uint256(_origin)], "Invalid origin chain");
         (uint256 shares, uint256 balances) = abi.decode(
@@ -110,15 +122,37 @@ contract Rebaser is Ownable, IMessageRecipient {
         sharesTotal += shares;
         balancesTotal += balances;
 
-        if (currentChainCount == validChainCount) {
+        emit ReceivedRebaseInformation(_origin);
+
+        uint256 chainCount = chains.length;
+
+        if (currentChainCount == chainCount) {
             // Rebase the token
             uint256 newMultiplier = (balancesTotal * BASE) / sharesTotal;
             emit RebaseSent(newMultiplier);
+
             currentChainCount = 0;
             sharesTotal = 0;
             balancesTotal = 0;
 
             // do the send
+            for (uint256 i = 0; i < chainCount; i++) {
+                // is there a way to optimize this
+                uint256 fee = IMailbox(MAILBOX).quoteDispatch(
+                    chains[i],
+                    TOKEN,
+                    abi.encode(newMultiplier),
+                    "", // metadata for relayer
+                    IPostDispatchHook(RELAYER)
+                );
+                IMailbox(MAILBOX).dispatch{value: fee}(
+                    chains[i],
+                    TOKEN,
+                    abi.encode(newMultiplier),
+                    "", // metadata for relayer
+                    IPostDispatchHook(RELAYER)
+                );
+            }
         }
         // You can add any additional logic here, e.g., decode _message, verify _sender, etc.
     }
