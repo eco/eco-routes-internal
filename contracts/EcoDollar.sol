@@ -122,24 +122,6 @@ contract EcoDollar is IEcoDollar, Ownable {
     ) public view override returns (uint256) {
         return _allowances[owner][spender];
     }
-
-    /**
-     *
-     * @param _rewardMultiplier The new reward multiplier
-     */
-    function rebase(uint256 _rewardMultiplier) external {
-        // Rebase can only be called by the mailbox
-        // Need to think about what this looks like on the master chain
-        require(msg.sender == MAILBOX, InvalidRebase());
-        // sanity check
-        require(
-            _rewardMultiplier > rewardMultiplier,
-            RewardMultiplierTooLow(_rewardMultiplier, rewardMultiplier)
-        );
-        rewardMultiplier = _rewardMultiplier;
-
-        emit Rebased(rewardMultiplier);
-    }
     
     function _transferFrom(
         address from,

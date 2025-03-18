@@ -32,6 +32,4 @@ interface IEcoDollar is IERC20, IERC20Errors {
         address owner,
         address spender
     ) external view returns (uint256);
-
-    function rebase(uint256 supplyChange) external;
 }

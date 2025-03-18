@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IMailbox} from "@hyperlane-xyz/core/contracts/interfaces/IMailbox.sol";
+import {IMailbox, IPostDispatchHook} from "@hyperlane-xyz/core/contracts/interfaces/IMailbox.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IStablePool} from "./interfaces/IStablePool.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -26,10 +26,16 @@ contract StablePool is IStablePool, Ownable {
     address public immutable REBASE_TOKEN;
 
     // address of master chain
-    uint32 public immutable MASTER_CHAIN;
+    uint32 public immutable HOME_CHAIN;
+
+    // address of the Rebaser contract on the master chain
+    bytes32 public immutable REBASER;
 
     // address of mailbox
     address public immutable MAILBOX;
+
+    // address of the relayer
+    address public immutable RELAYER; // relayer?
 
     // whether the pool's liquidity can be accessed by solvers via Lit
     bool public litPaused;
@@ -60,15 +66,19 @@ contract StablePool is IStablePool, Ownable {
         address _litAgent,
         address _inbox,
         address _rebaseToken,
-        uint32 _masterChain,
+        uint32 _homeChain,
+        bytes32 _rebaser,
         address _mailbox,
+        address _relayer,
         TokenAmount[] memory _initialTokens
     ) Ownable(_owner) {
         LIT_AGENT = _litAgent;
         INBOX = _inbox;
         REBASE_TOKEN = _rebaseToken;
-        MASTER_CHAIN = _masterChain;
+        HOME_CHAIN = _homeChain;
+        REBASER = _rebaser;
         MAILBOX = _mailbox;
+        RELAYER = _relayer;
         address[] memory init;
         _addTokens(init, _initialTokens);
     }
@@ -252,11 +262,19 @@ contract StablePool is IStablePool, Ownable {
 
         uint256 localShares = EcoDollar(REBASE_TOKEN).totalShares();
 
-        // TODO: hyperlane fee calculation - if we are running the relayer, can the fee be fixed?
-        IMailbox(MAILBOX).dispatch(
-            MASTER_CHAIN,
-            bytes32(0),
-            abi.encodePacked(localTokens, localShares)
+        uint256 fee = IMailbox(MAILBOX).quoteDispatch(
+            HOME_CHAIN,
+            REBASER,
+            abi.encodePacked(localTokens, localShares),
+            "", // metadata for relayer
+            IPostDispatchHook(RELAYER)
+        );
+        IMailbox(MAILBOX).dispatch{value: fee}(
+            HOME_CHAIN,
+            REBASER,
+            abi.encodePacked(localTokens, localShares),
+            "", // metadata for relayer
+            IPostDispatchHook(RELAYER)
         );
     }
 
