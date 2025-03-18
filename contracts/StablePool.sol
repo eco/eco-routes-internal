@@ -29,7 +29,7 @@ contract StablePool is IStablePool, Ownable {
     address public immutable REBASE_TOKEN;
 
     // address of master chain
-    address public immutable MASTER_CHAIN;
+    uint32 public immutable MASTER_CHAIN;
 
     // address of mailbox
     address public immutable MAILBOX;
@@ -66,7 +66,7 @@ contract StablePool is IStablePool, Ownable {
         address _litAgent,
         address _inbox,
         address _rebaseToken,
-        uint256 _masterChain,
+        uint32 _masterChain,
         address _mailbox,
         uint256 _mintRate,
         TokenAmount[] memory _initialTokens
@@ -277,7 +277,7 @@ contract StablePool is IStablePool, Ownable {
 
         // TODO: hyperlane fee calculation - if we are running the relayer, can the fee be fixed?
         IMailbox(MAILBOX).dispatch(
-            uint32(MASTER_CHAIN),
+            MASTER_CHAIN,
             bytes32(0),
             abi.encodePacked(localTokens, localShares)
         );
