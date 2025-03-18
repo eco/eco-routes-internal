@@ -21,8 +21,6 @@ interface IStablePool {
     event LitPaused();
     event LitUnpaused();
 
-    event MintRateChanged(uint256 _newRate);
-
     event WhitelistUpdated(address[] _newWhitelist);
     event TokenThresholdsChanged(TokenAmount[] _newThresholds);
 
@@ -47,7 +45,6 @@ interface IStablePool {
     event WithdrawalQueueThresholdReached(address token);
 
     // Custom Errors for Gas Efficiency
-    error InvalidMintRate();
     error InvalidToken();
     error InvalidAmount();
     error InsufficientTokenBalance(

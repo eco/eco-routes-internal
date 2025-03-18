@@ -16,9 +16,6 @@ contract StablePool is IStablePool, Ownable {
     using SafeERC20 for IERC20;
     using ECDSA for bytes32;
 
-    // denominator for calculating mint rate
-    uint256 public constant MINT_RATE_DENOMINATOR = 1e18;
-
     // address of Lit agent
     address public immutable LIT_AGENT;
 
@@ -36,9 +33,6 @@ contract StablePool is IStablePool, Ownable {
 
     // whether the pool's liquidity can be accessed by solvers via Lit
     bool public litPaused;
-
-    // mint rate for ecoDollar. Divided by MINT_RATE_DENOMINATOR
-    uint256 public mintRate;
 
     // hash of the current token list
     // check event logs to find the current token list
@@ -68,7 +62,6 @@ contract StablePool is IStablePool, Ownable {
         address _rebaseToken,
         uint32 _masterChain,
         address _mailbox,
-        uint256 _mintRate,
         TokenAmount[] memory _initialTokens
     ) Ownable(_owner) {
         LIT_AGENT = _litAgent;
@@ -76,7 +69,6 @@ contract StablePool is IStablePool, Ownable {
         REBASE_TOKEN = _rebaseToken;
         MASTER_CHAIN = _masterChain;
         MAILBOX = _mailbox;
-        mintRate = _mintRate;
         address[] memory init;
         _addTokens(init, _initialTokens);
     }
@@ -85,10 +77,7 @@ contract StablePool is IStablePool, Ownable {
 
     function deposit(address _token, uint256 _amount) external {
         _deposit(_token, _amount);
-        EcoDollar(REBASE_TOKEN).mint(
-            msg.sender,
-            (_amount * mintRate) / MINT_RATE_DENOMINATOR
-        );
+        EcoDollar(REBASE_TOKEN).mint(msg.sender, _amount);
         emit Deposited(msg.sender, _token, _amount);
     }
 
@@ -172,15 +161,6 @@ contract StablePool is IStablePool, Ownable {
     // unpause Lit's access to pool funds
     function unpauseLit() external onlyOwner {
         litPaused = false;
-    }
-    /**
-     * @notice Change the mint rate for ecoDollar
-     * @param _newMintRate The new mint rate
-     */
-    function changeMintRate(uint256 _newMintRate) external onlyOwner {
-        require(_newMintRate <= MINT_RATE_DENOMINATOR, InvalidMintRate());
-        mintRate = _newMintRate;
-        emit MintRateChanged(_newMintRate);
     }
 
     /**
@@ -269,9 +249,6 @@ contract StablePool is IStablePool, Ownable {
         for (uint256 i = 0; i < length; ++i) {
             localTokens += IERC20(_tokens[i]).balanceOf(address(this));
         }
-
-        // preserves the few bips of buffer we have to account for slippage and costs
-        localTokens = (localTokens * mintRate) / MINT_RATE_DENOMINATOR;
 
         uint256 localShares = EcoDollar(REBASE_TOKEN).totalShares();
 

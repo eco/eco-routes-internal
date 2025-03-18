@@ -19,6 +19,9 @@ contract Rebaser is Ownable, IMessageRecipient {
 
     address public immutable RELAYER; // relayer?
 
+    // mint rate for ecoDollar. Divided by BASE
+    uint256 public rebaseFeeRate;
+
     uint32[] public chains;
 
     /**
@@ -36,9 +39,17 @@ contract Rebaser is Ownable, IMessageRecipient {
     // current balances total
     uint256 private balancesTotal;
 
-    event RebaseSent(uint256 _newMuliplier);
+    uint256 private currentMultiplier;
+
+    event RebaseSent(uint256 _newMuliplier, uint32 _chainId);
 
     event ReceivedRebaseInformation(uint256 _chainId);
+
+    event RebaseFeeRateChanged(uint256 _newRate);
+
+    error InvalidRebaseFeeRate();
+
+    error RebasePropagationFailed(uint32 _chainId);
 
     /**
      * @dev Constructor. Sets the local MAILBOX address.
@@ -91,6 +102,16 @@ contract Rebaser is Ownable, IMessageRecipient {
     }
 
     /**
+     * @notice Change the mint rate for ecoDollar
+     * @param _newrebaseFeeRate The new mint rate
+     */
+    function changerebaseFeeRate(uint256 _newrebaseFeeRate) external onlyOwner {
+        require(_newrebaseFeeRate <= BASE, InvalidRebaseFeeRate());
+        rebaseFeeRate = _newrebaseFeeRate;
+        emit RebaseFeeRateChanged(_newrebaseFeeRate);
+    }
+
+    /**
      * @dev Hyperlane "handle" method, called when a message is received.
      *      1) Caller must be the local MAILBOX
      *      2) The origin chain must have a valid (non-zero) mailbox address stored
@@ -107,10 +128,7 @@ contract Rebaser is Ownable, IMessageRecipient {
         // Ensure only the local mailbox can call this
         require(msg.sender == MAILBOX, "Caller is not the local mailbox");
 
-        require(
-            _sender == POOL,
-            "sender is not the pool contract"
-        );
+        require(_sender == POOL, "sender is not the pool contract");
 
         // Check that the origin chain is valid (non-zero mailbox address)
         require(validChainIDs[uint256(_origin)], "Invalid origin chain");
@@ -128,8 +146,13 @@ contract Rebaser is Ownable, IMessageRecipient {
 
         if (currentChainCount == chainCount) {
             // Rebase the token
-            uint256 newMultiplier = (balancesTotal * BASE) / sharesTotal;
-            emit RebaseSent(newMultiplier);
+            uint256 netNewBalances = balancesTotal -
+                (sharesTotal * currentMultiplier) /
+                BASE;
+            uint256 subtractedFees = ((netNewBalances * rebaseFeeRate) / BASE); //imagine its like ~.99
+            currentMultiplier =
+                ((balancesTotal - subtractedFees) * BASE) /
+                sharesTotal;
 
             currentChainCount = 0;
             sharesTotal = 0;
@@ -138,22 +161,33 @@ contract Rebaser is Ownable, IMessageRecipient {
             // do the send
             for (uint256 i = 0; i < chainCount; i++) {
                 // is there a way to optimize this
-                uint256 fee = IMailbox(MAILBOX).quoteDispatch(
-                    chains[i],
-                    TOKEN,
-                    abi.encode(newMultiplier),
-                    "", // metadata for relayer
-                    IPostDispatchHook(RELAYER)
-                );
-                IMailbox(MAILBOX).dispatch{value: fee}(
-                    chains[i],
-                    TOKEN,
-                    abi.encode(newMultiplier),
-                    "", // metadata for relayer
-                    IPostDispatchHook(RELAYER)
+                uint32 chain = chains[i];
+                require(
+                    propagateRebaseMultiplier(chain),
+                    RebasePropagationFailed(chain)
                 );
             }
         }
         // You can add any additional logic here, e.g., decode _message, verify _sender, etc.
+    }
+
+    function propagateRebaseMultiplier(
+        uint32 _chainId
+    ) public onlyOwner returns (bool success) {
+        uint256 fee = IMailbox(MAILBOX).quoteDispatch(
+            _chainId,
+            TOKEN,
+            abi.encode(currentMultiplier),
+            "", // metadata for relayer
+            IPostDispatchHook(RELAYER)
+        );
+        IMailbox(MAILBOX).dispatch{value: fee}(
+            _chainId,
+            TOKEN,
+            abi.encode(currentMultiplier),
+            "", // metadata for relayer
+            IPostDispatchHook(RELAYER)
+        );
+        return true;
     }
 }
