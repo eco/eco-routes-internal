@@ -3,7 +3,6 @@ pragma solidity ^0.8.20;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IEcoDollar} from "./interfaces/IEcoDollar.sol";
-import {IMailbox} from "@hyperlane-xyz/core/contracts/interfaces/IMailbox.sol";
 // import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 
 contract EcoDollar is IEcoDollar, Ownable {
@@ -17,7 +16,7 @@ contract EcoDollar is IEcoDollar, Ownable {
 
     uint256 public totalShares;
 
-    address public immutable MAILBOX;
+    address public immutable POOL;
 
     // in shares
     mapping(address => uint256) private _shares;
@@ -28,8 +27,8 @@ contract EcoDollar is IEcoDollar, Ownable {
     event Rebased(uint256 newTotalSupply, uint256 rewardMultiplier);
 
     //owner is the pool
-    constructor(address _owner, address _mailbox) Ownable(_owner) {
-        MAILBOX = _mailbox;
+    constructor(address _owner, address _pool) Ownable(_owner) {
+        POOL = _pool;
         rewardMultiplier = BASE;
     }
 
@@ -47,6 +46,10 @@ contract EcoDollar is IEcoDollar, Ownable {
 
     function totalSupply() public view override returns (uint256) {
         return convertToTokens(totalShares);
+    }
+
+    function getTotalShares() external view override returns (uint256) {
+        return totalShares;
     }
 
     /**
@@ -71,6 +74,11 @@ contract EcoDollar is IEcoDollar, Ownable {
         address _account
     ) public view override returns (uint256) {
         return (_shares[_account] * rewardMultiplier) / BASE;
+    }
+
+    function rebase(uint256 _newMultiplier) external onlyOwner {
+        //already guaranteed that newMultiplier is greater than current multiplier
+        rewardMultiplier = _newMultiplier;
     }
 
     function mint(address _account, uint256 _tokens) public onlyOwner {
@@ -122,7 +130,7 @@ contract EcoDollar is IEcoDollar, Ownable {
     ) public view override returns (uint256) {
         return _allowances[owner][spender];
     }
-    
+
     function _transferFrom(
         address from,
         address to,

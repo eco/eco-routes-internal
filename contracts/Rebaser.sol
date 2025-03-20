@@ -20,7 +20,7 @@ contract Rebaser is Ownable, IMessageRecipient {
     address public immutable RELAYER; // relayer?
 
     // mint rate for ecoDollar. Divided by BASE
-    uint256 public rebaseFeeRate;
+    uint256 public protocolRate;
 
     uint32[] public chains;
 
@@ -45,9 +45,9 @@ contract Rebaser is Ownable, IMessageRecipient {
 
     event ReceivedRebaseInformation(uint256 _chainId);
 
-    event RebaseFeeRateChanged(uint256 _newRate);
+    event protocolRateChanged(uint256 _newRate);
 
-    error InvalidRebaseFeeRate();
+    error InvalidprotocolRate();
 
     error RebasePropagationFailed(uint32 _chainId);
 
@@ -103,12 +103,12 @@ contract Rebaser is Ownable, IMessageRecipient {
 
     /**
      * @notice Change the mint rate for ecoDollar
-     * @param _newRebaseFeeRate The new mint rate
+     * @param _newprotocolRate The new mint rate
      */
-    function changeRebaseFeeRate(uint256 _newRebaseFeeRate) external onlyOwner {
-        require(_newRebaseFeeRate <= BASE, InvalidRebaseFeeRate());
-        rebaseFeeRate = _newRebaseFeeRate;
-        emit RebaseFeeRateChanged(_newRebaseFeeRate);
+    function changeprotocolRate(uint256 _newprotocolRate) external onlyOwner {
+        require(_newprotocolRate <= BASE, InvalidprotocolRate());
+        protocolRate = _newprotocolRate;
+        emit protocolRateChanged(_newprotocolRate);
     }
 
     /**
@@ -149,10 +149,12 @@ contract Rebaser is Ownable, IMessageRecipient {
             uint256 netNewBalances = balancesTotal -
                 (sharesTotal * currentMultiplier) /
                 BASE;
-            uint256 subtractedFees = ((netNewBalances * rebaseFeeRate) / BASE); //imagine its like ~.99
+            uint256 protocolShare = ((netNewBalances * protocolRate) / BASE);
             currentMultiplier =
-                ((balancesTotal - subtractedFees) * BASE) /
+                ((balancesTotal - protocolShare) * BASE) /
                 sharesTotal;
+
+            uint256 protocolMintRate = (protocolShare * BASE) / sharesTotal;
 
             currentChainCount = 0;
             sharesTotal = 0;
@@ -163,7 +165,7 @@ contract Rebaser is Ownable, IMessageRecipient {
                 // is there a way to optimize this
                 uint32 chain = chains[i];
                 require(
-                    propagateRebaseMultiplier(chain),
+                    propagateRebase(chain, protocolMintRate),
                     RebasePropagationFailed(chain)
                 );
             }
@@ -171,20 +173,21 @@ contract Rebaser is Ownable, IMessageRecipient {
         // You can add any additional logic here, e.g., decode _message, verify _sender, etc.
     }
 
-    function propagateRebaseMultiplier(
-        uint32 _chainId
+    function propagateRebase(
+        uint32 _chainId,
+        uint256 _protocolMintRate
     ) public onlyOwner returns (bool success) {
         uint256 fee = IMailbox(MAILBOX).quoteDispatch(
             _chainId,
             TOKEN,
-            abi.encode(currentMultiplier),
+            abi.encode(currentMultiplier, _protocolMintRate),
             "", // metadata for relayer
             IPostDispatchHook(RELAYER)
         );
         IMailbox(MAILBOX).dispatch{value: fee}(
             _chainId,
             TOKEN,
-            abi.encode(currentMultiplier),
+            abi.encode(currentMultiplier, _protocolMintRate),
             "", // metadata for relayer
             IPostDispatchHook(RELAYER)
         );

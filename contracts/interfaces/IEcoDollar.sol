@@ -14,12 +14,15 @@ interface IEcoDollar is IERC20, IERC20Errors {
 
     error InvalidRebase();
 
+    function getTotalShares() external view returns (uint256);
+
     function totalSupply() external view returns (uint256);
     function balanceOf(address account) external view returns (uint256);
     function transfer(
         address recipient,
         uint256 amount
     ) external returns (bool);
+    function rebase(uint256 _newMultiplier) external;
     function mint(address account, uint256 amount) external;
     function burn(address account, uint256 amount) external;
     function approve(address spender, uint256 amount) external returns (bool);

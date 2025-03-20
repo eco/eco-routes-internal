@@ -227,13 +227,13 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
             IPostDispatchHook(RELAYER)
         );
     }
-    
-    /** 
-        * @notice finishes the rebase flow
-        * @param _origin The origin chain of the message
-        * @param _sender The address of the sender on the origin chain
-        * @param _message The message body
-    */
+
+    /**
+     * @notice finishes the rebase flow
+     * @param _origin The origin chain of the message
+     * @param _sender The address of the sender on the origin chain
+     * @param _message The message body
+     */
     function handle(
         uint32 _origin,
         bytes32 _sender,
@@ -247,12 +247,18 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
         // Check that the origin chain is valid (non-zero mailbox address)
         require(_origin == HOME_CHAIN, "Invalid origin chain");
 
-        (uint256 shares, uint256 balances) = abi.decode(
+        (uint256 rewardMultiplier, uint256 protocolMintRate) = abi.decode(
             _message,
             (uint256, uint256)
         );
-        EcoDollar(REBASE_TOKEN).mint(address(this), shares);
-        EcoDollar(REBASE_TOKEN).mint(address(this), balances);
+        IEcoDollar(REBASE_TOKEN).rebase(rewardMultiplier);
+
+        IEcoDollar(REBASE_TOKEN).mint(
+            address(this),
+            ((protocolMintRate * IEcoDollar(REBASE_TOKEN).getTotalShares()) /
+                1E18)
+        );
+
         rebaseInProgress = false;
     }
 
