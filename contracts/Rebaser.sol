@@ -103,12 +103,12 @@ contract Rebaser is Ownable, IMessageRecipient {
 
     /**
      * @notice Change the mint rate for ecoDollar
-     * @param _newrebaseFeeRate The new mint rate
+     * @param _newRebaseFeeRate The new mint rate
      */
-    function changerebaseFeeRate(uint256 _newrebaseFeeRate) external onlyOwner {
-        require(_newrebaseFeeRate <= BASE, InvalidRebaseFeeRate());
-        rebaseFeeRate = _newrebaseFeeRate;
-        emit RebaseFeeRateChanged(_newrebaseFeeRate);
+    function changeRebaseFeeRate(uint256 _newRebaseFeeRate) external onlyOwner {
+        require(_newRebaseFeeRate <= BASE, InvalidRebaseFeeRate());
+        rebaseFeeRate = _newRebaseFeeRate;
+        emit RebaseFeeRateChanged(_newRebaseFeeRate);
     }
 
     /**

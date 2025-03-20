@@ -14,6 +14,12 @@ import {Semver} from "../libs/Semver.sol";
 contract HyperProver is IMessageRecipient, BaseProver, Semver {
     using TypeCasts for bytes32;
 
+    struct ClaimData {
+        address claimant;
+        uint96 protocolFee; //if we can decrease the precision on these, we can save some gas
+        uint96 executionFee;
+    }
+
     /**
      * @notice Constant indicating this contract uses Hyperlane for proving
      */

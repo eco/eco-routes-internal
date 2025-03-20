@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IMailbox, IPostDispatchHook} from "@hyperlane-xyz/core/contracts/interfaces/IMailbox.sol";
+import {IMessageRecipient} from "@hyperlane-xyz/core/contracts/interfaces/IMessageRecipient.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IStablePool} from "./interfaces/IStablePool.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -12,7 +13,7 @@ import {IInbox} from "./interfaces/IInbox.sol";
 import {Route, TokenAmount} from "./types/Intent.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
-contract StablePool is IStablePool, Ownable {
+contract StablePool is IStablePool, Ownable, IMessageRecipient {
     using SafeERC20 for IERC20;
     using ECDSA for bytes32;
 
@@ -37,8 +38,23 @@ contract StablePool is IStablePool, Ownable {
     // address of the relayer
     address public immutable RELAYER; // relayer?
 
+    // fee leveed on accessLiquidity to fund rebases
+    uint96 public rebaseFee;
+
+    // fee leveed on accessLiquidity to fund rebalances
+    uint96 public rebalanceFee;
+
+    // reward for calling rebase
+    uint256 public rebasePurse;
+
+    // reward for calling rebalance
+    uint256 public rebalancePurse;
+
     // whether the pool's liquidity can be accessed by solvers via Lit
     bool public litPaused;
+
+    // whether a rebase is currently in progress
+    bool public rebaseInProgress;
 
     // hash of the current token list
     // check event logs to find the current token list
@@ -139,26 +155,105 @@ contract StablePool is IStablePool, Ownable {
      * @dev the Lit agent will only sign the intentHash if the intent is valid, funded on the origin chain, and profitable
      */
     function accessLiquidity(
+        bytes32 _intentHash,
+        uint96 _executionFee, // stable-denominated
+        uint96 _protocolFee, // stable-denominated
         Route calldata _route,
         bytes32 _rewardHash,
-        bytes32 _intentHash,
         address _prover,
         bytes calldata _litSignature
     ) external payable {
-        require(msg.sender == INBOX, InvalidCaller(msg.sender, INBOX));
         require(!litPaused, PoolClosedForCleaning());
         require(
-            LIT_AGENT == _intentHash.recover(_litSignature),
+            LIT_AGENT ==
+                keccak256(abi.encode(_intentHash, _executionFee, _protocolFee))
+                    .recover(_litSignature),
             InvalidSignature(_intentHash, _litSignature)
         );
+        uint256 requiredFee = rebaseFee + rebalanceFee;
+        require(msg.value >= requiredFee, InsufficientFees(requiredFee));
 
-        IInbox(INBOX).fulfillHyperBatched{value: msg.value}(
+        IInbox(INBOX).fulfillPool{value: msg.value - requiredFee}(
             _route,
             _rewardHash,
-            address(this),
+            msg.sender, // is this ok, should we have the claimant be an input
             _intentHash,
-            _prover
+            _prover,
+            _executionFee,
+            _protocolFee
         );
+    }
+
+    function rebalancePool(
+        address _deficitToken,
+        bytes calldata _litSignature
+    ) external {
+        // TODO: rebalance the pool via CCTP
+
+        // send reward to caller
+        (bool success, ) = payable(msg.sender).call{value: rebalancePurse}("");
+    }
+
+    /**
+     * @notice Broadcasts yield information to a central chain for rebase calculations
+     * @param _tokens The current list of token addresses
+     */
+    function initiateRebase(
+        address[] calldata _tokens
+    ) external onlyOwner checkTokenList(_tokens) {
+        require(!rebaseInProgress, "Rebase already in progress");
+        rebaseInProgress = true;
+
+        uint256 length = _tokens.length;
+        uint256 localTokens = 0;
+        for (uint256 i = 0; i < length; ++i) {
+            localTokens += IERC20(_tokens[i]).balanceOf(address(this));
+        }
+
+        uint256 localShares = EcoDollar(REBASE_TOKEN).totalShares();
+
+        uint256 fee = IMailbox(MAILBOX).quoteDispatch(
+            HOME_CHAIN,
+            REBASER,
+            abi.encodePacked(localTokens, localShares),
+            "", // metadata for relayer
+            IPostDispatchHook(RELAYER)
+        );
+        IMailbox(MAILBOX).dispatch{value: fee}(
+            HOME_CHAIN,
+            REBASER,
+            abi.encodePacked(localTokens, localShares),
+            "", // metadata for relayer
+            IPostDispatchHook(RELAYER)
+        );
+    }
+    
+    /** 
+        * @notice finishes the rebase flow
+        * @param _origin The origin chain of the message
+        * @param _sender The address of the sender on the origin chain
+        * @param _message The message body
+    */
+    function handle(
+        uint32 _origin,
+        bytes32 _sender,
+        bytes calldata _message
+    ) external payable override {
+        // Ensure only the local mailbox can call this
+        require(msg.sender == MAILBOX, "Caller is not the local mailbox");
+
+        require(_sender == REBASER, "sender is not the rebaser contract");
+
+        // Check that the origin chain is valid (non-zero mailbox address)
+        require(_origin == HOME_CHAIN, "Invalid origin chain");
+
+        (uint256 shares, uint256 balances) = abi.decode(
+            _message,
+            (uint256, uint256)
+        );
+        EcoDollar(REBASE_TOKEN).mint(address(this), shares);
+        EcoDollar(REBASE_TOKEN).mint(address(this), balances);
+        rebaseInProgress = false;
     }
 
     //////////////////////////////// OWNER FUNCTIONS ////////////////////////////////
@@ -246,36 +341,6 @@ contract StablePool is IStablePool, Ownable {
             require(whitelisted, UseAddToken());
         }
         emit TokenThresholdsChanged(_thresholdChanges);
-    }
-    /**
-     * @notice Broadcasts yield information to a central chain for rebase calculations
-     * @param _tokens The current list of token addresses
-     */
-    function broadcastYieldInfo(
-        address[] calldata _tokens
-    ) external onlyOwner checkTokenList(_tokens) {
-        uint256 length = _tokens.length;
-        uint256 localTokens = 0;
-        for (uint256 i = 0; i < length; ++i) {
-            localTokens += IERC20(_tokens[i]).balanceOf(address(this));
-        }
-
-        uint256 localShares = EcoDollar(REBASE_TOKEN).totalShares();
-
-        uint256 fee = IMailbox(MAILBOX).quoteDispatch(
-            HOME_CHAIN,
-            REBASER,
-            abi.encodePacked(localTokens, localShares),
-            "", // metadata for relayer
-            IPostDispatchHook(RELAYER)
-        );
-        IMailbox(MAILBOX).dispatch{value: fee}(
-            HOME_CHAIN,
-            REBASER,
-            abi.encodePacked(localTokens, localShares),
-            "", // metadata for relayer
-            IPostDispatchHook(RELAYER)
-        );
     }
 
     /**

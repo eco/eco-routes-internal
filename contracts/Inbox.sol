@@ -23,10 +23,13 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
     using SafeERC20 for IERC20;
 
     // Mapping of intent hash on the src chain to its fulfillment
-    mapping(bytes32 => ClaimantAndBatcherReward) public fulfilled;
+    mapping(bytes32 => PayoutData) public fulfilled;
 
     // Mapping of solvers to if they are whitelisted
     mapping(address => bool) public solverWhitelist;
+
+    //address of the pool contract
+    address public immutable POOL;
 
     // address of local hyperlane mailbox
     address public mailbox;
@@ -45,10 +48,12 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
      */
     constructor(
         address _owner,
+        address _pool,
         bool _isSolvingPublic,
         uint96 _minBatcherReward,
         address[] memory _solvers
     ) Ownable(_owner) {
+        POOL = _pool;
         isSolvingPublic = _isSolvingPublic;
         minBatcherReward = _minBatcherReward;
         for (uint256 i = 0; i < _solvers.length; ++i) {
@@ -83,8 +88,10 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
             _expectedHash
         );
 
-        fulfilled[_expectedHash] = ClaimantAndBatcherReward(
+        fulfilled[_expectedHash] = PayoutData(
             _claimant,
+            uint96(0),
+            uint96(0),
             uint96(0)
         );
 
@@ -172,8 +179,10 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
             _expectedHash
         );
 
-        fulfilled[_expectedHash] = ClaimantAndBatcherReward(
+        fulfilled[_expectedHash] = PayoutData(
             _claimant,
+            uint96(0),
+            uint96(0),
             uint96(0)
         );
 
@@ -206,6 +215,39 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
         return results;
     }
 
+    function fulfillPool(
+        Route calldata _route,
+        bytes32 _rewardHash,
+        address _claimant, // solver
+        bytes32 _expectedHash,
+        address _prover,
+        uint96 _executionFee,
+        uint96 _protocolFee
+    ) external payable returns (bytes[] memory) {
+        require(msg.sender == POOL, "Caller is not the pool contract");
+
+        // emit AddToBatch(_expectedHash, _route.source, _claimant, _prover);
+
+        (bytes[] memory results, uint256 remainingValue) = _fulfill(
+            _route,
+            _rewardHash,
+            _claimant,
+            _expectedHash
+        );
+
+        require(
+            remainingValue >= minBatcherReward,
+            InsufficientBatcherReward(minBatcherReward)
+        );
+
+        fulfilled[_expectedHash] = PayoutData(
+            _claimant,
+            uint96(remainingValue),
+            _executionFee,
+            _protocolFee
+        );
+    }
+
     /**
      * @notice Fulfills an intent to be proven in a batch via Hyperlane's mailbox
      * @dev Less expensive but slower than hyperinstant. Batch dispatched when sendBatch is called.
@@ -231,15 +273,17 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
             _claimant,
             _expectedHash
         );
-        
+
         require(
             remainingValue >= minBatcherReward,
             InsufficientBatcherReward(minBatcherReward)
         );
 
-        fulfilled[_expectedHash] = ClaimantAndBatcherReward(
+        fulfilled[_expectedHash] = PayoutData(
             _claimant,
-            uint96(remainingValue)
+            uint96(remainingValue),
+            uint96(0),
+            uint96(0)
         );
 
         return results;
@@ -287,7 +331,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
         uint256 reward = 0;
         for (uint256 i = 0; i < size; ++i) {
             address claimant = fulfilled[_intentHashes[i]].claimant;
-            reward += fulfilled[_intentHashes[i]].reward;
+            reward += fulfilled[_intentHashes[i]].batcherFee;
             if (claimant == address(0)) {
                 revert IntentNotFulfilled(_intentHashes[i]);
             }

@@ -52,6 +52,7 @@ interface IStablePool {
         uint256 _balance,
         uint256 _needed
     );
+    error InsufficientFees(uint256 _requiredFee);
     error TransferFailed();
 
     error UseAddToken();
@@ -78,7 +79,7 @@ interface IStablePool {
         address[] memory _oldTokens,
         TokenAmount[] memory _thresholdChanges
     ) external;
-    function broadcastYieldInfo(address[] calldata _tokens) external;
+    function initiateRebase(address[] calldata _tokens) external;
     function unpauseLit() external;
     function pauseLit() external;
 
@@ -87,9 +88,11 @@ interface IStablePool {
     function withdraw(address token, uint80 amount) external;
     function getBalance(address user) external view returns (uint256);
     function accessLiquidity(
+        bytes32 _intentHash,
+        uint96 _executionFee,
+        uint96 _protocolFee,
         Route calldata _route,
         bytes32 _rewardhash,
-        bytes32 _intentHash,
         address _prover,
         bytes calldata _signature
     ) external payable;
