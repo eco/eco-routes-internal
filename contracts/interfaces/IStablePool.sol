@@ -87,6 +87,7 @@ interface IStablePool {
     function deposit(address token, uint256 amount) external;
     function withdraw(address token, uint80 amount) external;
     function getBalance(address user) external view returns (uint256);
+    function getProtocolFee() external view returns (uint256);
     function accessLiquidity(
         bytes32 _intentHash,
         uint96 _executionFee,

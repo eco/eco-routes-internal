@@ -50,6 +50,8 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
     // reward for calling rebalance
     uint256 public rebalancePurse;
 
+    uint256 public protocolFee;
+
     // whether the pool's liquidity can be accessed by solvers via Lit
     bool public litPaused;
 
@@ -143,6 +145,10 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
      */
     function getBalance(address user) external view returns (uint256) {
         return IERC20(REBASE_TOKEN).balanceOf(user);
+    }
+
+    function getProtocolFee() external view override returns (uint256) {
+        return protocolFee;
     }
 
     /**

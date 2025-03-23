@@ -1029,7 +1029,7 @@ contract Prover is BaseProver, Semver {
         );
 
         // Record proven intent and emit event
-        provenIntents[intentHash] = claimant;
+        provenIntents[intentHash].claimant = claimant;
         emit IntentProven(intentHash, claimant);
     }
 }

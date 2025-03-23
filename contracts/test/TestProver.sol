@@ -10,7 +10,7 @@ contract TestProver is BaseProver {
     }
 
     function addProvenIntent(bytes32 _hash, address _claimant) public {
-        provenIntents[_hash] = _claimant;
+        provenIntents[_hash].claimant = _claimant;
     }
 
     function getProofType() external pure override returns (ProofType) {

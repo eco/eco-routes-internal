@@ -14,12 +14,6 @@ import {Semver} from "../libs/Semver.sol";
 contract HyperProver is IMessageRecipient, BaseProver, Semver {
     using TypeCasts for bytes32;
 
-    struct ClaimData {
-        address claimant;
-        uint96 protocolFee; //if we can decrease the precision on these, we can save some gas
-        uint96 executionFee;
-    }
-
     /**
      * @notice Constant indicating this contract uses Hyperlane for proving
      */
@@ -89,19 +83,22 @@ contract HyperProver is IMessageRecipient, BaseProver, Semver {
         }
 
         // Decode message containing intent hashes and claimants
-        (bytes32[] memory hashes, address[] memory claimants) = abi.decode(
+        (bytes32[] memory hashes, ClaimData[] memory claimants) = abi.decode(
             _messageBody,
-            (bytes32[], address[])
+            (bytes32[], ClaimData[])
         );
 
         // Process each intent proof
         for (uint256 i = 0; i < hashes.length; i++) {
-            (bytes32 intentHash, address claimant) = (hashes[i], claimants[i]);
-            if (provenIntents[intentHash] != address(0)) {
+            (bytes32 intentHash, ClaimData memory claimData) = (
+                hashes[i],
+                claimants[i]
+            );
+            if (claimData.claimant != address(0)) {
                 emit IntentAlreadyProven(intentHash);
             } else {
-                provenIntents[intentHash] = claimant;
-                emit IntentProven(intentHash, claimant);
+                provenIntents[intentHash] = claimData;
+                emit IntentProven(intentHash, claimData.claimant);
             }
         }
     }
