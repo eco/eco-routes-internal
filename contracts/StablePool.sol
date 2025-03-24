@@ -242,7 +242,12 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
             )
         );
 
-        
+        (, uint32 sourceDomain, , , , uint256 amount, ) = abi.decode(
+            message,
+            (uint8, uint32, uint32, uint64, address, uint256, bytes32)
+        );
+
+        emit RebalanceComplete(sourceDomain, amount);
     }
 
     /**

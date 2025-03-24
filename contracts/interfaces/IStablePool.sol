@@ -37,6 +37,8 @@ interface IStablePool {
         uint256 amount
     );
 
+    event RebalanceComplete(uint32 sourceDomain, uint256 newBalance);
+
     event AddedToWithdrawalQueue(
         address indexed user,
         WithdrawalQueueEntry entry
