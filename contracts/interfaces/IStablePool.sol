@@ -24,7 +24,8 @@ interface IStablePool {
     event WhitelistUpdated(address[] _newWhitelist);
     event TokenThresholdsChanged(TokenAmount[] _newThresholds);
 
-    event TokenThresholdChanged(address indexed token, uint256 threshold);
+    event ProtocolFeeChanged(uint256 _newFee);
+
     event Deposited(
         address indexed user,
         address indexed token,
@@ -97,5 +98,4 @@ interface IStablePool {
         address _prover,
         bytes calldata _signature
     ) external payable;
-    function processWithdrawalQueue(address _token) external;
 }

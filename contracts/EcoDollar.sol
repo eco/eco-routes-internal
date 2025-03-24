@@ -16,7 +16,7 @@ contract EcoDollar is IEcoDollar, Ownable {
 
     uint256 public totalShares;
 
-    address public immutable POOL;
+    address public immutable INTENTSOURCE;
 
     // in shares
     mapping(address => uint256) private _shares;
@@ -27,8 +27,8 @@ contract EcoDollar is IEcoDollar, Ownable {
     event Rebased(uint256 newTotalSupply, uint256 rewardMultiplier);
 
     //owner is the pool
-    constructor(address _owner, address _pool) Ownable(_owner) {
-        POOL = _pool;
+    constructor(address _pool, address _intentSource) Ownable(_pool) {
+        INTENTSOURCE = _intentSource;
         rewardMultiplier = BASE;
     }
 
@@ -81,7 +81,8 @@ contract EcoDollar is IEcoDollar, Ownable {
         rewardMultiplier = _newMultiplier;
     }
 
-    function mint(address _account, uint256 _tokens) public onlyOwner {
+    function mint(address _account, uint256 _tokens) public {
+        require(msg.sender == INTENTSOURCE || msg.sender == owner(), "only intentSource and pool can mint");
         if (_account == address(0)) {
             revert ERC20InvalidReceiver(address(0));
         }

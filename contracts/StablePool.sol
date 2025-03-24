@@ -38,6 +38,10 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
     // address of the relayer
     address public immutable RELAYER; // relayer?
 
+    address public immutable TOKEN_MESSENGER;
+
+    address public immutable MESSAGE_TRANSMITTER;
+
     // fee leveed on accessLiquidity to fund rebases
     uint96 public rebaseFee;
 
@@ -88,6 +92,8 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
         bytes32 _rebaser,
         address _mailbox,
         address _relayer,
+        address _tokenMessenger,
+        address _messageTransmitter,
         TokenAmount[] memory _initialTokens
     ) Ownable(_owner) {
         LIT_AGENT = _litAgent;
@@ -97,6 +103,8 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
         REBASER = _rebaser;
         MAILBOX = _mailbox;
         RELAYER = _relayer;
+        TOKEN_MESSENGER = _tokenMessenger;
+        MESSAGE_TRANSMITTER = _messageTransmitter;
         address[] memory init;
         _addTokens(init, _initialTokens);
     }
@@ -191,13 +199,50 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
     }
 
     function rebalancePool(
-        address _deficitToken,
+        address _token,
+        address _amount,
+        uint32 _destinationDomain, //different than chainID, this is the domainID as defined by CCTP
         bytes calldata _litSignature
-    ) external {
+    ) external payable {
+        bytes32 hash = keccak256(
+            abi.encode(_token, _amount, _destinationDomain)
+        );
+        require(
+            LIT_AGENT == hash.recover(_litSignature),
+            InvalidSignature(hash, _litSignature)
+        );
         // TODO: rebalance the pool via CCTP
+        (bool success, ) = TOKEN_MESSENGER.call{value: msg.value}(
+            abi.encodeWithSignature(
+                "depositForBurn(uint256,uint32,bytes32,address)",
+                _amount,
+                _destinationDomain,
+                bytes32(uint256(uint160(address(this)))),
+                _token
+            )
+        );
+        // withdrawal queue processing
+        processWithdrawalQueue(_token);
 
         // send reward to caller
-        (bool success, ) = payable(msg.sender).call{value: rebalancePurse}("");
+        uint256 toSend = rebalancePurse;
+        rebalancePurse = 0;
+        (success, ) = payable(msg.sender).call{value: toSend}("");
+    }
+
+    function finalizeRebalance(
+        bytes calldata message,
+        bytes calldata attestation
+    ) external {
+        (bool success, ) = MESSAGE_TRANSMITTER.call(
+            abi.encodeWithSignature(
+                "receiveMessage(bytes, bytes)",
+                message,
+                attestation
+            )
+        );
+
+        
     }
 
     /**
@@ -359,7 +404,7 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
      * @notice Processes the withdrawal queue for a token
      * @param _token The token whose withdrawalQueue is being processed
      */
-    function processWithdrawalQueue(address _token) external onlyOwner {
+    function processWithdrawalQueue(address _token) internal {
         WithdrawalQueueInfo memory queueInfo = queueInfos[_token];
         WithdrawalQueueEntry memory entry = withdrawalQueues[
             keccak256(abi.encodePacked(_token, queueInfo.head))
@@ -382,6 +427,11 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
         queueInfos[_token].head = head;
     }
 
+    function setProtocolFee(uint256 _fee) external onlyOwner {
+        protocolFee = _fee;
+        emit ProtocolFeeChanged(_fee);
+    }
+
     //////////////////////////////// INTERNAL FUNCTIONS ////////////////////////////////
 
     function _addTokens(
@@ -402,10 +452,13 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
             newTokens[i] = curr;
         }
         for (uint256 j = 0; j < addLength; ++j) {
-            newTokens[i] = _tokensToAdd[j].token;
+            address token = _tokensToAdd[j].token;
+            newTokens[i] = token;
+            IERC20(token).approve(TOKEN_MESSENGER, type(uint256).max);
             ++i;
         }
         tokensHash = keccak256(abi.encode(newTokens));
+
         emit WhitelistUpdated(newTokens);
         emit TokenThresholdsChanged(_tokensToAdd);
     }
