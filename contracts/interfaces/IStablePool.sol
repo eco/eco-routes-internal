@@ -94,7 +94,6 @@ interface IStablePool {
     function accessLiquidity(
         bytes32 _intentHash,
         uint96 _executionFee,
-        uint96 _protocolFee,
         Route calldata _route,
         bytes32 _rewardhash,
         address _prover,

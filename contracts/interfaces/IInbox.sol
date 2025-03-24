@@ -15,7 +15,11 @@ interface IInbox is ISemver {
     struct PayoutData {
         address claimant;
         uint96 batcherFee;
-        uint96 protocolFee;
+        uint96 executionFee;
+    }
+
+    struct RewardSplit {
+        address claimant;
         uint96 executionFee;
     }
 
@@ -276,8 +280,7 @@ interface IInbox is ISemver {
         address _claimant, // solver
         bytes32 _expectedHash,
         address _prover,
-        uint96 _executionFee,
-        uint96 _protocolFee
+        uint96 _executionFee
     ) external payable returns (bytes[] memory);
 
     /**

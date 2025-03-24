@@ -171,7 +171,6 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
     function accessLiquidity(
         bytes32 _intentHash,
         uint96 _executionFee, // stable-denominated
-        uint96 _protocolFee, // stable-denominated
         Route calldata _route,
         bytes32 _rewardHash,
         address _prover,
@@ -180,8 +179,9 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
         require(!litPaused, PoolClosedForCleaning());
         require(
             LIT_AGENT ==
-                keccak256(abi.encode(_intentHash, _executionFee, _protocolFee))
-                    .recover(_litSignature),
+                keccak256(abi.encode(_intentHash, _executionFee)).recover(
+                    _litSignature
+                ),
             InvalidSignature(_intentHash, _litSignature)
         );
         uint256 requiredFee = rebaseFee + rebalanceFee;
@@ -193,8 +193,7 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
             msg.sender, // is this ok, should we have the claimant be an input
             _intentHash,
             _prover,
-            _executionFee,
-            _protocolFee
+            _executionFee
         );
     }
 

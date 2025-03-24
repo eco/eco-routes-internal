@@ -88,12 +88,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
             _expectedHash
         );
 
-        fulfilled[_expectedHash] = PayoutData(
-            _claimant,
-            uint96(0),
-            uint96(0),
-            uint96(0)
-        );
+        fulfilled[_expectedHash] = PayoutData(_claimant, uint96(0), uint96(0));
 
         emit ToBeProven(_expectedHash, _route.source, _claimant);
 
@@ -156,11 +151,11 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
         returns (bytes[] memory)
     {
         bytes32[] memory hashes = new bytes32[](1);
-        address[] memory claimants = new address[](1);
+        RewardSplit[] memory rewardSplits = new RewardSplit[](1);
         hashes[0] = _expectedHash;
-        claimants[0] = _claimant;
+        rewardSplits[0] = RewardSplit(_claimant, uint96(0));
 
-        bytes memory messageBody = abi.encode(hashes, claimants);
+        bytes memory messageBody = abi.encode(hashes, rewardSplits);
         bytes32 _prover32 = _prover.addressToBytes32();
 
         emit HyperInstantFulfillment(_expectedHash, _route.source, _claimant);
@@ -179,12 +174,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
             _expectedHash
         );
 
-        fulfilled[_expectedHash] = PayoutData(
-            _claimant,
-            uint96(0),
-            uint96(0),
-            uint96(0)
-        );
+        fulfilled[_expectedHash] = PayoutData(_claimant, uint96(0), uint96(0));
 
         if (currentBalance < fee) {
             revert InsufficientFee(fee);
@@ -221,8 +211,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
         address _claimant, // solver
         bytes32 _expectedHash,
         address _prover,
-        uint96 _executionFee,
-        uint96 _protocolFee
+        uint96 _executionFee
     ) external payable returns (bytes[] memory) {
         require(msg.sender == POOL, "Caller is not the pool contract");
 
@@ -243,8 +232,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
         fulfilled[_expectedHash] = PayoutData(
             _claimant,
             uint96(remainingValue),
-            _executionFee,
-            _protocolFee
+            _executionFee
         );
     }
 
@@ -282,7 +270,6 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
         fulfilled[_expectedHash] = PayoutData(
             _claimant,
             uint96(remainingValue),
-            uint96(0),
             uint96(0)
         );
 
@@ -327,7 +314,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
         address _postDispatchHook
     ) public payable {
         uint256 size = _intentHashes.length;
-        address[] memory claimants = new address[](size);
+        RewardSplit[] memory rewardSplits = new RewardSplit[](size);
         uint256 reward = 0;
         for (uint256 i = 0; i < size; ++i) {
             address claimant = fulfilled[_intentHashes[i]].claimant;
@@ -335,12 +322,15 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
             if (claimant == address(0)) {
                 revert IntentNotFulfilled(_intentHashes[i]);
             }
-            claimants[i] = claimant;
+            rewardSplits[i] = RewardSplit(
+                claimant,
+                fulfilled[_intentHashes[i]].executionFee
+            );
         }
 
         emit BatchSent(_intentHashes, _sourceChainID);
 
-        bytes memory messageBody = abi.encode(_intentHashes, claimants);
+        bytes memory messageBody = abi.encode(_intentHashes, rewardSplits);
         bytes32 _prover32 = _prover.addressToBytes32();
         uint256 fee = fetchFee(
             _sourceChainID,
