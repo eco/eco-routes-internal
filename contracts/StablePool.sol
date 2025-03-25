@@ -54,7 +54,11 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
     // reward for calling rebalance
     uint256 public rebalancePurse;
 
+    // sliver of reward total that goes to the protocol
     uint256 public protocolFee;
+
+    // sliver of reward total that goes to the withdrawer
+    uint256 public withdrawerFee;
 
     // whether the pool's liquidity can be accessed by solvers via Lit
     bool public litPaused;
@@ -157,6 +161,10 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
 
     function getProtocolFee() external view override returns (uint256) {
         return protocolFee;
+    }
+
+    function getWithdrawerFee() external view override returns (uint256) {
+        return withdrawerFee;
     }
 
     /**
@@ -434,6 +442,11 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
     function setProtocolFee(uint256 _fee) external onlyOwner {
         protocolFee = _fee;
         emit ProtocolFeeChanged(_fee);
+    }
+
+    function setWithdrawerFee(uint256 _fee) external onlyOwner {
+        withdrawerFee = _fee;
+        emit WithdrawerFeeChanged(_fee);
     }
 
     //////////////////////////////// INTERNAL FUNCTIONS ////////////////////////////////

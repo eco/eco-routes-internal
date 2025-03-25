@@ -26,6 +26,8 @@ interface IStablePool {
 
     event ProtocolFeeChanged(uint256 _newFee);
 
+    event WithdrawerFeeChanged(uint256 _newFee);
+
     event Deposited(
         address indexed user,
         address indexed token,
@@ -91,6 +93,7 @@ interface IStablePool {
     function withdraw(address token, uint80 amount) external;
     function getBalance(address user) external view returns (uint256);
     function getProtocolFee() external view returns (uint256);
+    function getWithdrawerFee() external view returns (uint256);
     function accessLiquidity(
         bytes32 _intentHash,
         uint96 _executionFee,
