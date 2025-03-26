@@ -9,6 +9,8 @@ import {IIntentSource} from "./interfaces/IIntentSource.sol";
 import {BaseProver} from "./prover/BaseProver.sol";
 import {Intent, Route, Reward, Call} from "./types/Intent.sol";
 import {Semver} from "./libs/Semver.sol";
+import {IEcoDollar} from "./interfaces/IEcoDollar.sol";
+import {IStablePool} from "./interfaces/IStablePool.sol";
 
 import {Vault} from "./Vault.sol";
 
@@ -23,9 +25,29 @@ import {Vault} from "./Vault.sol";
 contract IntentSource is IIntentSource, Semver {
     using SafeERC20 for IERC20;
 
+    uint256 public constant BASE = 1e18;
+
+    address public immutable POOL;
+
+    address public immutable POOL_OWNER;
+
+    IEcoDollar public immutable ECO_DOLLAR;
+
+    uint256 public withdrawerFee;
+
     mapping(bytes32 intentHash => VaultStorage) public vaults;
 
-    constructor() {}
+    constructor(
+        address _pool,
+        address _poolOwner,
+        address _ecoDollar,
+        uint256 _withdrawerFee
+    ) {
+        POOL = _pool;
+        POOL_OWNER = _poolOwner;
+        ECO_DOLLAR = IEcoDollar(_ecoDollar);
+        withdrawerFee = _withdrawerFee;
+    }
 
     /**
      * @notice Retrieves reward status for a given intent hash
@@ -255,7 +277,8 @@ contract IntentSource is IIntentSource, Semver {
         bytes32 rewardHash = keccak256(abi.encode(reward));
         bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
 
-        address claimant = BaseProver(reward.prover).provenIntents(intentHash);
+        (address claimant, uint96 executionFee) = BaseProver(reward.prover)
+            .provenIntents(intentHash);
         VaultState memory state = vaults[intentHash].state;
 
         // Claim the rewards if the intent has not been claimed
@@ -264,11 +287,22 @@ contract IntentSource is IIntentSource, Semver {
             state.status != uint8(RewardStatus.Claimed) &&
             state.status != uint8(RewardStatus.Refunded)
         ) {
+            if (executionFee > 0) {
+                // fulfilled using pool liquidity
+                state.target == POOL;
+                ECO_DOLLAR.mint(claimant, executionFee);
+                ECO_DOLLAR.mint(POOL_OWNER, IStablePool(POOL).getProtocolFee());
+                ECO_DOLLAR.mint(
+                    msg.sender,
+                    IStablePool(POOL).getWithdrawerFee()
+                );
+            } else {
+                state.target = claimant;
+            }
             state.status = uint8(RewardStatus.Claimed);
             state.mode = uint8(VaultMode.Claim);
             state.allowPartialFunding = 0;
             state.usePermit = 0;
-            state.target = claimant;
             vaults[intentHash].state = state;
 
             emit Withdrawal(intentHash, claimant);
@@ -290,6 +324,7 @@ contract IntentSource is IIntentSource, Semver {
      * @param routeHashes Array of route hashes for the intents
      * @param rewards Array of reward structures for the intents
      */
+     // TODO code duplication
     function batchWithdraw(
         bytes32[] calldata routeHashes,
         Reward[] calldata rewards
@@ -301,7 +336,58 @@ contract IntentSource is IIntentSource, Semver {
         }
 
         for (uint256 i = 0; i < length; ++i) {
-            withdrawRewards(routeHashes[i], rewards[i]);
+            Reward memory reward = rewards[i];
+            bytes32 routeHash = routeHashes[i];
+
+            bytes32 rewardHash = keccak256(abi.encode(reward));
+            bytes32 intentHash = keccak256(
+                abi.encodePacked(routeHash, rewardHash)
+            );
+
+            (address claimant, uint96 executionFee) = BaseProver(reward.prover)
+                .provenIntents(intentHash);
+            VaultState memory state = vaults[intentHash].state;
+
+            // Claim the rewards if the intent has not been claimed
+            uint256 protocolFee = IStablePool(POOL).getProtocolFee();
+            uint256 withdrawerFee = IStablePool(POOL).getWithdrawerFee();
+            uint256 protocolFeeCount = 0;
+            uint256 withdrawerFeeCount = 0;
+            if (
+                claimant != address(0) &&
+                state.status != uint8(RewardStatus.Claimed) &&
+                state.status != uint8(RewardStatus.Refunded)
+            ) {
+                if (executionFee > 0) {
+                    // fulfilled using pool liquidity
+                    // claimant is the solver
+                    state.target == POOL;
+                    protocolFeeCount++;
+                    withdrawerFeeCount++;
+                    ECO_DOLLAR.mint(claimant, executionFee);
+                } else {
+                    state.target = claimant;
+                }
+                state.status = uint8(RewardStatus.Claimed);
+                state.mode = uint8(VaultMode.Claim);
+                state.allowPartialFunding = 0;
+                state.usePermit = 0;
+                vaults[intentHash].state = state;
+
+                emit Withdrawal(intentHash, claimant);
+
+                new Vault{salt: routeHash}(intentHash, reward);
+
+                return;
+            }
+            ECO_DOLLAR.mint(POOL_OWNER, protocolFeeCount * protocolFee);
+            ECO_DOLLAR.mint(msg.sender, withdrawerFeeCount * withdrawerFee);
+
+            if (claimant == address(0)) {
+                revert UnauthorizedWithdrawal(intentHash);
+            } else {
+                revert RewardsAlreadyWithdrawn(intentHash);
+            }
         }
     }
 
@@ -320,7 +406,7 @@ contract IntentSource is IIntentSource, Semver {
             state.status != uint8(RewardStatus.Claimed) &&
             state.status != uint8(RewardStatus.Refunded)
         ) {
-            address claimant = BaseProver(reward.prover).provenIntents(
+            (address claimant, ) = BaseProver(reward.prover).provenIntents(
                 intentHash
             );
             // Check if the intent has been proven to prevent unauthorized refunds

@@ -10,11 +10,16 @@ import {IProver} from "../interfaces/IProver.sol";
  * and their claimants
  */
 abstract contract BaseProver is IProver {
+    struct ClaimData {
+        address claimant;
+        uint96 executionFee;
+    }
+
     /**
      * @notice Mapping from intent hash to address eligible to claim rewards
      * @dev Zero address indicates intent hasn't been proven
      */
-    mapping(bytes32 => address) public provenIntents;
+    mapping(bytes32 => ClaimData) public provenIntents;
 
     /**
      * @notice Gets the address eligible to claim rewards for a given intent
@@ -24,6 +29,6 @@ abstract contract BaseProver is IProver {
     function getIntentClaimant(
         bytes32 intentHash
     ) external view override returns (address) {
-        return provenIntents[intentHash];
+        return provenIntents[intentHash].claimant;
     }
 }
