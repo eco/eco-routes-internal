@@ -48,6 +48,8 @@ contract HyperProver is IMessageRecipient, BaseProver, Semver {
      */
     address public immutable INBOX;
 
+    mapping(bytes32 => bytes32) public poolProvenIntents;
+
     /**
      * @notice Initializes the HyperProver contract
      * @param _mailbox Address of local Hyperlane mailbox

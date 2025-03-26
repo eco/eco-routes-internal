@@ -43,22 +43,22 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
     address public immutable MESSAGE_TRANSMITTER;
 
     // fee leveed on accessLiquidity to fund rebases
-    uint96 public rebaseFee;
+    uint256 public rebaseFee;
 
     // fee leveed on accessLiquidity to fund rebalances
-    uint96 public rebalanceFee;
+    uint256 public rebalanceFee;
+
+    // fee leveed on intent withdrawal to fund protocol
+    uint256 public protocolFee;
+
+    // fee leveed on intent withdrawal to incentivize withdraw call
+    uint256 public withdrawerFee;
 
     // reward for calling rebase
     uint256 public rebasePurse;
 
     // reward for calling rebalance
     uint256 public rebalancePurse;
-
-    // sliver of reward total that goes to the protocol
-    uint256 public protocolFee;
-
-    // sliver of reward total that goes to the withdrawer
-    uint256 public withdrawerFee;
 
     // whether the pool's liquidity can be accessed by solvers via Lit
     bool public litPaused;
@@ -98,6 +98,10 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
         address _relayer,
         address _tokenMessenger,
         address _messageTransmitter,
+        uint256 _rebaseFee,
+        uint256 _rebalanceFee,
+        uint256 _protocolFee,
+        uint256 _withdrawerFee,
         TokenAmount[] memory _initialTokens
     ) Ownable(_owner) {
         LIT_AGENT = _litAgent;
@@ -109,6 +113,10 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
         RELAYER = _relayer;
         TOKEN_MESSENGER = _tokenMessenger;
         MESSAGE_TRANSMITTER = _messageTransmitter;
+        rebaseFee = _rebaseFee;
+        rebalanceFee = _rebalanceFee;
+        protocolFee = _protocolFee;
+        withdrawerFee = _withdrawerFee;
         address[] memory init;
         _addTokens(init, _initialTokens);
     }
@@ -437,6 +445,16 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
             }
         }
         queueInfos[_token].head = head;
+    }
+
+    function setRebaseFee(uint96 _fee) external onlyOwner {
+        rebaseFee = _fee;
+        emit ProtocolFeeChanged(_fee);
+    }
+
+    function setRebalanceFee(uint256 _fee) external onlyOwner {
+        rebalanceFee = _fee;
+        emit ProtocolFeeChanged(_fee);
     }
 
     function setProtocolFee(uint256 _fee) external onlyOwner {

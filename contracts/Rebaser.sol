@@ -6,6 +6,12 @@ import {IMessageRecipient} from "@hyperlane-xyz/core/contracts/interfaces/IMessa
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {IMailbox, IPostDispatchHook} from "@hyperlane-xyz/core/contracts/interfaces/IMailbox.sol";
 
+/**
+ * @title Rebaser
+ * @notice Contract for rebasing ecoDollar across multiple chains
+ * @dev makes the assumption that one of the chains being rebased is the local chain
+ */
+
 contract Rebaser is Ownable, IMessageRecipient {
     using TypeCasts for bytes32;
 
@@ -22,6 +28,8 @@ contract Rebaser is Ownable, IMessageRecipient {
     // mint rate for ecoDollar. Divided by BASE
     uint256 public protocolRate;
 
+    uint256 public rebaserRate;
+
     uint32[] public chains;
 
     /**
@@ -29,7 +37,7 @@ contract Rebaser is Ownable, IMessageRecipient {
      *         If the value is non-zero, the chain is considered valid.
      *         If zero, the chain is considered invalid.
      */
-    mapping(uint256 => bool) public validChainIDs;
+    mapping(uint32 => bool) public validChainIDs;
 
     //TODO: combine these as a struct
     // Counter with current number of chains that have sent in rebase values
@@ -60,12 +68,21 @@ contract Rebaser is Ownable, IMessageRecipient {
         address _mailbox,
         bytes32 _pool,
         bytes32 _token,
-        address _relayer
+        address _relayer,
+        uint256 _protocolRate,
+        uint256 _rebaserRate,
+        uint32[] memory _chainIds
     ) Ownable(_owner) {
         MAILBOX = _mailbox;
         POOL = _pool;
         TOKEN = _token;
         RELAYER = _relayer;
+        protocolRate = _protocolRate;
+        rebaserRate = _rebaserRate;
+        uint256 chainCount = _chainIds.length;
+        for (uint256 i = 0; i < chainCount; i++) {
+            _setChainIdStatus(_chainIds[i], true);
+        }
     }
 
     /**
@@ -82,23 +99,7 @@ contract Rebaser is Ownable, IMessageRecipient {
         uint32 _chainId,
         bool _isValid
     ) external onlyOwner {
-        if (validChainIDs[_chainId] != _isValid) {
-            if (_isValid) {
-                chains.push(_chainId);
-            } else {
-                uint256 index;
-                uint256 length = chains.length;
-                for (uint256 i = 0; i < length; i++) {
-                    if (chains[i] == _chainId) {
-                        index = i;
-                        break;
-                    }
-                }
-                chains[index] = chains[chains.length - 1];
-                chains.pop();
-            }
-            validChainIDs[_chainId] = _isValid;
-        }
+        _setChainIdStatus(_chainId, _isValid);
     }
 
     /**
@@ -131,7 +132,7 @@ contract Rebaser is Ownable, IMessageRecipient {
         require(_sender == POOL, "sender is not the pool contract");
 
         // Check that the origin chain is valid (non-zero mailbox address)
-        require(validChainIDs[uint256(_origin)], "Invalid origin chain");
+        require(validChainIDs[_origin], "Invalid origin chain");
         (uint256 shares, uint256 balances) = abi.decode(
             _message,
             (uint256, uint256)
@@ -176,7 +177,7 @@ contract Rebaser is Ownable, IMessageRecipient {
     function propagateRebase(
         uint32 _chainId,
         uint256 _protocolMintRate
-    ) public onlyOwner returns (bool success) {
+    ) public returns (bool success) {
         uint256 fee = IMailbox(MAILBOX).quoteDispatch(
             _chainId,
             TOKEN,
@@ -192,5 +193,25 @@ contract Rebaser is Ownable, IMessageRecipient {
             IPostDispatchHook(RELAYER)
         );
         return true;
+    }
+
+    function _setChainIdStatus(uint32 _chainId, bool _isValid) internal {
+        if (validChainIDs[_chainId] != _isValid) {
+            if (_isValid) {
+                chains.push(_chainId);
+            } else {
+                uint256 index;
+                uint256 length = chains.length;
+                for (uint256 i = 0; i < length; i++) {
+                    if (chains[i] == _chainId) {
+                        index = i;
+                        break;
+                    }
+                }
+                chains[index] = chains[chains.length - 1];
+                chains.pop();
+            }
+            validChainIDs[_chainId] = _isValid;
+        }
     }
 }

@@ -24,6 +24,10 @@ interface IStablePool {
     event WhitelistUpdated(address[] _newWhitelist);
     event TokenThresholdsChanged(TokenAmount[] _newThresholds);
 
+    event RebaseFeeChanged(uint256 _newFee);
+
+    event RebalanceFeeChanged(uint256 _newFee);
+
     event ProtocolFeeChanged(uint256 _newFee);
 
     event WithdrawerFeeChanged(uint256 _newFee);
