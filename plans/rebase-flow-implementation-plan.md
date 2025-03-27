@@ -135,6 +135,65 @@ The rebase flow follows this exact process as shown in the swimlane diagram:
 - Monitor for failed messages
 - Resend any failed messages to spokes immediately
 
+### Visual Implementation Flow
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#6C78AF', 'primaryTextColor': '#fff', 'primaryBorderColor': '#5D69A0', 'lineColor': '#5D69A0', 'secondaryColor': '#D3D8F9', 'tertiaryColor': '#E7E9FC' }}}%%
+
+flowchart TB
+    subgraph "Spoke Chain"
+        start["Start\n(Admin Triggered)"] --> collectYield["Pool earns funds\nfrom a yield"]
+        collectYield --> saveProfit["Save amount of\nprofit internally"]
+        saveProfit --> sendToHome["Send message to home\nwith amount of profit"]
+        sendToHome --> resetProfit["Set profit to 0\nin storage"]
+        receiveMultiplier["Receive updated\nmultiplier"] --> setMultiplier["Set the current\nmultiplier"]
+        setMultiplier --> endProcess["End"]
+    end
+
+    subgraph "Hyperlane"
+        sendMsgToHome["Send profit\nto home"]
+        sendMsgToSpokes["Send to all\nspokes"]
+        handleFailure["Handle message\ndelivery failures"]
+    end
+
+    subgraph "Home Chain"
+        calculateRatio["Calculate ratio of\ntotal supply and profit"]
+        calculateRatio --> incrementReward["Increment global\nreward rate"]
+        incrementReward --> deductFees["Deduct protocol fees\nand mint shares"]
+        deductFees --> distributeRate["Send updated rate\nto all spokes"]
+    end
+
+    subgraph "Service"
+        trackRebases["Track number\nof rebases"]
+        monitorBalances["Monitor balances\nof accepted tokens"]
+        detectFailure["Detect failed\nmessages"]
+        resendMessages["Resend failed messages\nto spokes immediately"]
+    end
+
+    sendToHome --> sendMsgToHome
+    sendMsgToHome --> calculateRatio
+    deductFees --> sendMsgToSpokes
+    sendMsgToSpokes --> receiveMultiplier
+    
+    sendMsgToSpokes -- "Message fails" --> detectFailure
+    detectFailure --> resendMessages
+    resendMessages --> receiveMultiplier
+
+    classDef started fill:#98FB98,stroke:#006400,stroke-width:2px
+    classDef critical fill:#FFD700,stroke:#B8860B,stroke-width:2px
+    classDef serviceFn fill:#B0E0E6,stroke:#4682B4,stroke-width:2px
+
+    class start,calculateRatio started
+    class resetProfit,deductFees critical
+    class trackRebases,monitorBalances,detectFailure,resendMessages serviceFn
+```
+
+The diagram above illustrates the complete implementation flow with:
+- **Green nodes**: Starting points in the process
+- **Yellow nodes**: Critical operations that require special attention
+- **Blue nodes**: Service layer functionality for monitoring and recovery
+- **Arrows**: Data flow between components
+
 ### Critical Issues Requiring Fixes
 
 1. **Double Burn in Withdraw Function**: StablePool.withdraw() burns user tokens twice (lines 150 and 159), causing users to lose twice the intended amount.
