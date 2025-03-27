@@ -120,7 +120,7 @@ The rebase flow follows this exact process as shown in the swimlane diagram:
 #### 2. Hyperlane (Messaging Layer)
 - Send profit information to home chain
 - Later: Send updated multiplier to all spoke chains
-- Handle message delivery confirmation and failures
+- Handle message delivery between chains
 
 #### 3. Home Chain (Calculation Phase)
 - Calculate ratio of total supply and profit that was received
@@ -148,7 +148,7 @@ flowchart TB
     subgraph "Hyperlane"
         sendMsgToHome["Send profit\nto home"]
         sendMsgToSpokes["Send to all\nspokes"]
-        handleFailure["Handle message\ndelivery failures"]
+        handleDelivery["Handle message\ndelivery"]
     end
 
     subgraph "Home Chain"
@@ -311,7 +311,7 @@ function initiateRebase(
     // Critical: Set profit to 0 in storage to prevent double-counting
     resetProfit();
     
-    // Emit event for offchain monitoring
+    // Emit event for tracking
     emit RebaseInitiated(localTokens, localShares, profit, HOME_CHAIN, messageId);
 }
 ```
@@ -475,7 +475,7 @@ function propagateRebase(
         IPostDispatchHook(RELAYER)
     );
     
-    // Backend will monitor these messages
+    // Log message ID for reference
 }
 ```
 
@@ -492,7 +492,7 @@ The EcoDollar contract will no longer have a separate rebase method. Instead, th
  * @param _sender The sender address in 32-byte form
  * @param _message The message payload
  * @dev Follows the exact steps in the swimlane diagram:
- *      1. Receive the failed message to the spoke immediately
+ *      1. Receive the message from the home chain
  *      2. Sets the current multiplier
  *      3. End
  */
@@ -554,7 +554,7 @@ function _updateEcoDollarMultiplier(uint256 _newMultiplier) internal {
     uint256 oldMultiplier = IEcoDollar(REBASE_TOKEN).rewardMultiplier();
     IEcoDollar(REBASE_TOKEN).updateRewardMultiplier(_newMultiplier);
     
-    // Emit event from StablePool for additional tracking
+    // Emit event with old and new values
     emit EcoDollarMultiplierUpdated(oldMultiplier, _newMultiplier);
 }
 
@@ -783,7 +783,7 @@ slither contracts/EcoDollar.sol --detect unchecked-lowlevel
   - [ ] Sub-task 4.2: Implement calculation steps exactly as shown in swimlane diagram
   - [ ] Sub-task 4.3: Implement ratio calculation of total supply and profit including protocol fee minting on home chain
   - [ ] Sub-task 4.4: Implement protocol fee deduction and update reward rate
-  - [ ] Sub-task 4.5: Add proper spoke chain propagation with failure handling
+  - [ ] Sub-task 4.5: Add proper spoke chain propagation with error handling
 
 - [ ] Step 5: Update EcoDollar's multiplier update mechanism [Priority: High] [Est: 1.5h]
   - [ ] Sub-task 5.1: Remove public rebase function
@@ -803,7 +803,7 @@ slither contracts/EcoDollar.sol --detect unchecked-lowlevel
 - [ ] Step 8: Build integration test suite [Priority: Critical] [Est: 2h]
   - [ ] Sub-task 8.1: Create end-to-end test for complete rebase flow
   - [ ] Sub-task 8.2: Implement multi-chain testing with parallel anvil instances
-  - [ ] Sub-task 8.3: Test error handling for failed messages
+  - [ ] Sub-task 8.3: Test error handling for cross-chain messages
   - [ ] Sub-task 8.4: Verify protocol fee minting on home chain only
   - [ ] Sub-task 8.5: Test interaction with withdrawal queue processing
 
@@ -843,9 +843,9 @@ slither contracts/EcoDollar.sol --detect unchecked-lowlevel
 
 ### High-Risk Areas
 
-1. **Cross-Chain Message Failures**
-   - **Risk**: Message delivery failure could leave system in inconsistent state
-   - **Mitigation**: Implement robust error handling, state reset mechanism, event logging
+1. **Cross-Chain Message Handling**
+   - **Risk**: Message delivery issues could leave system in inconsistent state
+   - **Mitigation**: Implement proper error handling, state reset mechanism, event reporting
 
 2. **Protocol Fee Calculation**
    - **Risk**: Incorrect calculation could lead to over/under-minting of protocol fees
