@@ -178,7 +178,7 @@ The diagram above illustrates the complete implementation flow with:
 
 1. **Double Burn in Withdraw Function**: StablePool.withdraw() burns user tokens twice (lines 150 and 159), causing users to lose twice the intended amount.
 
-2. **Missing Validation in EcoDollar.rebase()**: No check to ensure new multiplier is >= current multiplier.
+2. **No Validation Needed in EcoDollar.rebase()**: Multiplier can be set to any value as determined by the rebase process.
 
 3. **Incomplete Error Handling**: Cross-chain message failures need proper handling.
 
@@ -354,6 +354,8 @@ function handle(
         
         // Mint protocol fees directly on home chain
         if (protocolShare > 0) {
+            // TOKEN refers to local EcoDollar contract on home chain
+            // TREASURY_ADDRESS is a predefined constant address for the treasury
             IEcoDollar(TOKEN).mint(TREASURY_ADDRESS, protocolShare);
         }
         
@@ -631,7 +633,7 @@ error InvalidOriginChain(uint32 chain);
 
 3. **EcoDollar Tests**:
    - `testRebaseValidMultiplier`: Verify rebase function accepts valid multipliers
-   - `testRebaseInvalidMultiplier`: Verify rebase function rejects decreasing multipliers
+   - `testRebaseAnyMultiplier`: Verify rebase function accepts any multiplier value
    - `testShareToTokenConversion`: Verify correct conversion before and after rebase
    - `testEventEmissions`: Verify proper events are emitted
 
@@ -722,7 +724,7 @@ slither contracts/EcoDollar.sol --detect unchecked-lowlevel
 
 - [ ] Step 2: Fix critical bugs [Priority: Critical] [Est: 1h]
   - [ ] Sub-task 2.1: Fix double burn bug in StablePool.withdraw
-  - [ ] Sub-task 2.2: Add proper validation to EcoDollar.rebase
+  - [ ] Sub-task 2.2: Update EcoDollar.rebase to accept any multiplier value
   - [ ] Sub-task 2.3: Write tests verifying bug fixes
   - [ ] Sub-task 2.4: Run security analysis on fixed code
 
@@ -735,20 +737,20 @@ slither contracts/EcoDollar.sol --detect unchecked-lowlevel
 - [ ] Step 4: Improve Rebaser calculation logic [Priority: High] [Est: 2h]
   - [ ] Sub-task 4.1: Write tests for Rebaser's handle function with diverse scenarios
   - [ ] Sub-task 4.2: Implement calculation steps exactly as shown in swimlane diagram
-  - [ ] Sub-task 4.3: Implement ratio calculation of total supply and profit
+  - [ ] Sub-task 4.3: Implement ratio calculation of total supply and profit including protocol fee minting on home chain
   - [ ] Sub-task 4.4: Implement protocol fee deduction and update reward rate
   - [ ] Sub-task 4.5: Add proper spoke chain propagation with failure handling
 
 - [ ] Step 5: Upgrade EcoDollar rebasing [Priority: High] [Est: 1h]
   - [ ] Sub-task 5.1: Write comprehensive tests for EcoDollar rebase function
-  - [ ] Sub-task 5.2: Enhance rebase function with validation and error handling
+  - [ ] Sub-task 5.2: Simplify rebase function to accept any multiplier value
   - [ ] Sub-task 5.3: Verify share-to-token conversion accuracy before/after rebase
   - [ ] Sub-task 5.4: Add improved event emissions with old/new multiplier values
 
 - [ ] Step 6: Complete StablePool rebase finalization [Priority: High] [Est: 1.5h]
   - [ ] Sub-task 6.1: Write tests for StablePool's handle function with various scenarios
   - [ ] Sub-task 6.2: Implement handle function exactly as shown in swimlane diagram
-  - [ ] Sub-task 6.3: Implement "set the current multiplier" functionality
+  - [ ] Sub-task 6.3: Implement "set the current multiplier" functionality without protocol fee minting
   - [ ] Sub-task 6.4: Ensure proper end-of-process handling
   - [ ] Sub-task 6.5: Integrate withdrawal queue processing after rebase
 
@@ -757,7 +759,7 @@ slither contracts/EcoDollar.sol --detect unchecked-lowlevel
   - [ ] Sub-task 8.1: Create end-to-end test for complete rebase flow
   - [ ] Sub-task 8.2: Implement multi-chain testing with parallel anvil instances
   - [ ] Sub-task 8.3: Test error handling for failed messages
-  - [ ] Sub-task 8.4: Verify protocol fee distribution across treasury accounts
+  - [ ] Sub-task 8.4: Verify protocol fee minting on home chain only
   - [ ] Sub-task 8.5: Test interaction with withdrawal queue processing
 
 - [ ] Step 9: Security and optimization [Priority: Critical] [Est: 1.5h]
@@ -777,8 +779,8 @@ slither contracts/EcoDollar.sol --detect unchecked-lowlevel
 | 2.1-2.4 Fix critical bugs | Must compile | 100% coverage | Slither validation | Before/after comparison | Bug fix documented |
 | 3.1-3.4 StablePool rebase | Must compile | 100% coverage | Access control verified | Gas snapshot | NatSpec complete |
 | 4.1-4.5 Rebaser calculation | Must compile | 100% coverage | Math safety verified | Gas optimization | NatSpec complete |
-| 5.1-5.4 EcoDollar rebasing | Must compile | 100% coverage | Edge cases tested | Gas analysis | NatSpec complete |
-| 6.1-6.5 Rebase finalization | Must compile | 100% coverage | Error handling verified | Gas snapshot | NatSpec complete |
+| 5.1-5.4 EcoDollar rebasing | Must compile | 100% coverage | Any multiplier value tested | Gas analysis | NatSpec complete |
+| 6.1-6.5 Rebase finalization | Must compile | 100% coverage | No protocol fee minting verified | Gas snapshot | NatSpec complete |
 | 7.1-7.5 Integration testing | Must compile | E2E flow covered | Attack vectors tested | N/A | Test cases documented |
 | 8.1-8.5 Security & optimization | Must compile | All tests pass | No critical findings | 10%+ gas reduction | Complete report |
 
