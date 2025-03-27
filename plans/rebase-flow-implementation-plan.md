@@ -129,11 +129,6 @@ The rebase flow follows this exact process as shown in the swimlane diagram:
 - Mint shares to the protocol contract/treasury
 - Send the updated rate to all spoke chains
 
-#### 4. Service Layer
-- Initialize/maintain database of rebase information
-- Track number of rebases and balances of accepted tokens
-- Monitor for failed messages
-- Resend any failed messages to spokes immediately
 
 ### Visual Implementation Flow
 
@@ -163,35 +158,20 @@ flowchart TB
         deductFees --> distributeRate["Send updated rate\nto all spokes"]
     end
 
-    subgraph "Service"
-        trackRebases["Track number\nof rebases"]
-        monitorBalances["Monitor balances\nof accepted tokens"]
-        detectFailure["Detect failed\nmessages"]
-        resendMessages["Resend failed messages\nto spokes immediately"]
-    end
-
     sendToHome --> sendMsgToHome
     sendMsgToHome --> calculateRatio
     deductFees --> sendMsgToSpokes
     sendMsgToSpokes --> receiveMultiplier
-    
-    sendMsgToSpokes -- "Message fails" --> detectFailure
-    detectFailure --> resendMessages
-    resendMessages --> receiveMultiplier
 
     classDef started fill:#98FB98,stroke:#006400,stroke-width:2px
     classDef critical fill:#FFD700,stroke:#B8860B,stroke-width:2px
-    classDef serviceFn fill:#B0E0E6,stroke:#4682B4,stroke-width:2px
-
     class start,calculateRatio started
     class resetProfit,deductFees critical
-    class trackRebases,monitorBalances,detectFailure,resendMessages serviceFn
 ```
 
 The diagram above illustrates the complete implementation flow with:
 - **Green nodes**: Starting points in the process
 - **Yellow nodes**: Critical operations that require special attention
-- **Blue nodes**: Service layer functionality for monitoring and recovery
 - **Arrows**: Data flow between components
 
 ### Critical Issues Requiring Fixes
@@ -407,8 +387,8 @@ function handle(
             if (!success) {
                 allSucceeded = false;
                 emit RebasePropagationFailed(chain);
-                // Service layer should detect and resend failed messages
-                _queueFailedMessage(chain, newMultiplier, protocolMintRate);
+                // Emit event for manual management later
+                _emitFailedMessage(chain, newMultiplier, protocolMintRate);
             }
         }
         
@@ -416,7 +396,7 @@ function handle(
         _resetRebaseState();
         
         // If any propagation failed, emit event but don't revert
-        // This allows the rebase to partially succeed while service layer handles retries
+        // This allows the rebase to partially succeed while allowing for manual recovery later
         if (!allSucceeded) {
             emit PartialRebaseCompletion();
         }
@@ -424,24 +404,17 @@ function handle(
 }
 
 /**
- * @dev Queue a failed message for retry by the service layer
+ * @dev Emit event for failed message to enable manual recovery
  * @param _chain The destination chain ID
  * @param _multiplier The new reward multiplier
  * @param _protocolMintRate The protocol mint rate for fee distribution
  */
-function _queueFailedMessage(
+function _emitFailedMessage(
     uint32 _chain,
     uint256 _multiplier,
     uint256 _protocolMintRate
 ) private {
-    failedMessages.push(FailedMessage({
-        chain: _chain,
-        multiplier: _multiplier,
-        protocolMintRate: _protocolMintRate,
-        timestamp: block.timestamp
-    }));
-    
-    emit MessageQueued(_chain, _multiplier, _protocolMintRate);
+    emit MessageFailed(_chain, _multiplier, _protocolMintRate);
 }
 
 /**
@@ -591,8 +564,7 @@ function handle(
     );
     
     // STEP 1: Receive the message from home chain
-    // This is handled by the Hyperlane protocol and service layer
-    // The service layer will resend immediately if message fails
+    // This is handled by the Hyperlane protocol
     
     // STEP 2: Set the current multiplier
     try IEcoDollar(REBASE_TOKEN).rebase(newMultiplier) {
@@ -702,258 +674,6 @@ error PartialRebaseCompletion();
 error RewardMultiplierTooLow(uint256 provided, uint256 minimum);
 ```
 
-### Service Layer Implementation 
-
-Following the service layer component shown in the swimlane diagram, we'll implement a service that:
-1. Tracks the number of rebases 
-2. Monitors balances of accepted tokens
-3. Immediately resends any failed messages to spokes
-
-```typescript
-// Service Layer Implementation
-class RebaseService {
-  private db: Database;
-  private provider: ethers.providers.Provider;
-  private rebaser: Rebaser;
-  private pools: Map<number, StablePool>;
-  
-  constructor(db: Database, provider: ethers.providers.Provider) {
-    this.db = db;
-    this.provider = provider;
-    this.initializeContracts();
-    this.monitorFailedMessages();
-  }
-  
-  /**
-   * Initialize contracts and event listeners
-   */
-  private async initializeContracts() {
-    // Load contract addresses from configuration
-    const config = await this.db.getConfig();
-    
-    // Initialize rebaser contract on home chain
-    this.rebaser = new ethers.Contract(
-      config.rebaserAddress,
-      rebaserAbi,
-      this.provider
-    );
-    
-    // Initialize all pools on spoke chains
-    this.pools = new Map();
-    for (const chain of config.chains) {
-      const provider = new ethers.providers.JsonRpcProvider(chain.rpcUrl);
-      const pool = new ethers.Contract(
-        chain.poolAddress,
-        stablePoolAbi,
-        provider
-      );
-      this.pools.set(chain.chainId, pool);
-    }
-    
-    // Set up event listeners
-    this.setupEventListeners();
-  }
-  
-  /**
-   * Set up event listeners for message failures
-   */
-  private setupEventListeners() {
-    this.rebaser.on('MessageQueued', this.handleMessageQueued.bind(this));
-    this.rebaser.on('RebasePropagationFailed', this.handlePropagationFailure.bind(this));
-    
-    // Monitor other relevant events
-    this.rebaser.on('ReceivedRebaseInformation', this.trackRebaseData.bind(this));
-    this.rebaser.on('CalculatedRebase', this.recordRebaseCalculation.bind(this));
-  }
-  
-  /**
-   * Track rebase data for each chain
-   */
-  private async trackRebaseData(origin: number, balances: bigint, shares: bigint, profit: bigint) {
-    console.log(`Received rebase data from chain ${origin}: balances=${balances}, shares=${shares}, profit=${profit}`);
-    
-    // Store data in database
-    await this.db.recordChainReport({
-      chainId: origin,
-      timestamp: Date.now(),
-      balances: balances.toString(),
-      shares: shares.toString(),
-      profit: profit.toString()
-    });
-    
-    // Update accepted token balances
-    await this.updateTokenBalances(origin);
-  }
-  
-  /**
-   * Update accepted token balances
-   */
-  private async updateTokenBalances(chainId: number) {
-    const pool = this.pools.get(chainId);
-    if (!pool) return;
-    
-    const tokenAddresses = await pool.getWhitelistedTokens();
-    
-    for (const tokenAddress of tokenAddresses) {
-      const balance = await pool.getTokenBalance(tokenAddress);
-      
-      // Store token balance in database
-      await this.db.updateTokenBalance({
-        chainId,
-        tokenAddress,
-        balance: balance.toString(),
-        timestamp: Date.now()
-      });
-    }
-  }
-  
-  /**
-   * Record rebase calculation
-   */
-  private async recordRebaseCalculation(
-    totalBalances: bigint,
-    totalShares: bigint,
-    netProfit: bigint,
-    protocolShare: bigint,
-    newMultiplier: bigint,
-    protocolMintRate: bigint
-  ) {
-    // Increment rebase counter
-    const currentRebaseCount = await this.db.getRebaseCount();
-    await this.db.setRebaseCount(currentRebaseCount + 1);
-    
-    // Store rebase calculation details
-    await this.db.recordRebaseCalculation({
-      rebaseNumber: currentRebaseCount + 1,
-      timestamp: Date.now(),
-      totalBalances: totalBalances.toString(),
-      totalShares: totalShares.toString(),
-      netProfit: netProfit.toString(),
-      protocolShare: protocolShare.toString(),
-      newMultiplier: newMultiplier.toString(),
-      protocolMintRate: protocolMintRate.toString()
-    });
-  }
-  
-  /**
-   * Handle queued messages that failed to send
-   */
-  private async handleMessageQueued(
-    chainId: number,
-    multiplier: bigint,
-    protocolMintRate: bigint
-  ) {
-    console.log(`Message queued for retry to chain ${chainId}`);
-    
-    // Record failed message
-    await this.db.recordFailedMessage({
-      chainId,
-      multiplier: multiplier.toString(),
-      protocolMintRate: protocolMintRate.toString(),
-      timestamp: Date.now()
-    });
-    
-    // Immediately try to resend
-    await this.resendMessage(chainId, multiplier, protocolMintRate);
-  }
-  
-  /**
-   * Handle propagation failures
-   */
-  private async handlePropagationFailure(chainId: number) {
-    console.log(`Propagation failed to chain ${chainId}`);
-    
-    // Check for pending retry
-    const pendingRetry = await this.db.getPendingRetry(chainId);
-    if (!pendingRetry) {
-      console.log(`No pending retry data for chain ${chainId}`);
-      return;
-    }
-    
-    // Attempt to resend immediately
-    await this.resendMessage(
-      chainId,
-      BigInt(pendingRetry.multiplier),
-      BigInt(pendingRetry.protocolMintRate)
-    );
-  }
-  
-  /**
-   * Resend a failed message
-   */
-  private async resendMessage(
-    chainId: number,
-    multiplier: bigint,
-    protocolMintRate: bigint
-  ) {
-    console.log(`Resending message to chain ${chainId}`);
-    
-    try {
-      // Get wallet with sufficient balance
-      const wallet = await this.getWallet();
-      const rebaserWithSigner = this.rebaser.connect(wallet);
-      
-      // Resend the message
-      const tx = await rebaserWithSigner.retryPropagation(
-        chainId,
-        multiplier,
-        protocolMintRate,
-        { gasLimit: 500000 }
-      );
-      
-      console.log(`Resend transaction submitted: ${tx.hash}`);
-      
-      // Wait for confirmation
-      const receipt = await tx.wait();
-      console.log(`Resend confirmed in block ${receipt.blockNumber}`);
-      
-      // Update database
-      await this.db.recordMessageRetry({
-        chainId,
-        multiplier: multiplier.toString(),
-        protocolMintRate: protocolMintRate.toString(),
-        timestamp: Date.now(),
-        transactionHash: tx.hash,
-        success: true
-      });
-    } catch (error) {
-      console.error(`Failed to resend message to chain ${chainId}:`, error);
-      
-      // Record failure
-      await this.db.recordMessageRetry({
-        chainId,
-        multiplier: multiplier.toString(),
-        protocolMintRate: protocolMintRate.toString(),
-        timestamp: Date.now(),
-        error: error.toString(),
-        success: false
-      });
-      
-      // Schedule another retry
-      setTimeout(() => {
-        this.resendMessage(chainId, multiplier, protocolMintRate);
-      }, 60000); // Retry after 1 minute
-    }
-  }
-  
-  /**
-   * Start monitoring for failed messages
-   */
-  private monitorFailedMessages() {
-    // Check for failed messages every minute
-    setInterval(async () => {
-      const failedMessages = await this.db.getUnresolvedFailedMessages();
-      
-      for (const message of failedMessages) {
-        await this.resendMessage(
-          message.chainId,
-          BigInt(message.multiplier),
-          BigInt(message.protocolMintRate)
-        );
-      }
-    }, 60000);
-  }
-}
 
 ### Gas Optimization Techniques
 
@@ -1113,17 +833,11 @@ slither contracts/EcoDollar.sol --detect unchecked-lowlevel
   - [ ] Sub-task 6.4: Ensure proper end-of-process handling
   - [ ] Sub-task 6.5: Integrate withdrawal queue processing after rebase
 
-- [ ] Step 7: Implement Service Layer [Priority: High] [Est: 2h]
-  - [ ] Sub-task 7.1: Create service for tracking rebases and token balances
-  - [ ] Sub-task 7.2: Implement database for rebase information storage
-  - [ ] Sub-task 7.3: Create monitoring system for failed messages
-  - [ ] Sub-task 7.4: Implement immediate resend functionality for failed messages
-  - [ ] Sub-task 7.5: Add comprehensive logging and error handling
 
 - [ ] Step 8: Build integration test suite [Priority: Critical] [Est: 2h]
   - [ ] Sub-task 8.1: Create end-to-end test for complete rebase flow
   - [ ] Sub-task 8.2: Implement multi-chain testing with parallel anvil instances
-  - [ ] Sub-task 8.3: Test service layer for failed message handling
+  - [ ] Sub-task 8.3: Test error handling for failed messages
   - [ ] Sub-task 8.4: Verify protocol fee distribution across treasury accounts
   - [ ] Sub-task 8.5: Test interaction with withdrawal queue processing
 
