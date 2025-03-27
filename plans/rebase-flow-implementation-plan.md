@@ -341,7 +341,6 @@ function handle(
         
         // Handle zero profit scenario
         if (netNewBalances <= 0) {
-            emit ZeroProfitRebase(balancesTotal, sharesTotal, currentMultiplier);
             _resetRebaseState();
             return;
         }
@@ -350,16 +349,13 @@ function handle(
         // Calculate new multiplier based on total balances and shares
         uint256 newMultiplier = ((balancesTotal) * BASE) / sharesTotal;
         
-        // Ensure multiplier only increases
-        if (newMultiplier <= currentMultiplier) {
-            emit InvalidMultiplierCalculated(currentMultiplier, newMultiplier);
-            _resetRebaseState();
-            return;
-        }
-        
-        // STEP 3: Deduct protocol fees from the rate
+        // STEP 3: Deduct protocol fees from the rate and mint on HOME chain
         uint256 protocolShare = (netNewBalances * protocolRate) / BASE;
-        uint256 protocolMintRate = (protocolShare * BASE) / sharesTotal;
+        
+        // Mint protocol fees directly on home chain
+        if (protocolShare > 0) {
+            IEcoDollar(TOKEN).mint(TREASURY_ADDRESS, protocolShare);
+        }
         
         // Adjust multiplier after protocol fee deduction
         newMultiplier = ((balancesTotal - protocolShare) * BASE) / sharesTotal;
@@ -373,15 +369,14 @@ function handle(
             sharesTotal,
             netNewBalances,
             protocolShare,
-            newMultiplier,
-            protocolMintRate
+            newMultiplier
         );
         
         // STEP 4: Send to all spokes
         // Propagate rebase to all chains
         for (uint256 i = 0; i < chains.length; i++) {
             uint32 chain = chains[i];
-            _propagateRebase(chain, newMultiplier, protocolMintRate);
+            _propagateRebase(chain, newMultiplier);
         }
         
         // Reset state for next rebase cycle
@@ -409,29 +404,25 @@ function _resetRebaseState() private {
  * @dev Internal function to propagate rebase to a specific chain
  * @param _chain The destination chain ID
  * @param _multiplier The new reward multiplier
- * @param _protocolMintRate The protocol mint rate for fee distribution
  */
 function _propagateRebase(
     uint32 _chain,
-    uint256 _multiplier,
-    uint256 _protocolMintRate
+    uint256 _multiplier
 ) private {
-    propagateRebase(_chain, _multiplier, _protocolMintRate);
+    propagateRebase(_chain, _multiplier);
 }
 
 /**
  * @notice Propagates rebase data to a specified chain
  * @param _chain The destination chain ID
  * @param _multiplier The new reward multiplier
- * @param _protocolMintRate The protocol mint rate for fee distribution
  */
 function propagateRebase(
     uint32 _chain,
-    uint256 _multiplier,
-    uint256 _protocolMintRate
+    uint256 _multiplier
 ) private {
     // Encode message with rebase data
-    bytes memory message = abi.encode(_multiplier, _protocolMintRate);
+    bytes memory message = abi.encode(_multiplier);
     
     // Quote fee for cross-chain message
     uint256 fee = IMailbox(MAILBOX).quoteDispatch(
@@ -461,14 +452,9 @@ function propagateRebase(
 /**
  * @notice Updates the reward multiplier for rebasing the token
  * @param _newMultiplier The new reward multiplier to apply
- * @dev Only callable by owner (StablePool), ensures multiplier only increases
+ * @dev Only callable by owner (StablePool)
  */
 function rebase(uint256 _newMultiplier) external onlyOwner {
-    // Ensure multiplier only increases
-    if (_newMultiplier < rewardMultiplier) {
-        revert RewardMultiplierTooLow(_newMultiplier, rewardMultiplier);
-    }
-    
     // Update reward multiplier
     uint256 oldMultiplier = rewardMultiplier;
     rewardMultiplier = _newMultiplier;
@@ -510,9 +496,9 @@ function handle(
     }
     
     // Decode message payload
-    (uint256 newMultiplier, uint256 protocolMintRate) = abi.decode(
+    uint256 newMultiplier = abi.decode(
         _message,
-        (uint256, uint256)
+        (uint256)
     );
     
     // STEP 1: Receive the message from home chain
@@ -521,14 +507,6 @@ function handle(
     // STEP 2: Set the current multiplier
     IEcoDollar(REBASE_TOKEN).rebase(newMultiplier);
     
-    // Calculate and mint protocol share
-    uint256 totalShares = IEcoDollar(REBASE_TOKEN).getTotalShares();
-    uint256 protocolMintAmount = (protocolMintRate * totalShares) / BASE;
-    
-    if (protocolMintAmount > 0) {
-        IEcoDollar(REBASE_TOKEN).mint(TREASURY_ADDRESS, protocolMintAmount);
-    }
-    
     // Process withdrawal queues if applicable
     _processWithdrawalQueues();
     
@@ -536,7 +514,7 @@ function handle(
     rebaseInProgress = false;
     
     // Emit rebase completion event
-    emit RebaseFinalized(newMultiplier, protocolMintRate, protocolMintAmount);
+    emit RebaseFinalized(newMultiplier);
     
     // STEP 3: End process
     // No further action required, process is complete
@@ -613,8 +591,6 @@ error InvalidOriginChain(uint32 actual, uint32 expected);
 // Rebaser errors
 error InvalidOriginChain(uint32 chain);
 
-// EcoDollar errors
-error RewardMultiplierTooLow(uint256 provided, uint256 minimum);
 ```
 
 
