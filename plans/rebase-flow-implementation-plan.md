@@ -13,246 +13,294 @@
 > - **Testing Commands**: Use [Solidity Development Imperatives](../CLAUDE.md#solidity-development-imperatives)
 > - **Git Framework**: Adhere to [Git Execution Framework](../CLAUDE.md#git-execution-framework)
 
-## Overview
+## Executive Summary
 
-This implementation plan provides detailed steps for implementing the cross-chain Rebase Flow mechanism as defined in the [Crowd Liquidity Project Plan](./crowd-liquidity-project-plan.md). The rebase flow is a crucial component that ensures eUSD tokens maintain consistent value across all chains by collecting yield information, calculating a global multiplier, and distributing that multiplier to all participating chains.
+This implementation plan details the cross-chain Rebase Flow mechanism for the Eco Routes Protocol. The rebase flow ensures eUSD tokens maintain consistent value across all supported chains through a three-phase process: collection of local pool metrics, centralized calculation of the global multiplier, and distribution of updated rates to all participating chains. This implementation will fix critical bugs in the existing contracts, optimize cross-chain messaging, and provide robust error handling for all components.
 
 ## Implementation Information
 
 - **Category**: Feature
-- **Priority**: High
-- **Estimated Time**: 8 hours
+- **Priority**: Critical
+- **Estimated Time**: 10 hours
 - **Affected Components**: StablePool, Rebaser, EcoDollar, Hyperlane integration
 - **Parent Project Plan**: [Crowd Liquidity Project Plan](./crowd-liquidity-project-plan.md)
 - **Related Implementation Plans**: Withdrawal Queue Implementation (dependent)
 - **Git Branch**: feat/rebase/rebase-flow-implementation
 
-## Goals
+## Current Status and Technical Context
 
-- Implement complete cross-chain rebase flow as shown in documentation
-- Create robust error handling for cross-chain messages
-- Ensure correct profit calculation and distribution
-- Implement secure protocol fee collection
-- Build comprehensive test suite for rebase functionality
+### System Architecture
 
-## Quick Context Restoration
+The Rebase Flow operates across a multi-chain architecture with these core components:
 
-- **Branch**: feat/rebase/rebase-flow-implementation
-- **Environment**: Development
-- **Last Position**: Not started
-- **Current Status**: Planning
-- **Last Commit**: N/A
-- **Last Modified Files**: N/A
-- **Implementation Progress**: Not started
-- **Validation Status**: N/A
+1. **StablePool (per chain)**: Manages deposits/withdrawals and initiates rebase flow
+2. **Rebaser (home chain only)**: Central coordinator for cross-chain rebase calculations
+3. **EcoDollar (per chain)**: Rebasing token that uses share-based accounting
+4. **Hyperlane Integration**: Cross-chain messaging protocol for communication
 
-## Analysis
+### Current Implementation Status
 
-The Rebase Flow mechanism consists of three main phases:
+- **StablePool**: Basic rebase initiation exists but lacks proper state management
+- **Rebaser**: Most calculation logic exists but needs error handling improvements
+- **EcoDollar**: Share-based accounting implemented but rebase function needs validation
+- **Critical Bug**: Double burn in StablePool withdraw function must be fixed
+- **Missing Components**: Proper error handling, comprehensive testing, event emissions
 
-1. **Collection Phase**: Each StablePool on a spoke chain collects profit information, calculates local yield, and sends this data to the home chain Rebaser.
+## Goals and Scope
 
-2. **Calculation Phase**: The Rebaser on the home chain receives data from all chains, calculates a global multiplier based on total shares and total balances, determines protocol profits, and prepares for distribution.
+### Primary Goals
 
-3. **Distribution Phase**: The Rebaser sends the new multiplier to all chains, and each chain updates its EcoDollar contract with the new value, effectively rebasing the token.
+1. Implement complete cross-chain rebase flow matching the swimlane diagram
+2. Fix critical bugs in existing implementation (double burn, missing validation)
+3. Add robust error handling for cross-chain messages
+4. Ensure mathematically correct profit calculation and distribution
+5. Implement secure protocol fee collection with proper treasury distribution
+6. Build comprehensive test suite covering the entire rebase flow
 
-Based on the analyzed code, the Rebaser contract already contains most of the calculation logic, but needs to be connected with the StablePool initiation and EcoDollar application. The existing rebase process also needs testing and potential optimizations.
+### Out of Scope
+
+1. Changes to the fundamental architecture of the system
+2. Implementation of withdrawal queue processing (separate plan)
+3. Changes to deployment strategy
+4. UI integration or external system interactions
 
 ## Decision Points
 
 ### Decision 1: Rebase Trigger Mechanism
 
-- [x] Option A: Admin-triggered rebases
-  - Pros: More control over timing, can be scheduled at optimal times
-  - Cons: Requires active management, less autonomous
-  - Performance impact: Less frequent rebases, potentially higher gas per rebase
-  - Security implications: Lower risk of manipulation through timing
+- [x] **Option A: Admin-triggered rebases**
+  - **Pros**: Precise control over timing, gas optimization through batching, predictable operations
+  - **Cons**: Requires active management, less autonomous than automated approaches
+  - **Performance impact**: Less frequent rebases with potentially higher gas per operation
+  - **Security implications**: Lower risk of timing manipulation, explicit authorization for each rebase
   
-- [ ] Option B: Automatic threshold-based rebases
-  - Pros: Fully autonomous, no need for manual intervention
-  - Cons: May trigger at suboptimal times, harder to predict
-  - Performance impact: Could lead to frequent rebases in volatile conditions
-  - Security implications: Potential for gaming the threshold triggers
-
-Recommendation: Option A because it provides more control over timing, allows for optimization of gas costs through batching, and aligns with the design indicated in the rebase flow diagram which shows an explicit "Start" action.
+- [ ] **Option B: Automatic threshold-based rebases**
+  - **Pros**: Fully autonomous operation, no manual intervention required
+  - **Cons**: May trigger at suboptimal network times, harder to predict execution
+  - **Performance impact**: More frequent rebases during volatile conditions
+  - **Security implications**: Potential for gaming threshold triggers, complex validation needs
 
 **Decision**: Option A selected (Admin-triggered rebases) based on user confirmation on 2025-03-26.
 
+**Rationale**: Admin-triggered rebases provide precise operational control, align with the explicit "Start" action in the swimlane diagram, and enable gas optimization by scheduling rebases during low-congestion periods. This approach also reduces attack vectors by requiring explicit authorization.
+
 ### Decision 2: Protocol Fee Distribution
 
-- [x] Option A: Automatically mint protocol share to treasury
-  - Pros: Immediate fee capture, simpler flow
-  - Cons: Less flexible in fee allocation
-  - Performance impact: More gas-efficient
-  - Security implications: Fixed fee allocation pattern
-
-- [ ] Option B: Store protocol share for later distribution
-  - Pros: More flexible fee distribution options
-  - Cons: More complex logic, additional transactions needed
-  - Performance impact: Less gas-efficient due to multiple transactions
-  - Security implications: More entry points, higher complexity
-
-Recommendation: Option A because it aligns with the current implementation in the Rebaser contract, is more gas-efficient, and provides a simpler, more predictable fee capture mechanism.
+- [x] **Option A: Automatically mint protocol share to treasury**
+  - **Pros**: Immediate fee capture, simpler execution flow, reduced gas costs
+  - **Cons**: Less flexibility in fee allocation compared to delayed distribution
+  - **Performance impact**: More gas-efficient due to single-step processing
+  - **Security implications**: Cleaner security model with fewer entry points
+  
+- [ ] **Option B: Store protocol share for later distribution**
+  - **Pros**: More flexible distribution strategies, adjustable allocation post-rebase
+  - **Cons**: More complex state management, additional transactions needed
+  - **Performance impact**: Less gas-efficient due to multi-step processing
+  - **Security implications**: More attack vectors with additional entry points
 
 **Decision**: Option A selected (Automatically mint protocol share to treasury) based on user confirmation on 2025-03-26.
 
-## Dependencies
+**Rationale**: Direct minting to treasury provides a simpler implementation with fewer security considerations while reducing gas costs associated with fee management. This approach aligns with the current Rebaser contract design and provides predictable fee capture behavior.
 
-- Complete implementation of the StablePool contract
-- Complete implementation of the EcoDollar contract
-- Hyperlane integration for cross-chain messaging
-- Proper contract deployment on all participating chains
+## Technical Analysis
 
-## Pre-execution Checklist
+### Rebase Flow Process (from high-definition swimlane diagram)
 
-- [ ] All decision points resolved by user (exactly ONE option selected per decision)
-- [ ] Verify development environment is active
-- [ ] Confirm all dependencies are installed
-- [ ] Check for clean git status or backup changes
-- [ ] Verify access to required resources
-- [ ] Confirm test framework is operational
-- [ ] Verify subtasks are atomic and independently testable
-- [ ] Confirm validation criteria defined for each subtask
-- [ ] Verify git branch naming follows convention `feat/rebase/rebase-flow-implementation`
-- [ ] Ensure each subtask has clear completion criteria
-- [ ] Confirm security validation checkpoints are defined
-- [ ] Verify testing approach covers unit, integration, and edge cases
-- [ ] Ensure commit message convention is understood and will be followed
+The rebase flow follows a clearly defined process with distinct responsibilities at each level:
 
-## Steps
+#### 1. Spoke Chain (Collection Phase)
+- Process starts with admin trigger ("Start" in diagram)
+- Pool collects balances from each listed token
+- Total amount of profit is calculated
+- Message sent to home chain with local metrics
 
-- [ ] Step 1: Set up test environment [Priority: High] [Est: 1h]
-  - [ ] Sub-task 1.1: Configure mock contracts for testing (mock contracts ready, test environment configured)
-  - [ ] Sub-task 1.2: Set up multi-chain testing framework (multiple anvil instances configured, test script ready)
+#### 2. Hyperlane (Messaging Layer)
+- Handles cross-chain message delivery
+- Connects spoke chains to home chain
+- Provides bidirectional messaging capabilities
 
-- [ ] Step 2: Implement StablePool rebase initiation [Priority: High] [Est: 1.5h]
-  - [ ] Sub-task 2.1: Write tests for initiateRebase function (100% test coverage, includes valid and invalid scenarios)
-  - [ ] Sub-task 2.2: Implement or refine initiateRebase function (function implemented with proper error handling, 100% test coverage)
-  - [ ] Sub-task 2.3: Add proper event emissions for rebase events (events properly defined and emitted, tested for correct parameters)
-  - [ ] Sub-task 2.4: Implement rebase state management (rebaseInProgress flag properly managed, tested for race conditions)
+#### 3. Home Chain (Calculation Phase)
+- Calculates ratio of total supply and profit that was got
+- Determines global reward rate
+- Deducts protocol fees
+- Mints shares to fee recipients
+- Sends updated rates to all spoke chains
 
-- [ ] Step 3: Implement Rebaser calculation logic [Priority: High] [Est: 2h]
-  - [ ] Sub-task 3.1: Write tests for message handling on Rebaser (100% test coverage, includes valid and invalid message scenarios)
-  - [ ] Sub-task 3.2: Refine Rebaser handle function (function implemented with proper validation, 100% test coverage)
-  - [ ] Sub-task 3.3: Implement protocol fee calculation (fee calculation logic implemented, tested with various scenarios)
-  - [ ] Sub-task 3.4: Add proper rebase propagation with error handling (propagation logic implemented with retry mechanism, tested with failure scenarios)
+#### 4. Service Layer
+- Monitors number of rebases
+- Tracks balances of accepted tokens
 
-- [ ] Step 4: Implement EcoDollar rebase application [Priority: High] [Est: 1.5h]
-  - [ ] Sub-task 4.1: Write tests for EcoDollar rebase function (100% test coverage, includes valid and invalid scenarios)
-  - [ ] Sub-task 4.2: Implement or refine EcoDollar rebase function (function implemented with proper validation, 100% test coverage)
-  - [ ] Sub-task 4.3: Implement share-to-token conversion logic (conversion logic implemented, tested with various multipliers)
-  - [ ] Sub-task 4.4: Add proper event emissions (events properly defined and emitted, tested for correct parameters)
+### Critical Issues Requiring Fixes
 
-- [ ] Step 5: Implement StablePool rebase finalization [Priority: High] [Est: 1h]
-  - [ ] Sub-task 5.1: Write tests for handle function on StablePool (100% test coverage, includes valid and invalid message scenarios)
-  - [ ] Sub-task 5.2: Implement or refine StablePool handle function (function implemented with proper validation, 100% test coverage)
-  - [ ] Sub-task 5.3: Add protocol mint logic (mint logic implemented, tested with various fee rates)
-  - [ ] Sub-task 5.4: Implement rebase state reset (rebaseInProgress flag reset, tested in various scenarios)
+1. **Double Burn in Withdraw Function**: StablePool.withdraw() burns user tokens twice (lines 150 and 159), causing users to lose twice the intended amount.
 
-- [ ] Step 6: Integration testing [Priority: Critical] [Est: 1.5h]
-  - [ ] Sub-task 6.1: Write end-to-end rebase flow test (test covers complete flow, all stages verified)
-  - [ ] Sub-task 6.2: Test with multiple chains (multi-chain test successful, verified with different chain counts)
-  - [ ] Sub-task 6.3: Test error scenarios and recovery (error handling tested, recovery mechanisms verified)
-  - [ ] Sub-task 6.4: Test protocol fee distribution (fee distribution verified, correct amounts received)
+2. **Missing Validation in EcoDollar.rebase()**: No check to ensure new multiplier is >= current multiplier.
 
-- [ ] Step 7: Security and optimization [Priority: High] [Est: 1h]
-  - [ ] Sub-task 7.1: Run security analysis (slither run with no critical findings, all issues addressed)
-  - [ ] Sub-task 7.2: Optimize gas usage (gas usage benchmarked and optimized, gas report generated)
-  - [ ] Sub-task 7.3: Review access control (all functions have appropriate access controls, tested with unauthorized access)
-  - [ ] Sub-task 7.4: Final review and documentation (NatSpec documentation complete, README updated)
+3. **Incomplete Error Handling**: Cross-chain message failures need proper handling.
 
-## Files to Modify
+4. **Incomplete State Management**: rebaseInProgress flag not properly reset if process fails.
 
-- contracts/StablePool.sol: Enhance rebase initiation and handle logic
-- contracts/Rebaser.sol: Enhance message handling and rebase propagation
-- contracts/EcoDollar.sol: Improve rebase application
-- test/RebaseFlow.t.sol: Create comprehensive rebase flow tests
+5. **Withdrawal Queue Integration**: Rebase needs to trigger withdrawal queue processing.
 
 ## Implementation Details
 
-### Core Architecture
+### Files to Modify
 
-The implementation will enhance the following key components:
+- **contracts/StablePool.sol**
+  - Fix double burn bug in withdraw function
+  - Enhance rebase initiation logic
+  - Implement handle function for receiving rebase data
+  - Add rebase state management
+  - Add event emissions
 
-1. **StablePool Rebase Initiation**:
+- **contracts/Rebaser.sol**
+  - Enhance message handling with better validation
+  - Optimize protocol fee calculation
+  - Improve rebase propagation with error handling
+  - Add proper event emissions
+  - Combine chains and validChainIDs as a struct
+
+- **contracts/EcoDollar.sol**
+  - Enhance rebase function with proper validation
+  - Ensure share-to-token conversion is accurate
+  - Add event emissions
+
+- **test/RebaseFlow.t.sol** (new file)
+  - Implement comprehensive test suite for rebase flow
+
+### Core Architecture Enhancements
+
+#### 1. StablePool Rebase Initiation
 
 ```solidity
 /**
- * @notice Broadcasts yield information to a central chain for rebase calculations
- * @param _tokens The current list of token addresses
+ * @notice Broadcasts yield information to the home chain for rebase calculations
+ * @param _tokens The current list of token addresses to include in calculation
+ * @dev Only callable by owner, initiates the cross-chain rebase process
  */
 function initiateRebase(
     address[] calldata _tokens
 ) external onlyOwner checkTokenList(_tokens) {
-    require(!rebaseInProgress, "Rebase already in progress");
+    // Prevent concurrent rebases
+    if (rebaseInProgress) {
+        revert RebaseInProgress();
+    }
+    
+    // Mark rebase as in progress
     rebaseInProgress = true;
-
+    
+    // Calculate local token balances for yield determination
     uint256 length = _tokens.length;
     uint256 localTokens = 0;
+    
     for (uint256 i = 0; i < length; ++i) {
-        localTokens += IERC20(_tokens[i]).balanceOf(address(this));
+        // Safe to use unchecked for gas optimization as token balances are limited
+        unchecked {
+            localTokens += IERC20(_tokens[i]).balanceOf(address(this));
+        }
     }
-
-    uint256 localShares = EcoDollar(REBASE_TOKEN).totalShares();
-
+    
+    // Get total shares from EcoDollar
+    uint256 localShares = IEcoDollar(REBASE_TOKEN).getTotalShares();
+    
+    // Encode message with local metrics
+    bytes memory message = abi.encode(localTokens, localShares);
+    
+    // Quote fee for cross-chain message
     uint256 fee = IMailbox(MAILBOX).quoteDispatch(
         HOME_CHAIN,
         REBASER,
-        abi.encode(localTokens, localShares),
-        "", // metadata for relayer
-        IPostDispatchHook(RELAYER)
-    );
-    IMailbox(MAILBOX).dispatch{value: fee}(
-        HOME_CHAIN,
-        REBASER,
-        abi.encode(localTokens, localShares),
-        "", // metadata for relayer
+        message,
+        "", // Empty metadata for relayer
         IPostDispatchHook(RELAYER)
     );
     
-    emit RebaseInitiated(localTokens, localShares, HOME_CHAIN);
+    // Dispatch message to home chain
+    uint256 messageId = IMailbox(MAILBOX).dispatch{value: fee}(
+        HOME_CHAIN,
+        REBASER,
+        message,
+        "", // Empty metadata for relayer
+        IPostDispatchHook(RELAYER)
+    );
+    
+    // Emit event for offchain monitoring
+    emit RebaseInitiated(localTokens, localShares, HOME_CHAIN, messageId);
 }
 ```
 
-2. **Rebaser Calculation Logic**:
+#### 2. Rebaser Calculation Logic
 
 ```solidity
 /**
- * @dev Hyperlane "handle" method, called when a message is received.
- * @param _origin The chain ID from which the message was sent.
- * @param _sender The address that sent this message on the origin chain, in 32-byte form.
- * @param _message The encoded message payload.
+ * @dev Hyperlane message handler for processing rebase data from spoke chains
+ * @param _origin The chain ID from which the message was sent
+ * @param _sender The address that sent the message (32-byte form)
+ * @param _message The encoded payload containing shares and balances
  */
 function handle(
     uint32 _origin,
     bytes32 _sender,
     bytes calldata _message
 ) external payable override {
-    // Ensure only the local mailbox can call this
-    require(msg.sender == MAILBOX, "Caller is not the local mailbox");
-    require(_sender == POOL, "sender is not the pool contract");
-    require(validChainIDs[_origin], "Invalid origin chain");
+    // Security validations
+    if (msg.sender != MAILBOX) {
+        revert UnauthorizedMailbox(msg.sender, MAILBOX);
+    }
     
-    (uint256 shares, uint256 balances) = abi.decode(
+    if (_sender != POOL) {
+        revert UnauthorizedSender(_sender, POOL);
+    }
+    
+    if (!validChainIDs[_origin]) {
+        revert InvalidOriginChain(_origin);
+    }
+    
+    // Decode message payload
+    (uint256 balances, uint256 shares) = abi.decode(
         _message,
         (uint256, uint256)
     );
     
+    // Update chain data counters
+    chainReports[_origin] = true;
     currentChainCount++;
     sharesTotal += shares;
     balancesTotal += balances;
-
-    emit ReceivedRebaseInformation(_origin, shares, balances);
-
-    uint256 chainCount = chains.length;
-
-    if (currentChainCount == chainCount) {
-        // Calculate rebase parameters
+    
+    // Emit data receipt event
+    emit ReceivedRebaseInformation(_origin, balances, shares);
+    
+    // If all chains have reported, calculate and propagate rebase
+    if (currentChainCount == chains.length) {
+        // Calculate rebase metrics with SafeMath
         uint256 netNewBalances = balancesTotal - (sharesTotal * currentMultiplier) / BASE;
+        
+        // Handle zero or negative profit scenario
+        if (netNewBalances <= 0) {
+            emit ZeroProfitRebase(balancesTotal, sharesTotal, currentMultiplier);
+            _resetRebaseState();
+            return;
+        }
+        
+        // Calculate protocol's share of profit
         uint256 protocolShare = (netNewBalances * protocolRate) / BASE;
+        
+        // Calculate new multiplier and protocol mint rate
         uint256 newMultiplier = ((balancesTotal - protocolShare) * BASE) / sharesTotal;
         uint256 protocolMintRate = (protocolShare * BASE) / sharesTotal;
-
+        
+        // Ensure multiplier only increases
+        if (newMultiplier <= currentMultiplier) {
+            emit InvalidMultiplierCalculated(currentMultiplier, newMultiplier);
+            _resetRebaseState();
+            return;
+        }
+        
+        // Update current multiplier
+        currentMultiplier = newMultiplier;
+        
+        // Emit calculation event
         emit CalculatedRebase(
             balancesTotal,
             sharesTotal,
@@ -261,146 +309,384 @@ function handle(
             newMultiplier,
             protocolMintRate
         );
-
-        // Reset counters for next rebase
-        currentChainCount = 0;
-        sharesTotal = 0;
-        balancesTotal = 0;
-        currentMultiplier = newMultiplier;
-
+        
         // Propagate rebase to all chains
-        for (uint256 i = 0; i < chainCount; i++) {
+        bool allSucceeded = true;
+        for (uint256 i = 0; i < chains.length; i++) {
             uint32 chain = chains[i];
-            bool success = propagateRebase(chain, protocolMintRate);
+            bool success = _propagateRebase(chain, newMultiplier, protocolMintRate);
+            
             if (!success) {
+                allSucceeded = false;
                 emit RebasePropagationFailed(chain);
-                revert RebasePropagationFailed(chain);
             }
         }
+        
+        // Reset state for next rebase cycle
+        _resetRebaseState();
+        
+        // If any propagation failed, emit event but don't revert
+        // This allows the rebase to partially succeed
+        if (!allSucceeded) {
+            emit PartialRebaseCompletion();
+        }
+    }
+}
+
+/**
+ * @dev Internal function to reset rebase state
+ */
+function _resetRebaseState() private {
+    // Reset chain counters
+    currentChainCount = 0;
+    sharesTotal = 0;
+    balancesTotal = 0;
+    
+    // Reset chain reports
+    for (uint256 i = 0; i < chains.length; i++) {
+        chainReports[chains[i]] = false;
+    }
+}
+
+/**
+ * @dev Internal function to propagate rebase to a specific chain
+ * @param _chain The destination chain ID
+ * @param _multiplier The new reward multiplier
+ * @param _protocolMintRate The protocol mint rate for fee distribution
+ * @return success Whether the propagation was successful
+ */
+function _propagateRebase(
+    uint32 _chain,
+    uint256 _multiplier,
+    uint256 _protocolMintRate
+) private returns (bool success) {
+    try this.propagateRebase(_chain, _multiplier, _protocolMintRate) returns (bool result) {
+        return result;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * @notice Propagates rebase data to a specified chain
+ * @param _chain The destination chain ID
+ * @param _multiplier The new reward multiplier
+ * @param _protocolMintRate The protocol mint rate for fee distribution
+ * @return success Whether the propagation was successful
+ */
+function propagateRebase(
+    uint32 _chain,
+    uint256 _multiplier,
+    uint256 _protocolMintRate
+) external returns (bool success) {
+    // Only allow internal calls from this contract
+    if (msg.sender != address(this)) {
+        revert UnauthorizedCaller(msg.sender, address(this));
+    }
+    
+    // Encode message with rebase data
+    bytes memory message = abi.encode(_multiplier, _protocolMintRate);
+    
+    // Quote fee for cross-chain message
+    uint256 fee = IMailbox(MAILBOX).quoteDispatch(
+        _chain,
+        POOL,
+        message,
+        "", // Empty metadata for relayer
+        IPostDispatchHook(RELAYER)
+    );
+    
+    // Check if contract has enough ETH for fee
+    if (address(this).balance < fee) {
+        emit InsufficientFeeForRebase(_chain, fee, address(this).balance);
+        return false;
+    }
+    
+    // Dispatch message to destination chain
+    try IMailbox(MAILBOX).dispatch{value: fee}(
+        _chain,
+        POOL,
+        message,
+        "", // Empty metadata for relayer
+        IPostDispatchHook(RELAYER)
+    ) returns (uint256 messageId) {
+        emit RebasePropagated(_chain, _multiplier, _protocolMintRate, messageId);
+        return true;
+    } catch (bytes memory reason) {
+        emit RebasePropagationError(_chain, reason);
+        return false;
     }
 }
 ```
 
-3. **EcoDollar Rebase Application**:
+#### 3. EcoDollar Rebase Function Enhancement
 
 ```solidity
 /**
- * @notice Updates the reward multiplier for rebasing
- * @param _newMultiplier The new reward multiplier
+ * @notice Updates the reward multiplier for rebasing the token
+ * @param _newMultiplier The new reward multiplier to apply
+ * @dev Only callable by owner (StablePool), ensures multiplier only increases
  */
 function rebase(uint256 _newMultiplier) external onlyOwner {
-    require(_newMultiplier >= rewardMultiplier, "RewardMultiplierTooLow");
+    // Ensure multiplier only increases
+    if (_newMultiplier < rewardMultiplier) {
+        revert RewardMultiplierTooLow(_newMultiplier, rewardMultiplier);
+    }
+    
+    // Update reward multiplier
+    uint256 oldMultiplier = rewardMultiplier;
     rewardMultiplier = _newMultiplier;
-    emit Rebased(rewardMultiplier);
+    
+    // Emit rebase event with old and new multipliers
+    emit Rebased(oldMultiplier, rewardMultiplier);
 }
 ```
 
-4. **StablePool Rebase Finalization**:
+#### 4. StablePool Rebase Finalization
 
 ```solidity
 /**
- * @notice Finalizes the rebase flow
- * @param _origin The origin chain of the message
- * @param _sender The address of the sender on the origin chain
- * @param _message The message body
+ * @notice Handles incoming rebase message from home chain
+ * @param _origin The origin chain ID
+ * @param _sender The sender address in 32-byte form
+ * @param _message The message payload
+ * @dev Finalizes rebase by updating EcoDollar multiplier and minting protocol fees
  */
 function handle(
     uint32 _origin,
     bytes32 _sender,
     bytes calldata _message
 ) external payable override {
-    // Ensure only the local mailbox can call this
-    require(msg.sender == MAILBOX, "Caller is not the local mailbox");
-    require(_sender == REBASER, "sender is not the rebaser contract");
-    require(_origin == HOME_CHAIN, "Invalid origin chain");
-
-    (uint256 rewardMultiplier, uint256 protocolMintRate) = abi.decode(
+    // Security validations
+    if (msg.sender != MAILBOX) {
+        revert UnauthorizedMailbox(msg.sender, MAILBOX);
+    }
+    
+    if (_sender != REBASER) {
+        revert UnauthorizedSender(_sender, REBASER);
+    }
+    
+    if (_origin != HOME_CHAIN) {
+        revert InvalidOriginChain(_origin, HOME_CHAIN);
+    }
+    
+    // Decode message payload
+    (uint256 newMultiplier, uint256 protocolMintRate) = abi.decode(
         _message,
         (uint256, uint256)
     );
     
-    // Apply rebase to EcoDollar
-    IEcoDollar(REBASE_TOKEN).rebase(rewardMultiplier);
+    // Apply rebase to EcoDollar token
+    try IEcoDollar(REBASE_TOKEN).rebase(newMultiplier) {
+        // Calculate and mint protocol share
+        uint256 totalShares = IEcoDollar(REBASE_TOKEN).getTotalShares();
+        uint256 protocolMintAmount = (protocolMintRate * totalShares) / BASE;
+        
+        if (protocolMintAmount > 0) {
+            IEcoDollar(REBASE_TOKEN).mint(TREASURY_ADDRESS, protocolMintAmount);
+        }
+        
+        // Process withdrawal queues if applicable
+        _processWithdrawalQueues();
+        
+        // Reset rebase state
+        rebaseInProgress = false;
+        
+        // Emit rebase completion event
+        emit RebaseFinalized(newMultiplier, protocolMintRate, protocolMintAmount);
+    } catch (bytes memory reason) {
+        // Handle rebase failure
+        rebaseInProgress = false;
+        emit RebaseApplicationFailed(reason);
+    }
+}
 
-    // Mint protocol share to pool
-    uint256 protocolMintAmount = (protocolMintRate * IEcoDollar(REBASE_TOKEN).getTotalShares()) / 1e18;
-    IEcoDollar(REBASE_TOKEN).mint(address(this), protocolMintAmount);
-    
-    // Reset rebase state
-    rebaseInProgress = false;
-    
-    emit RebaseFinalized(rewardMultiplier, protocolMintRate, protocolMintAmount);
+/**
+ * @dev Internal function to process withdrawal queues after rebase
+ */
+function _processWithdrawalQueues() internal {
+    // Process withdrawal queue for each whitelisted token
+    for (uint256 i = 0; i < whitelistedTokens.length; i++) {
+        address token = whitelistedTokens[i];
+        uint256 balance = IERC20(token).balanceOf(address(this));
+        
+        // Check if token is above threshold
+        if (balance > tokenThresholds[token]) {
+            // Process withdrawal queue for this token
+            processWithdrawalQueue(token);
+        }
+    }
 }
 ```
 
-### Operation Flow
+#### 5. Fix Double Burn Issue in StablePool.withdraw
 
-The implementation will follow this flow:
+```solidity
+/**
+ * @notice Withdraw `_amount` of `_preferredToken` from the pool
+ * @param _preferredToken The token to withdraw
+ * @param _amount The amount to withdraw
+ * @dev If pool balance is below threshold, user is added to the withdrawal queue
+ */
+function withdraw(address _preferredToken, uint80 _amount) external {
+    // Verify token is whitelisted
+    if (tokenThresholds[_preferredToken] == 0) {
+        revert InvalidToken(_preferredToken);
+    }
+    
+    // Check user's balance
+    uint256 tokenBalance = IERC20(REBASE_TOKEN).balanceOf(msg.sender);
+    if (tokenBalance < _amount) {
+        revert InsufficientTokenBalance(
+            _preferredToken,
+            tokenBalance,
+            _amount
+        );
+    }
+    
+    // Burn eUSD tokens - THIS OCCURS ONLY ONCE TO FIX DOUBLE BURN BUG
+    IEcoDollar(REBASE_TOKEN).burn(msg.sender, _amount);
+    
+    // Check if withdrawal can be processed immediately
+    uint256 poolTokenBalance = IERC20(_preferredToken).balanceOf(address(this));
+    if (poolTokenBalance > tokenThresholds[_preferredToken] + _amount) {
+        // Sufficient liquidity, process withdrawal immediately
+        IERC20(_preferredToken).safeTransfer(msg.sender, _amount);
+        emit Withdrawn(msg.sender, _preferredToken, _amount);
+    } else {
+        // Insufficient liquidity, add to withdrawal queue
+        _addToWithdrawalQueue(_preferredToken, msg.sender, _amount);
+    }
+}
+```
 
-1. **Initiation Phase**:
-   - Owner calls `initiateRebase` on StablePool
-   - StablePool calculates local tokens and shares
-   - StablePool sends message to Rebaser on home chain
+### Custom Error Definitions
 
-2. **Calculation Phase**:
-   - Rebaser receives messages from all StablePools
-   - When all chains reported, Rebaser calculates new multiplier
-   - Rebaser calculates protocol share
+```solidity
+// StablePool errors
+error RebaseInProgress();
+error UnauthorizedMailbox(address actual, address expected);
+error UnauthorizedSender(bytes32 actual, bytes32 expected);
+error InvalidOriginChain(uint32 actual, uint32 expected);
+error RebaseApplicationFailed(bytes reason);
 
-3. **Distribution Phase**:
-   - Rebaser sends multiplier to all chains
-   - Each StablePool receives message and calls EcoDollar.rebase
-   - Protocol share is minted to each pool
-   - Rebase state is reset
+// Rebaser errors
+error UnauthorizedCaller(address actual, address expected);
+error InvalidOriginChain(uint32 chain);
+error InsufficientFeeForRebase(uint32 chain, uint256 required, uint256 available);
+error RebasePropagationError(uint32 chain, bytes reason);
+error PartialRebaseCompletion();
 
-### Key Improvements
+// EcoDollar errors
+error RewardMultiplierTooLow(uint256 provided, uint256 minimum);
+```
 
-- Enhanced error handling for cross-chain messages
-- Better event emissions for tracking rebase flow
-- Proper state management to prevent concurrent rebases
-- Comprehensive testing for all steps in the flow
-- Gas optimization for cross-chain messages
+### Gas Optimization Techniques
+
+1. **Message Encoding Optimization**: Reduce cross-chain message size by using compact encoding
+
+2. **Unchecked Math Operations**: Use unchecked blocks for arithmetic that cannot overflow
+
+3. **Struct Packing**: Combine chains and validChainIDs as a struct with field packing
+
+4. **Memory vs. Storage**: Optimize storage reads/writes by using memory variables
+
+5. **Loop Optimization**: Optimize loops in token balance calculation and queue processing
+
+6. **Validation Ordering**: Order validations to fail fast and avoid unnecessary computation
 
 ## Testing Strategy
 
-### Unit Tests
+### Unit Testing Suite
 
 1. **StablePool Tests**:
-   - Test initiateRebase with valid and invalid parameters
-   - Test handle function with valid and invalid messages
-   - Test rebase state management
+   - `testInitiateRebaseValidParams`: Verify function works with valid parameters
+   - `testInitiateRebaseInvalidParams`: Verify function rejects invalid parameters
+   - `testRebaseStateManagement`: Verify rebaseInProgress flag is properly managed
+   - `testHandleValidMessage`: Verify handle function processes valid messages
+   - `testHandleInvalidMessage`: Verify handle function rejects invalid messages
+   - `testProtocolFeeCollection`: Verify fees are correctly collected
+   - `testFixDoubleWithdrawBug`: Verify withdrawal only burns tokens once
 
 2. **Rebaser Tests**:
-   - Test handle function with various chain reports
-   - Test calculation logic with different scenarios
-   - Test propagation logic and error handling
+   - `testHandleFunction`: Verify proper handling of incoming messages
+   - `testPartialReports`: Test behavior when only some chains report
+   - `testCalculationLogic`: Verify correct calculation of multipliers
+   - `testPropagateRebase`: Verify rebase propagation
+   - `testErrorHandling`: Verify proper handling of error conditions
+   - `testProtocolFeeCalculation`: Verify protocol fee is calculated correctly
 
 3. **EcoDollar Tests**:
-   - Test rebase function with valid and invalid multipliers
-   - Test share-to-token conversion before and after rebase
+   - `testRebaseValidMultiplier`: Verify rebase function accepts valid multipliers
+   - `testRebaseInvalidMultiplier`: Verify rebase function rejects decreasing multipliers
+   - `testShareToTokenConversion`: Verify correct conversion before and after rebase
+   - `testEventEmissions`: Verify proper events are emitted
 
 ### Integration Tests
 
-1. **End-to-End Rebase Flow**:
-   - Test complete flow from initiation to finalization
-   - Verify correct multiplier calculation and distribution
-   - Verify correct protocol fee collection
+1. **Complete Rebase Flow**:
+   ```typescript
+   it("should complete full rebase flow across chains", async function() {
+     // Set up test environment with multiple anvil instances
+     const [homeChain, spokeChain1, spokeChain2] = await setupMultiChainTest();
+     
+     // Deploy contracts on each chain
+     const contracts = await deployContracts(homeChain, [spokeChain1, spokeChain2]);
+     
+     // Seed pools with initial liquidity
+     await seedPoolLiquidity(contracts);
+     
+     // Initiate rebase on spoke chains
+     await initiateRebaseOnSpokeChains(contracts);
+     
+     // Wait for Hyperlane messages to be delivered
+     await waitForMessageDelivery();
+     
+     // Verify calculation on home chain
+     const rebaseCalc = await verifyRebaseCalculation(contracts.homeChain);
+     
+     // Verify distribution to spoke chains
+     await verifyDistributionToSpokeChains(contracts, rebaseCalc);
+     
+     // Verify final state after rebase
+     await verifyFinalState(contracts);
+   });
+   ```
 
-2. **Multi-Chain Scenarios**:
-   - Test with varying number of chains
-   - Test partial chain reporting
-   - Test chain addition/removal during rebase
+2. **Error Scenarios**:
+   ```typescript
+   it("should handle chain disconnection gracefully", async function() {
+     // Set up test environment with multiple anvil instances
+     const [homeChain, spokeChain1, spokeChain2] = await setupMultiChainTest();
+     
+     // Deploy contracts on each chain
+     const contracts = await deployContracts(homeChain, [spokeChain1, spokeChain2]);
+     
+     // Seed pools with initial liquidity
+     await seedPoolLiquidity(contracts);
+     
+     // Initiate rebase on spoke1 but not spoke2 (simulating disconnection)
+     await initiateRebaseOnSpokeChain(contracts.spokeChain1);
+     
+     // Wait for partial message delivery
+     await waitForMessageDelivery();
+     
+     // Verify homeChain doesn't calculate rebase with partial data
+     await verifyNoRebaseCalculation(contracts.homeChain);
+     
+     // Verify spoke chains maintain consistent state
+     await verifyConsistentState(contracts);
+   });
+   ```
 
-3. **Error Scenarios**:
-   - Test message failure handling
-   - Test recovery mechanisms
-   - Test partial completion scenarios
-
-### Commands
+### Validation Commands
 
 ```bash
 # Run specific rebase tests
-forge test --match-contract RebaseTest -vv
+forge test --match-contract RebaseFlow -vv
+
+# Test specifically for double burn fix
+forge test --match-test testFixDoubleWithdrawBug -vv
 
 # Run all tests
 forge test
@@ -409,185 +695,175 @@ forge test
 forge snapshot
 
 # Run security analysis
-slither contracts/Rebaser.sol
-slither contracts/StablePool.sol
-slither contracts/EcoDollar.sol
+slither contracts/Rebaser.sol --detect reentrancy-eth,reentrancy-no-eth
+slither contracts/StablePool.sol --detect divide-before-multiply,incorrect-equality
+slither contracts/EcoDollar.sol --detect unchecked-lowlevel
 ```
+
+## Implementation Steps
+
+- [ ] Step 1: Set up advanced testing infrastructure [Priority: High] [Est: 1.5h]
+  - [ ] Sub-task 1.1: Create mock contracts with comprehensive functionality (mock Hyperlane mailbox, mock ERC20s)
+  - [ ] Sub-task 1.2: Set up multi-chain testing framework using parallel anvil instances
+  - [ ] Sub-task 1.3: Create helper functions for cross-chain test scenarios
+
+- [ ] Step 2: Fix critical bugs [Priority: Critical] [Est: 1h]
+  - [ ] Sub-task 2.1: Fix double burn bug in StablePool.withdraw
+  - [ ] Sub-task 2.2: Add proper validation to EcoDollar.rebase
+  - [ ] Sub-task 2.3: Write tests verifying bug fixes
+  - [ ] Sub-task 2.4: Run security analysis on fixed code
+
+- [ ] Step 3: Enhance StablePool rebase initiation [Priority: High] [Est: 1.5h]
+  - [ ] Sub-task 3.1: Write tests for initiateRebase function with comprehensive scenarios
+  - [ ] Sub-task 3.2: Implement enhanced initiateRebase with proper state management
+  - [ ] Sub-task 3.3: Add custom errors and event emissions
+  - [ ] Sub-task 3.4: Optimize gas usage in token balance calculation
+
+- [ ] Step 4: Improve Rebaser calculation logic [Priority: High] [Est: 2h]
+  - [ ] Sub-task 4.1: Write tests for Rebaser's handle function with diverse scenarios
+  - [ ] Sub-task 4.2: Enhance handle function with robust validation and cleaner flow
+  - [ ] Sub-task 4.3: Implement safe protocol fee calculation with edge case handling
+  - [ ] Sub-task 4.4: Add proper error handling for propagation failures
+  - [ ] Sub-task 4.5: Refactor chains and validChainIDs into efficient struct
+
+- [ ] Step 5: Upgrade EcoDollar rebasing [Priority: High] [Est: 1h]
+  - [ ] Sub-task 5.1: Write comprehensive tests for EcoDollar rebase function
+  - [ ] Sub-task 5.2: Enhance rebase function with validation and error handling
+  - [ ] Sub-task 5.3: Verify share-to-token conversion accuracy before/after rebase
+  - [ ] Sub-task 5.4: Add improved event emissions with old/new multiplier values
+
+- [ ] Step 6: Complete StablePool rebase finalization [Priority: High] [Est: 1.5h]
+  - [ ] Sub-task 6.1: Write tests for StablePool's handle function with various scenarios
+  - [ ] Sub-task 6.2: Implement enhanced handle function with proper validation
+  - [ ] Sub-task 6.3: Add treasury mint logic with gas optimizations
+  - [ ] Sub-task 6.4: Integrate withdrawal queue processing after rebase
+  - [ ] Sub-task 6.5: Implement proper rebase state reset with error handling
+
+- [ ] Step 7: Build integration test suite [Priority: Critical] [Est: 2h]
+  - [ ] Sub-task 7.1: Create end-to-end test for complete rebase flow
+  - [ ] Sub-task 7.2: Implement multi-chain testing with parallel anvil instances
+  - [ ] Sub-task 7.3: Add tests for error conditions (chain disconnection, message failure)
+  - [ ] Sub-task 7.4: Verify protocol fee distribution across treasury accounts
+  - [ ] Sub-task 7.5: Test interaction with withdrawal queue processing
+
+- [ ] Step 8: Security and optimization [Priority: Critical] [Est: 1.5h]
+  - [ ] Sub-task 8.1: Run comprehensive security analysis with Slither
+  - [ ] Sub-task 8.2: Measure and optimize gas usage for cross-chain operations
+  - [ ] Sub-task 8.3: Verify access control across all components
+  - [ ] Sub-task 8.4: Complete NatSpec documentation for all functions
+  - [ ] Sub-task 8.5: Generate gas report and security analysis documentation
 
 ## Validation Checkpoints
 
 ### Implementation Validation Matrix
 
-| Subtask | Compilation | Test Coverage | Security Checks | Gas Analysis | Documentation | Commit Ready When |
-| ------- | ----------- | ------------- | --------------- | ------------ | ------------- | ----------------- |
-| 1.1 Configure mock contracts | Must compile | N/A | N/A | N/A | Setup documented | Mock contracts ready |
-| 1.2 Set up multi-chain testing | Must compile | N/A | N/A | N/A | Framework documented | Test framework ready |
-| 2.1 Write initiateRebase tests | Must compile | 100% of function | N/A | N/A | Test cases documented | All tests written |
-| 2.2 Implement initiateRebase | Must compile | 100% test coverage | Input validation | Initial snapshot | Function documented | All tests pass |
-| 2.3 Add event emissions | Must compile | Events tested | N/A | N/A | Events documented | All tests pass |
-| 2.4 Implement state management | Must compile | 100% test coverage | Race conditions | N/A | Logic documented | All tests pass |
-| 3.1 Write Rebaser tests | Must compile | 100% of function | N/A | N/A | Test cases documented | All tests written |
-| 3.2 Refine handle function | Must compile | 100% test coverage | Message validation | Initial snapshot | Function documented | All tests pass |
-| 3.3 Implement fee calculation | Must compile | 100% test coverage | Math safety | N/A | Logic documented | All tests pass |
-| 3.4 Add rebase propagation | Must compile | 100% test coverage | Error handling | N/A | Function documented | All tests pass |
-| 4.1 Write EcoDollar tests | Must compile | 100% of function | N/A | N/A | Test cases documented | All tests written |
-| 4.2 Implement rebase function | Must compile | 100% test coverage | Input validation | Initial snapshot | Function documented | All tests pass |
-| 4.3 Implement conversion logic | Must compile | 100% test coverage | Math safety | N/A | Logic documented | All tests pass |
-| 4.4 Add event emissions | Must compile | Events tested | N/A | N/A | Events documented | All tests pass |
-| 5.1 Write StablePool tests | Must compile | 100% of function | N/A | N/A | Test cases documented | All tests written |
-| 5.2 Implement handle function | Must compile | 100% test coverage | Message validation | Initial snapshot | Function documented | All tests pass |
-| 5.3 Add protocol mint logic | Must compile | 100% test coverage | Math safety | N/A | Logic documented | All tests pass |
-| 5.4 Implement state reset | Must compile | 100% test coverage | Race conditions | N/A | Logic documented | All tests pass |
-| 6.1 Write end-to-end test | Must compile | Full flow coverage | N/A | N/A | Test documented | Test passes |
-| 6.2 Test with multiple chains | Must compile | Multi-chain coverage | N/A | N/A | Test documented | All tests pass |
-| 6.3 Test error scenarios | Must compile | Error path coverage | Recovery | N/A | Scenarios documented | All tests pass |
-| 6.4 Test fee distribution | Must compile | 100% test coverage | N/A | N/A | Test documented | All tests pass |
-| 7.1 Run security analysis | Must compile | 100% test coverage | Slither passed | N/A | Security report | No critical findings |
-| 7.2 Optimize gas usage | Must compile | 100% test coverage | N/A | Optimized | Optimizations documented | Gas usage reduced |
-| 7.3 Review access control | Must compile | 100% test coverage | Access testing | N/A | Controls documented | All tests pass |
-| 7.4 Final review | Must compile | 100% test coverage | All checks pass | Final snapshot | Documentation complete | Ready for review |
+| Subtask | Compilation | Test Coverage | Security Checks | Gas Analysis | Documentation |
+|---------|-------------|---------------|-----------------|--------------|---------------|
+| 1.1-1.3 Test infrastructure | Must compile | Framework tested | N/A | N/A | Test strategy documented |
+| 2.1-2.4 Fix critical bugs | Must compile | 100% coverage | Slither validation | Before/after comparison | Bug fix documented |
+| 3.1-3.4 StablePool rebase | Must compile | 100% coverage | Access control verified | Gas snapshot | NatSpec complete |
+| 4.1-4.5 Rebaser calculation | Must compile | 100% coverage | Math safety verified | Gas optimization | NatSpec complete |
+| 5.1-5.4 EcoDollar rebasing | Must compile | 100% coverage | Edge cases tested | Gas analysis | NatSpec complete |
+| 6.1-6.5 Rebase finalization | Must compile | 100% coverage | Error handling verified | Gas snapshot | NatSpec complete |
+| 7.1-7.5 Integration testing | Must compile | E2E flow covered | Attack vectors tested | N/A | Test cases documented |
+| 8.1-8.5 Security & optimization | Must compile | All tests pass | No critical findings | 10%+ gas reduction | Complete report |
 
-### Quality Verification Checklist
+### Quality Requirements
 
-Before completing implementation or marking any subtask as complete, verify:
+- **Code must follow all [Solidity Implementation Requirements](../CLAUDE.md#solidity-implementation-requirements)**
+- **100% test coverage for all modified functions**
+- **All functions must have comprehensive NatSpec documentation**
+- **All public/external functions must use custom errors instead of require strings**
+- **All state changes must emit appropriate events**
+- **All code must follow the checks-effects-interactions pattern**
+- **All functions must implement proper access control**
 
-1. **Code Quality**:
-   - [ ] Follows 4-space indentation and 120 character line length limit
-   - [x] Uses camelCase for variables/functions and PascalCase for contracts/structures
-   - [x] Function ordering follows standard: external → public → internal → private
-   - [x] No TODOs remaining (except explicitly documented future enhancements)
-   - [x] Code formatted with `forge fmt`
+## Risk Assessment
 
-2. **Security Verification**:
-   - [x] Message validation for all cross-chain communication
-   - [x] Input validation for all parameters
-   - [x] Proper access control on all functions
-   - [x] Checks-effects-interactions pattern used for all state changes
-   - [x] Race condition prevention in rebase state management
+### High-Risk Areas
 
-3. **Test Verification**:
-   - [x] 100% test coverage for all functions
-   - [x] Tests for all error conditions and edge cases
-   - [x] Integration tests for cross-chain flow
-   - [x] Security property verification
-   - [x] Gas usage tests for critical operations
+1. **Cross-Chain Message Failures**
+   - **Risk**: Message delivery failure could leave system in inconsistent state
+   - **Mitigation**: Implement robust error handling, state reset mechanism, event logging
 
-4. **Documentation Standards**:
-   - [x] All public/external functions have complete NatSpec comments
-   - [x] Rebase flow documented with explanations
-   - [x] Events properly documented
-   - [x] Security considerations explicitly addressed
-   - [x] Protocol fees and calculation logic explained
+2. **Protocol Fee Calculation**
+   - **Risk**: Incorrect calculation could lead to over/under-minting of protocol fees
+   - **Mitigation**: Comprehensive testing with diverse scenarios, mathematical verification
 
-### Validation Commands
+3. **Double Burn Bug**
+   - **Risk**: Users lose twice the intended amount in withdrawals
+   - **Mitigation**: Fix bug, add comprehensive tests, validate with formal verification
 
-```bash
-# Validate compilation (must run before any commit)
-forge build
+4. **Rebase State Management**
+   - **Risk**: Improper state management could block future rebases
+   - **Mitigation**: Ensure state is reset properly even on errors, add admin recovery function
 
-# Run tests for specific function (must all pass)
-forge test --match-test testInitiateRebase -vv
-forge test --match-test testRebaserHandle -vv
-forge test --match-test testEcoDollarRebase -vv
-forge test --match-test testStablePoolHandle -vv
+### Medium-Risk Areas
 
-# Run all tests (must all pass)
-forge test
+1. **Gas Optimization**
+   - **Risk**: Inefficient code could make cross-chain operations too expensive
+   - **Mitigation**: Gas benchmarking, optimization of hot paths, minimize storage operations
 
-# Check test coverage (must be 100%)
-forge coverage --match-path "test/RebaseFlow.t.sol"
+2. **Withdrawal Queue Integration**
+   - **Risk**: Improper integration could lead to stuck withdrawals
+   - **Mitigation**: Test integration thoroughly, ensure proper queue processing
 
-# Verify gas usage
-forge snapshot
-forge snapshot --diff
+3. **Chain Addition/Removal**
+   - **Risk**: Adding/removing chains could disrupt rebase flow
+   - **Mitigation**: Test chain management operations, ensure proper validation
 
-# Run security analysis
-slither contracts/Rebaser.sol
-slither contracts/StablePool.sol
-slither contracts/EcoDollar.sol
-```
+## Rollback and Recovery Plan
 
-## TODO Tracker
+If implementation fails or critical issues are discovered:
 
-| Location | TODO Type | Description | Status |
-| -------- | --------- | ----------- | ------ |
-| contracts/Rebaser.sol:42 | combine | Combine chains and validChainIDs as a struct | Pending |
+1. **For Critical Bugs**:
+   - Immediately implement focused fix for specific issue
+   - Run comprehensive tests to verify fix works
+   - Deploy emergency update if already in production
 
-## Known Edge Cases
-
-- Chain disconnection during rebase should pause the process
-- Protocol fee calculation should handle zero profit scenarios
-- EcoDollar rebase should never decrease the multiplier
-- Withdrawal queue processing after rebase completion
-
-## Potential Risks
-
-- Risk 1: Cross-chain message failure
-  - Mitigation: Implement retry mechanism and proper error handling
-- Risk 2: Calculation errors in rebase determination
-  - Mitigation: Comprehensive testing with various scenarios
-- Risk 3: Race conditions in rebase state
-  - Mitigation: Proper state management and completion verification
-
-## Rollback Procedure
-
-If implementation fails:
-
-1. Document the issue in detail
-2. For simple fixes, apply immediately and verify
-3. For complex issues:
+2. **For Complex Implementation Issues**:
    ```bash
-   git restore <files>
+   # Create debug branch for analysis
+   git checkout -b debug/rebase-flow-issue-<issue-id>
+   
+   # Isolate issue
+   git bisect start
+   git bisect bad HEAD
+   git bisect good <known-good-commit>
+   
+   # Once issue is found, fix on main branch
    git checkout feat/rebase/rebase-flow-implementation
+   
+   # Apply targeted fix
+   git cherry-pick -x <fix-commit>
    ```
-4. Create a debugging branch if needed:
-   ```bash
-   git checkout -b debug/rebase-flow-issue
-   ```
 
-## Standards Compliance
+3. **For Cross-Chain Coordination Issues**:
+   - Implement circuit breaker in home chain Rebaser
+   - Add admin recovery function to reset stuck rebase state
+   - Create diagnostic function to verify system consistency
 
-- [ ] All public/external functions have comprehensive NatSpec comments
-- [ ] Custom errors are used instead of require strings
-- [ ] Events are emitted for all relevant state changes
-- [ ] Function ordering follows project standard
-- [ ] Gas optimizations are documented and benchmarked
-- [ ] Security considerations are explicitly documented
-- [x] camelCase for variables/functions and PascalCase for contracts/structures
+## Progress Tracking
 
-## Incremental Execution and Validation Log
+- [x] Plan created
+- [x] Plan approved by user
+- [x] Decisions confirmed (all Decision Points have exactly ONE selected option)
+- [ ] Implementation complete
+- [ ] Testing complete
+- [ ] Final review complete
 
-| Timestamp | Component | Change Made | Validation Method | Result |
-| --------- | --------- | ----------- | ----------------- | ------ |
-| TBD | TBD | TBD | TBD | TBD |
-
-## Git Execution Log
-
-| Timestamp | Operation | Completed Subtask | Validation Status | Commit Message | Files Changed |
-| --------- | --------- | ----------------- | ----------------- | -------------- | ------------- |
-| TBD | TBD | TBD | TBD | TBD | TBD |
-
-### Commit Message Convention
+## Commit Message Template
 
 ```
 <type>(<scope>): <concise description>
 
 - Completed subtask X.Y: <subtask name>
 - Test coverage: 100% (functions: X/X, lines: X/X, branches: X/X)
-- Validation: <key validation results>
-- <Any additional context or notes>
+- Security: <key security checks performed>
+- Gas optimization: <gas savings achieved>
 
 🤖 Generated with [Claude Code](https://claude.ai/code)
 ```
-
-## Progress
-
-- [x] Plan created
-- [x] Plan approved by user
-- [x] Decisions confirmed by user (all Decision Points have exactly ONE selected option)
-- [ ] Implementation complete
-- [ ] Testing complete
-- [ ] Final review complete
 
 ---
 
