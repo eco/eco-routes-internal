@@ -108,4 +108,4 @@ The Rebase Flow Implementation plan outlines the technical approach for implemen
 - Implementation not yet begun
 - Branch: feat/rebase/rebase-flow-implementation
 
-[View Full Implementation Plan](../full/rebase-flow-implementation-plan.md)
+[View Full Implementation Plan](../rebase-flow-implementation-plan.md)

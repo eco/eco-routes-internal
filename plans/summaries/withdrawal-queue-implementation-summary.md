@@ -103,4 +103,4 @@ The Withdrawal Queue Implementation plan outlines the technical approach for imp
 - Implementation not yet begun
 - Branch: feat/withdrawal/withdrawal-queue-implementation
 
-[View Full Implementation Plan](../full/withdrawal-queue-implementation-plan.md)
+[View Full Implementation Plan](../withdrawal-queue-implementation-plan.md)

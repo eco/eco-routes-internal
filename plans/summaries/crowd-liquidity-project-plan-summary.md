@@ -108,4 +108,4 @@ The implementation will proceed in the following order:
 - Key decisions made on rebase timing, withdrawal queue processing, and cross-chain communication
 - Ready for implementation of first component (Rebase Flow)
 
-[View Full Project Plan](../full/crowd-liquidity-project-plan.md)
+[View Full Project Plan](../crowd-liquidity-project-plan.md)

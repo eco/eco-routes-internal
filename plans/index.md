@@ -2,15 +2,13 @@
 
 This document serves as an index of all implementation plans for the Eco Routes Protocol. It provides quick access to all plans, their current status, and other key information.
 
-> **Note**: For each implementation plan, a corresponding summary is maintained in the `/plans/summaries/` directory. These summaries provide a technical overview with decision points, implementation steps, and current status. Summaries are kept in sync with their corresponding implementation plans at all times.
-
 ## Active Plans
 
 | Plan | Description | Status | Last Updated | Branch |
 |------|-------------|--------|-------------|--------|
-| [Crowd Liquidity Protocol](./full/crowd-liquidity-project-plan.md) ([Summary](./summaries/crowd-liquidity-project-plan-summary.md)) | Master plan for cross-chain rebasing token and liquidity pool system | Approved | 2025-03-26 | N/A |
-| [Rebase Flow Implementation](./full/rebase-flow-implementation-plan.md) ([Summary](./summaries/rebase-flow-implementation-summary.md)) | Implementation of cross-chain rebase mechanism | Active | 2025-03-26 | feat/rebase/rebase-flow-implementation |
-| [Withdrawal Queue Implementation](./full/withdrawal-queue-implementation-plan.md) ([Summary](./summaries/withdrawal-queue-implementation-summary.md)) | Implementation of withdrawal queue for liquidity management | Draft | 2025-03-26 | feat/withdrawal/withdrawal-queue-implementation |
+| [Crowd Liquidity Protocol](./crowd-liquidity-project-plan.md) ([Summary](./summaries/crowd-liquidity-project-plan-summary.md)) | Master plan for cross-chain rebasing token and liquidity pool system | Approved | 2025-03-26 | N/A |
+| [Rebase Flow Implementation](./rebase-flow-implementation-plan.md) ([Summary](./summaries/rebase-flow-implementation-summary.md)) | Implementation of cross-chain rebase mechanism | Active | 2025-03-26 | feat/rebase/rebase-flow-implementation |
+| [Withdrawal Queue Implementation](./withdrawal-queue-implementation-plan.md) ([Summary](./summaries/withdrawal-queue-implementation-summary.md)) | Implementation of withdrawal queue for liquidity management | Draft | 2025-03-26 | feat/withdrawal/withdrawal-queue-implementation |
 
 ## Completed Plans
 
