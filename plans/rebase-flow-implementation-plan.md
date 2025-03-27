@@ -24,7 +24,7 @@ This implementation plan details the cross-chain Rebase Flow mechanism for the E
 - **Estimated Time**: 10 hours
 - **Affected Components**: StablePool, Rebaser, EcoDollar, Hyperlane integration
 - **Parent Project Plan**: [Crowd Liquidity Project Plan](./crowd-liquidity-project-plan.md)
-- **Related Implementation Plans**: Withdrawal Queue Implementation (dependent)
+- **Related Implementation Plans**: None
 - **Git Branch**: feat/rebase/rebase-flow-implementation
 
 ## Current Status and Technical Context
@@ -60,7 +60,7 @@ The Rebase Flow operates across a multi-chain architecture with these core compo
 ### Out of Scope
 
 1. Changes to the fundamental architecture of the system
-2. Implementation of withdrawal queue processing (separate plan)
+2. Withdrawal queue processing (in a separate implementation plan)
 3. Changes to deployment strategy
 4. UI integration or external system interactions
 
@@ -184,7 +184,6 @@ The diagram above illustrates the complete implementation flow with:
 
 4. **Incomplete State Management**: rebaseInProgress flag not properly reset if process fails.
 
-5. **Withdrawal Queue Integration**: Rebase needs to trigger withdrawal queue processing.
 
 ## Implementation Details
 
@@ -531,9 +530,6 @@ function handle(
     // that has access to update EcoDollar state
     _updateEcoDollarMultiplier(newMultiplier);
     
-    // Process withdrawal queues if applicable
-    _processWithdrawalQueues();
-    
     // Reset rebase state
     rebaseInProgress = false;
     
@@ -558,22 +554,6 @@ function _updateEcoDollarMultiplier(uint256 _newMultiplier) internal {
     emit EcoDollarMultiplierUpdated(oldMultiplier, _newMultiplier);
 }
 
-/**
- * @dev Internal function to process withdrawal queues after rebase
- */
-function _processWithdrawalQueues() internal {
-    // Process withdrawal queue for each whitelisted token
-    for (uint256 i = 0; i < whitelistedTokens.length; i++) {
-        address token = whitelistedTokens[i];
-        uint256 balance = IERC20(token).balanceOf(address(this));
-        
-        // Check if token is above threshold
-        if (balance > tokenThresholds[token]) {
-            // Process withdrawal queue for this token
-            processWithdrawalQueue(token);
-        }
-    }
-}
 ```
 
 #### 5. Fix Double Burn Issue in StablePool.withdraw
@@ -651,7 +631,7 @@ event CalculatedRebase(uint256 balancesTotal, uint256 sharesTotal, uint256 profi
 
 4. **Memory vs. Storage**: Optimize storage reads/writes by using memory variables
 
-5. **Loop Optimization**: Optimize loops in token balance calculation and queue processing
+5. **Loop Optimization**: Optimize loops in token balance calculation
 
 6. **Validation Ordering**: Order validations to fail fast and avoid unnecessary computation
 
@@ -797,7 +777,6 @@ slither contracts/EcoDollar.sol --detect unchecked-lowlevel
   - [ ] Sub-task 6.2: Implement handle function exactly as shown in swimlane diagram
   - [ ] Sub-task 6.3: Implement direct EcoDollar multiplier update from StablePool
   - [ ] Sub-task 6.4: Ensure proper end-of-process handling
-  - [ ] Sub-task 6.5: Integrate withdrawal queue processing after rebase
 
 
 - [ ] Step 8: Build integration test suite [Priority: Critical] [Est: 2h]
@@ -805,7 +784,6 @@ slither contracts/EcoDollar.sol --detect unchecked-lowlevel
   - [ ] Sub-task 8.2: Implement multi-chain testing with parallel anvil instances
   - [ ] Sub-task 8.3: Test error handling for cross-chain messages
   - [ ] Sub-task 8.4: Verify protocol fee minting on home chain only
-  - [ ] Sub-task 8.5: Test interaction with withdrawal queue processing
 
 - [ ] Step 9: Security and optimization [Priority: Critical] [Est: 1.5h]
   - [ ] Sub-task 9.1: Run comprehensive security analysis with Slither
@@ -825,7 +803,7 @@ slither contracts/EcoDollar.sol --detect unchecked-lowlevel
 | 3.1-3.4 StablePool rebase | Must compile | 100% coverage | Access control verified | Gas snapshot | NatSpec complete |
 | 4.1-4.5 Rebaser calculation | Must compile | 100% coverage | Math safety verified | Gas optimization | NatSpec complete |
 | 5.1-5.5 EcoDollar updates | Must compile | 100% coverage | Privilege checks verified | Gas analysis | NatSpec complete |
-| 6.1-6.5 Rebase finalization | Must compile | 100% coverage | No protocol fee minting verified | Gas snapshot | NatSpec complete |
+| 6.1-6.4 Rebase finalization | Must compile | 100% coverage | No protocol fee minting verified | Gas snapshot | NatSpec complete |
 | 7.1-7.5 Integration testing | Must compile | E2E flow covered | Attack vectors tested | N/A | Test cases documented |
 | 8.1-8.5 Security & optimization | Must compile | All tests pass | No critical findings | 10%+ gas reduction | Complete report |
 
@@ -865,11 +843,8 @@ slither contracts/EcoDollar.sol --detect unchecked-lowlevel
    - **Risk**: Inefficient code could make cross-chain operations too expensive
    - **Mitigation**: Gas benchmarking, optimization of hot paths, minimize storage operations
 
-2. **Withdrawal Queue Integration**
-   - **Risk**: Improper integration could lead to stuck withdrawals
-   - **Mitigation**: Test integration thoroughly, ensure proper queue processing
 
-3. **Chain Addition/Removal**
+2. **Chain Addition/Removal**
    - **Risk**: Adding/removing chains could disrupt rebase flow
    - **Mitigation**: Test chain management operations, ensure proper validation
 
