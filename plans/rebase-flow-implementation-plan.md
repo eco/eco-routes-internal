@@ -192,10 +192,11 @@ The diagram above illustrates the complete implementation flow with:
 
 - **contracts/StablePool.sol**
   - Fix double burn bug in withdraw function
-  - Enhance rebase initiation logic
+  - Enhance rebase initiation with fixed authority check
   - Implement handle function for receiving rebase data
   - Add rebase state management
-  - Add event emissions
+  - Add direct access to update EcoDollar's multiplier
+  - Add event emissions for tracking
 
 - **contracts/Rebaser.sol**
   - Enhance message handling with better validation
@@ -205,16 +206,42 @@ The diagram above illustrates the complete implementation flow with:
   - Combine chains and validChainIDs as a struct
 
 - **contracts/EcoDollar.sol**
-  - Enhance rebase function with proper validation
-  - Ensure share-to-token conversion is accurate
-  - Add event emissions
+  - Remove public rebase function entirely
+  - Add privileged updateRewardMultiplier method accessible only to StablePool
+  - Ensure share-to-token conversion remains accurate
+  - Add event emissions for multiplier changes
+
+- **contracts/interfaces/IEcoDollar.sol**
+  - Add updateRewardMultiplier to interface for StablePool access
 
 - **test/RebaseFlow.t.sol** (new file)
   - Implement comprehensive test suite for rebase flow
 
 ### Core Architecture Enhancements
 
-#### 1. StablePool Rebase Initiation
+#### 1. IEcoDollar Interface Update
+
+```solidity
+interface IEcoDollar {
+    // Existing methods...
+    
+    /**
+     * @notice Update the reward multiplier - privileged method accessible only to StablePool
+     * @param _newMultiplier The new reward multiplier value
+     */
+    function updateRewardMultiplier(uint256 _newMultiplier) external;
+    
+    /**
+     * @notice Get the current reward multiplier
+     * @return The current reward multiplier value
+     */
+    function rewardMultiplier() external view returns (uint256);
+    
+    // Other methods...
+}
+```
+
+#### 2. StablePool Rebase Initiation
 
 ```solidity
 /**
@@ -230,7 +257,11 @@ The diagram above illustrates the complete implementation flow with:
  */
 function initiateRebase(
     address[] calldata _tokens
-) external onlyOwner checkTokenList(_tokens) {
+) external checkTokenList(_tokens) {
+    // Only allowed to be called by a fixed address with authority to trigger rebases
+    if (msg.sender != REBASE_AUTHORITY) {
+        revert UnauthorizedRebaseInitiator(msg.sender, REBASE_AUTHORITY);
+    }
     // Prevent concurrent rebases
     if (rebaseInProgress) {
         revert RebaseInProgress();
@@ -448,23 +479,9 @@ function propagateRebase(
 }
 ```
 
-#### 3. EcoDollar Rebase Function Enhancement
+#### 3. Direct Reward Multiplier Updates
 
-```solidity
-/**
- * @notice Updates the reward multiplier for rebasing the token
- * @param _newMultiplier The new reward multiplier to apply
- * @dev Only callable by owner (StablePool)
- */
-function rebase(uint256 _newMultiplier) external onlyOwner {
-    // Update reward multiplier
-    uint256 oldMultiplier = rewardMultiplier;
-    rewardMultiplier = _newMultiplier;
-    
-    // Emit rebase event with old and new multipliers
-    emit Rebased(oldMultiplier, rewardMultiplier);
-}
-```
+The EcoDollar contract will no longer have a separate rebase method. Instead, the StablePool contract will directly update the reward multiplier during the handle method when receiving the hyperlane message from the home chain.
 
 #### 4. StablePool Rebase Finalization
 
@@ -506,8 +523,13 @@ function handle(
     // STEP 1: Receive the message from home chain
     // This is handled by the Hyperlane protocol
     
-    // STEP 2: Set the current multiplier
-    IEcoDollar(REBASE_TOKEN).rebase(newMultiplier);
+    // STEP 2: Directly update the reward multiplier in EcoDollar
+    // We'll directly access EcoDollar's state instead of using a separate rebase method
+    uint256 oldMultiplier = IEcoDollar(REBASE_TOKEN).rewardMultiplier();
+    
+    // Direct access to update the multiplier through a privileged method in StablePool
+    // that has access to update EcoDollar state
+    _updateEcoDollarMultiplier(newMultiplier);
     
     // Process withdrawal queues if applicable
     _processWithdrawalQueues();
@@ -516,10 +538,24 @@ function handle(
     rebaseInProgress = false;
     
     // Emit rebase completion event
-    emit RebaseFinalized(newMultiplier);
+    emit RebaseFinalized(oldMultiplier, newMultiplier);
     
     // STEP 3: End process
     // No further action required, process is complete
+}
+
+/**
+ * @dev Updates the reward multiplier in the EcoDollar contract
+ * @param _newMultiplier The new multiplier value to set
+ */
+function _updateEcoDollarMultiplier(uint256 _newMultiplier) internal {
+    // This function assumes StablePool has the authority to directly update
+    // EcoDollar's reward multiplier through a privileged interface
+    uint256 oldMultiplier = IEcoDollar(REBASE_TOKEN).rewardMultiplier();
+    IEcoDollar(REBASE_TOKEN).updateRewardMultiplier(_newMultiplier);
+    
+    // Emit event from StablePool for additional tracking
+    emit EcoDollarMultiplierUpdated(oldMultiplier, _newMultiplier);
 }
 
 /**
@@ -581,7 +617,7 @@ function withdraw(address _preferredToken, uint80 _amount) external {
 }
 ```
 
-### Custom Error Definitions
+### Custom Error and Event Definitions
 
 ```solidity
 // StablePool errors
@@ -589,10 +625,19 @@ error RebaseInProgress();
 error UnauthorizedMailbox(address actual, address expected);
 error UnauthorizedSender(bytes32 actual, bytes32 expected);
 error InvalidOriginChain(uint32 actual, uint32 expected);
+error UnauthorizedRebaseInitiator(address actual, address expected);
 
 // Rebaser errors
 error InvalidOriginChain(uint32 chain);
 
+// StablePool events
+event RebaseInitiated(uint256 balances, uint256 shares, uint256 profit, uint32 homeChain, uint256 messageId);
+event RebaseFinalized(uint256 oldMultiplier, uint256 newMultiplier);
+event EcoDollarMultiplierUpdated(uint256 oldMultiplier, uint256 newMultiplier);
+
+// Rebaser events
+event ReceivedRebaseInformation(uint32 origin, uint256 balances, uint256 shares, uint256 profit);
+event CalculatedRebase(uint256 balancesTotal, uint256 sharesTotal, uint256 profitTotal, uint256 protocolShare, uint256 newMultiplier);
 ```
 
 
@@ -632,10 +677,9 @@ error InvalidOriginChain(uint32 chain);
    - `testProtocolFeeCalculation`: Verify protocol fee is calculated correctly
 
 3. **EcoDollar Tests**:
-   - `testRebaseValidMultiplier`: Verify rebase function accepts valid multipliers
-   - `testRebaseAnyMultiplier`: Verify rebase function accepts any multiplier value
-   - `testShareToTokenConversion`: Verify correct conversion before and after rebase
-   - `testEventEmissions`: Verify proper events are emitted
+   - `testDirectMultiplierUpdate`: Verify only StablePool can update the multiplier
+   - `testShareToTokenConversion`: Verify correct conversion before and after multiplier changes
+   - `testEventEmissions`: Verify proper events are emitted upon multiplier changes
 
 ### Integration Tests
 
@@ -730,7 +774,7 @@ slither contracts/EcoDollar.sol --detect unchecked-lowlevel
 
 - [ ] Step 3: Enhance StablePool rebase initiation [Priority: High] [Est: 1.5h]
   - [ ] Sub-task 3.1: Write tests for initiateRebase function with comprehensive scenarios
-  - [ ] Sub-task 3.2: Implement initiateRebase exactly as shown in swimlane diagram
+  - [ ] Sub-task 3.2: Implement initiateRebase with fixed authority check
   - [ ] Sub-task 3.3: Add profit tracking and reset functionality
   - [ ] Sub-task 3.4: Implement the critical "set profit to 0 in storage" step
 
@@ -741,16 +785,17 @@ slither contracts/EcoDollar.sol --detect unchecked-lowlevel
   - [ ] Sub-task 4.4: Implement protocol fee deduction and update reward rate
   - [ ] Sub-task 4.5: Add proper spoke chain propagation with failure handling
 
-- [ ] Step 5: Upgrade EcoDollar rebasing [Priority: High] [Est: 1h]
-  - [ ] Sub-task 5.1: Write comprehensive tests for EcoDollar rebase function
-  - [ ] Sub-task 5.2: Simplify rebase function to accept any multiplier value
-  - [ ] Sub-task 5.3: Verify share-to-token conversion accuracy before/after rebase
-  - [ ] Sub-task 5.4: Add improved event emissions with old/new multiplier values
+- [ ] Step 5: Update EcoDollar's multiplier update mechanism [Priority: High] [Est: 1.5h]
+  - [ ] Sub-task 5.1: Remove public rebase function
+  - [ ] Sub-task 5.2: Add privileged updateRewardMultiplier method that only StablePool can call
+  - [ ] Sub-task 5.3: Update IEcoDollar interface with new method
+  - [ ] Sub-task 5.4: Add event emissions for multiplier changes
+  - [ ] Sub-task 5.5: Verify share-to-token conversion accuracy across multiplier changes
 
 - [ ] Step 6: Complete StablePool rebase finalization [Priority: High] [Est: 1.5h]
   - [ ] Sub-task 6.1: Write tests for StablePool's handle function with various scenarios
   - [ ] Sub-task 6.2: Implement handle function exactly as shown in swimlane diagram
-  - [ ] Sub-task 6.3: Implement "set the current multiplier" functionality without protocol fee minting
+  - [ ] Sub-task 6.3: Implement direct EcoDollar multiplier update from StablePool
   - [ ] Sub-task 6.4: Ensure proper end-of-process handling
   - [ ] Sub-task 6.5: Integrate withdrawal queue processing after rebase
 
@@ -779,7 +824,7 @@ slither contracts/EcoDollar.sol --detect unchecked-lowlevel
 | 2.1-2.4 Fix critical bugs | Must compile | 100% coverage | Slither validation | Before/after comparison | Bug fix documented |
 | 3.1-3.4 StablePool rebase | Must compile | 100% coverage | Access control verified | Gas snapshot | NatSpec complete |
 | 4.1-4.5 Rebaser calculation | Must compile | 100% coverage | Math safety verified | Gas optimization | NatSpec complete |
-| 5.1-5.4 EcoDollar rebasing | Must compile | 100% coverage | Any multiplier value tested | Gas analysis | NatSpec complete |
+| 5.1-5.5 EcoDollar updates | Must compile | 100% coverage | Privilege checks verified | Gas analysis | NatSpec complete |
 | 6.1-6.5 Rebase finalization | Must compile | 100% coverage | No protocol fee minting verified | Gas snapshot | NatSpec complete |
 | 7.1-7.5 Integration testing | Must compile | E2E flow covered | Attack vectors tested | N/A | Test cases documented |
 | 8.1-8.5 Security & optimization | Must compile | All tests pass | No critical findings | 10%+ gas reduction | Complete report |
