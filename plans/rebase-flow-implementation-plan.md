@@ -106,29 +106,34 @@ The Rebase Flow operates across a multi-chain architecture with these core compo
 
 ### Rebase Flow Process (from high-definition swimlane diagram)
 
-The rebase flow follows a clearly defined process with distinct responsibilities at each level:
+The rebase flow follows this exact process as shown in the swimlane diagram:
 
 #### 1. Spoke Chain (Collection Phase)
 - Process starts with admin trigger ("Start" in diagram)
-- Pool collects balances from each listed token
-- Total amount of profit is calculated
-- Message sent to home chain with local metrics
+- Pool earns funds from a yield source
+- Save amount of profit internally
+- Send a message to home chain with amount of profit
+- Set the profit to 0 in storage (critical for preventing double-counting)
+- Later: Receive and set the current multiplier from home chain
+- End rebase process
 
 #### 2. Hyperlane (Messaging Layer)
-- Handles cross-chain message delivery
-- Connects spoke chains to home chain
-- Provides bidirectional messaging capabilities
+- Send profit information to home chain
+- Later: Send updated multiplier to all spoke chains
+- Handle message delivery confirmation and failures
 
 #### 3. Home Chain (Calculation Phase)
-- Calculates ratio of total supply and profit that was got
-- Determines global reward rate
-- Deducts protocol fees
-- Mints shares to fee recipients
-- Sends updated rates to all spoke chains
+- Calculate ratio of total supply and profit that was received
+- Increment global reward rate based on calculations
+- Deduct protocol fees from the rate
+- Mint shares to the protocol contract/treasury
+- Send the updated rate to all spoke chains
 
 #### 4. Service Layer
-- Monitors number of rebases
-- Tracks balances of accepted tokens
+- Initialize/maintain database of rebase information
+- Track number of rebases and balances of accepted tokens
+- Monitor for failed messages
+- Resend any failed messages to spokes immediately
 
 ### Critical Issues Requiring Fixes
 
@@ -177,6 +182,12 @@ The rebase flow follows a clearly defined process with distinct responsibilities
  * @notice Broadcasts yield information to the home chain for rebase calculations
  * @param _tokens The current list of token addresses to include in calculation
  * @dev Only callable by owner, initiates the cross-chain rebase process
+ * @dev Follows the exact steps in the swimlane diagram:
+ *      1. Start (admin triggered)
+ *      2. Pool earns funds from yield
+ *      3. Save amount of profit
+ *      4. Send message to home
+ *      5. Set profit to 0 in storage
  */
 function initiateRebase(
     address[] calldata _tokens
@@ -189,7 +200,7 @@ function initiateRebase(
     // Mark rebase as in progress
     rebaseInProgress = true;
     
-    // Calculate local token balances for yield determination
+    // Calculate local token balances (earned from yield)
     uint256 length = _tokens.length;
     uint256 localTokens = 0;
     
@@ -203,8 +214,11 @@ function initiateRebase(
     // Get total shares from EcoDollar
     uint256 localShares = IEcoDollar(REBASE_TOKEN).getTotalShares();
     
-    // Encode message with local metrics
-    bytes memory message = abi.encode(localTokens, localShares);
+    // Save amount of profit (stored in memory for message)
+    uint256 profit = calculateProfit();
+    
+    // Encode message with local metrics including profit
+    bytes memory message = abi.encode(localTokens, localShares, profit);
     
     // Quote fee for cross-chain message
     uint256 fee = IMailbox(MAILBOX).quoteDispatch(
@@ -224,8 +238,11 @@ function initiateRebase(
         IPostDispatchHook(RELAYER)
     );
     
+    // Critical: Set profit to 0 in storage to prevent double-counting
+    resetProfit();
+    
     // Emit event for offchain monitoring
-    emit RebaseInitiated(localTokens, localShares, HOME_CHAIN, messageId);
+    emit RebaseInitiated(localTokens, localShares, profit, HOME_CHAIN, messageId);
 }
 ```
 
@@ -236,7 +253,12 @@ function initiateRebase(
  * @dev Hyperlane message handler for processing rebase data from spoke chains
  * @param _origin The chain ID from which the message was sent
  * @param _sender The address that sent the message (32-byte form)
- * @param _message The encoded payload containing shares and balances
+ * @param _message The encoded payload containing shares, balances and profit
+ * @dev Follows the exact steps in the swimlane diagram:
+ *      1. Calculate ratio of total supply and profit received
+ *      2. Increment global reward rate
+ *      3. Deduct protocol fees and mint shares to protocol
+ *      4. Send to all spokes
  */
 function handle(
     uint32 _origin,
@@ -257,9 +279,9 @@ function handle(
     }
     
     // Decode message payload
-    (uint256 balances, uint256 shares) = abi.decode(
+    (uint256 balances, uint256 shares, uint256 profit) = abi.decode(
         _message,
-        (uint256, uint256)
+        (uint256, uint256, uint256)
     );
     
     // Update chain data counters
@@ -267,28 +289,27 @@ function handle(
     currentChainCount++;
     sharesTotal += shares;
     balancesTotal += balances;
+    profitTotal += profit;
     
     // Emit data receipt event
-    emit ReceivedRebaseInformation(_origin, balances, shares);
+    emit ReceivedRebaseInformation(_origin, balances, shares, profit);
     
     // If all chains have reported, calculate and propagate rebase
     if (currentChainCount == chains.length) {
-        // Calculate rebase metrics with SafeMath
-        uint256 netNewBalances = balancesTotal - (sharesTotal * currentMultiplier) / BASE;
+        // STEP 1: Calculate ratio of total supply and profit that was got
+        // This calculates the net new balances (effectively the profit)
+        uint256 netNewBalances = profitTotal;
         
-        // Handle zero or negative profit scenario
+        // Handle zero profit scenario
         if (netNewBalances <= 0) {
             emit ZeroProfitRebase(balancesTotal, sharesTotal, currentMultiplier);
             _resetRebaseState();
             return;
         }
         
-        // Calculate protocol's share of profit
-        uint256 protocolShare = (netNewBalances * protocolRate) / BASE;
-        
-        // Calculate new multiplier and protocol mint rate
-        uint256 newMultiplier = ((balancesTotal - protocolShare) * BASE) / sharesTotal;
-        uint256 protocolMintRate = (protocolShare * BASE) / sharesTotal;
+        // STEP 2: Increment global reward rate
+        // Calculate new multiplier based on total balances and shares
+        uint256 newMultiplier = ((balancesTotal) * BASE) / sharesTotal;
         
         // Ensure multiplier only increases
         if (newMultiplier <= currentMultiplier) {
@@ -296,6 +317,13 @@ function handle(
             _resetRebaseState();
             return;
         }
+        
+        // STEP 3: Deduct protocol fees from the rate
+        uint256 protocolShare = (netNewBalances * protocolRate) / BASE;
+        uint256 protocolMintRate = (protocolShare * BASE) / sharesTotal;
+        
+        // Adjust multiplier after protocol fee deduction
+        newMultiplier = ((balancesTotal - protocolShare) * BASE) / sharesTotal;
         
         // Update current multiplier
         currentMultiplier = newMultiplier;
@@ -310,6 +338,7 @@ function handle(
             protocolMintRate
         );
         
+        // STEP 4: Send to all spokes
         // Propagate rebase to all chains
         bool allSucceeded = true;
         for (uint256 i = 0; i < chains.length; i++) {
@@ -319,6 +348,8 @@ function handle(
             if (!success) {
                 allSucceeded = false;
                 emit RebasePropagationFailed(chain);
+                // Service layer should detect and resend failed messages
+                _queueFailedMessage(chain, newMultiplier, protocolMintRate);
             }
         }
         
@@ -326,11 +357,32 @@ function handle(
         _resetRebaseState();
         
         // If any propagation failed, emit event but don't revert
-        // This allows the rebase to partially succeed
+        // This allows the rebase to partially succeed while service layer handles retries
         if (!allSucceeded) {
             emit PartialRebaseCompletion();
         }
     }
+}
+
+/**
+ * @dev Queue a failed message for retry by the service layer
+ * @param _chain The destination chain ID
+ * @param _multiplier The new reward multiplier
+ * @param _protocolMintRate The protocol mint rate for fee distribution
+ */
+function _queueFailedMessage(
+    uint32 _chain,
+    uint256 _multiplier,
+    uint256 _protocolMintRate
+) private {
+    failedMessages.push(FailedMessage({
+        chain: _chain,
+        multiplier: _multiplier,
+        protocolMintRate: _protocolMintRate,
+        timestamp: block.timestamp
+    }));
+    
+    emit MessageQueued(_chain, _multiplier, _protocolMintRate);
 }
 
 /**
@@ -450,7 +502,10 @@ function rebase(uint256 _newMultiplier) external onlyOwner {
  * @param _origin The origin chain ID
  * @param _sender The sender address in 32-byte form
  * @param _message The message payload
- * @dev Finalizes rebase by updating EcoDollar multiplier and minting protocol fees
+ * @dev Follows the exact steps in the swimlane diagram:
+ *      1. Receive the failed message to the spoke immediately
+ *      2. Sets the current multiplier
+ *      3. End
  */
 function handle(
     uint32 _origin,
@@ -476,7 +531,11 @@ function handle(
         (uint256, uint256)
     );
     
-    // Apply rebase to EcoDollar token
+    // STEP 1: Receive the message from home chain
+    // This is handled by the Hyperlane protocol and service layer
+    // The service layer will resend immediately if message fails
+    
+    // STEP 2: Set the current multiplier
     try IEcoDollar(REBASE_TOKEN).rebase(newMultiplier) {
         // Calculate and mint protocol share
         uint256 totalShares = IEcoDollar(REBASE_TOKEN).getTotalShares();
@@ -499,6 +558,9 @@ function handle(
         rebaseInProgress = false;
         emit RebaseApplicationFailed(reason);
     }
+    
+    // STEP 3: End process
+    // No further action required, process is complete
 }
 
 /**
@@ -580,6 +642,259 @@ error PartialRebaseCompletion();
 // EcoDollar errors
 error RewardMultiplierTooLow(uint256 provided, uint256 minimum);
 ```
+
+### Service Layer Implementation 
+
+Following the service layer component shown in the swimlane diagram, we'll implement a service that:
+1. Tracks the number of rebases 
+2. Monitors balances of accepted tokens
+3. Immediately resends any failed messages to spokes
+
+```typescript
+// Service Layer Implementation
+class RebaseService {
+  private db: Database;
+  private provider: ethers.providers.Provider;
+  private rebaser: Rebaser;
+  private pools: Map<number, StablePool>;
+  
+  constructor(db: Database, provider: ethers.providers.Provider) {
+    this.db = db;
+    this.provider = provider;
+    this.initializeContracts();
+    this.monitorFailedMessages();
+  }
+  
+  /**
+   * Initialize contracts and event listeners
+   */
+  private async initializeContracts() {
+    // Load contract addresses from configuration
+    const config = await this.db.getConfig();
+    
+    // Initialize rebaser contract on home chain
+    this.rebaser = new ethers.Contract(
+      config.rebaserAddress,
+      rebaserAbi,
+      this.provider
+    );
+    
+    // Initialize all pools on spoke chains
+    this.pools = new Map();
+    for (const chain of config.chains) {
+      const provider = new ethers.providers.JsonRpcProvider(chain.rpcUrl);
+      const pool = new ethers.Contract(
+        chain.poolAddress,
+        stablePoolAbi,
+        provider
+      );
+      this.pools.set(chain.chainId, pool);
+    }
+    
+    // Set up event listeners
+    this.setupEventListeners();
+  }
+  
+  /**
+   * Set up event listeners for message failures
+   */
+  private setupEventListeners() {
+    this.rebaser.on('MessageQueued', this.handleMessageQueued.bind(this));
+    this.rebaser.on('RebasePropagationFailed', this.handlePropagationFailure.bind(this));
+    
+    // Monitor other relevant events
+    this.rebaser.on('ReceivedRebaseInformation', this.trackRebaseData.bind(this));
+    this.rebaser.on('CalculatedRebase', this.recordRebaseCalculation.bind(this));
+  }
+  
+  /**
+   * Track rebase data for each chain
+   */
+  private async trackRebaseData(origin: number, balances: bigint, shares: bigint, profit: bigint) {
+    console.log(`Received rebase data from chain ${origin}: balances=${balances}, shares=${shares}, profit=${profit}`);
+    
+    // Store data in database
+    await this.db.recordChainReport({
+      chainId: origin,
+      timestamp: Date.now(),
+      balances: balances.toString(),
+      shares: shares.toString(),
+      profit: profit.toString()
+    });
+    
+    // Update accepted token balances
+    await this.updateTokenBalances(origin);
+  }
+  
+  /**
+   * Update accepted token balances
+   */
+  private async updateTokenBalances(chainId: number) {
+    const pool = this.pools.get(chainId);
+    if (!pool) return;
+    
+    const tokenAddresses = await pool.getWhitelistedTokens();
+    
+    for (const tokenAddress of tokenAddresses) {
+      const balance = await pool.getTokenBalance(tokenAddress);
+      
+      // Store token balance in database
+      await this.db.updateTokenBalance({
+        chainId,
+        tokenAddress,
+        balance: balance.toString(),
+        timestamp: Date.now()
+      });
+    }
+  }
+  
+  /**
+   * Record rebase calculation
+   */
+  private async recordRebaseCalculation(
+    totalBalances: bigint,
+    totalShares: bigint,
+    netProfit: bigint,
+    protocolShare: bigint,
+    newMultiplier: bigint,
+    protocolMintRate: bigint
+  ) {
+    // Increment rebase counter
+    const currentRebaseCount = await this.db.getRebaseCount();
+    await this.db.setRebaseCount(currentRebaseCount + 1);
+    
+    // Store rebase calculation details
+    await this.db.recordRebaseCalculation({
+      rebaseNumber: currentRebaseCount + 1,
+      timestamp: Date.now(),
+      totalBalances: totalBalances.toString(),
+      totalShares: totalShares.toString(),
+      netProfit: netProfit.toString(),
+      protocolShare: protocolShare.toString(),
+      newMultiplier: newMultiplier.toString(),
+      protocolMintRate: protocolMintRate.toString()
+    });
+  }
+  
+  /**
+   * Handle queued messages that failed to send
+   */
+  private async handleMessageQueued(
+    chainId: number,
+    multiplier: bigint,
+    protocolMintRate: bigint
+  ) {
+    console.log(`Message queued for retry to chain ${chainId}`);
+    
+    // Record failed message
+    await this.db.recordFailedMessage({
+      chainId,
+      multiplier: multiplier.toString(),
+      protocolMintRate: protocolMintRate.toString(),
+      timestamp: Date.now()
+    });
+    
+    // Immediately try to resend
+    await this.resendMessage(chainId, multiplier, protocolMintRate);
+  }
+  
+  /**
+   * Handle propagation failures
+   */
+  private async handlePropagationFailure(chainId: number) {
+    console.log(`Propagation failed to chain ${chainId}`);
+    
+    // Check for pending retry
+    const pendingRetry = await this.db.getPendingRetry(chainId);
+    if (!pendingRetry) {
+      console.log(`No pending retry data for chain ${chainId}`);
+      return;
+    }
+    
+    // Attempt to resend immediately
+    await this.resendMessage(
+      chainId,
+      BigInt(pendingRetry.multiplier),
+      BigInt(pendingRetry.protocolMintRate)
+    );
+  }
+  
+  /**
+   * Resend a failed message
+   */
+  private async resendMessage(
+    chainId: number,
+    multiplier: bigint,
+    protocolMintRate: bigint
+  ) {
+    console.log(`Resending message to chain ${chainId}`);
+    
+    try {
+      // Get wallet with sufficient balance
+      const wallet = await this.getWallet();
+      const rebaserWithSigner = this.rebaser.connect(wallet);
+      
+      // Resend the message
+      const tx = await rebaserWithSigner.retryPropagation(
+        chainId,
+        multiplier,
+        protocolMintRate,
+        { gasLimit: 500000 }
+      );
+      
+      console.log(`Resend transaction submitted: ${tx.hash}`);
+      
+      // Wait for confirmation
+      const receipt = await tx.wait();
+      console.log(`Resend confirmed in block ${receipt.blockNumber}`);
+      
+      // Update database
+      await this.db.recordMessageRetry({
+        chainId,
+        multiplier: multiplier.toString(),
+        protocolMintRate: protocolMintRate.toString(),
+        timestamp: Date.now(),
+        transactionHash: tx.hash,
+        success: true
+      });
+    } catch (error) {
+      console.error(`Failed to resend message to chain ${chainId}:`, error);
+      
+      // Record failure
+      await this.db.recordMessageRetry({
+        chainId,
+        multiplier: multiplier.toString(),
+        protocolMintRate: protocolMintRate.toString(),
+        timestamp: Date.now(),
+        error: error.toString(),
+        success: false
+      });
+      
+      // Schedule another retry
+      setTimeout(() => {
+        this.resendMessage(chainId, multiplier, protocolMintRate);
+      }, 60000); // Retry after 1 minute
+    }
+  }
+  
+  /**
+   * Start monitoring for failed messages
+   */
+  private monitorFailedMessages() {
+    // Check for failed messages every minute
+    setInterval(async () => {
+      const failedMessages = await this.db.getUnresolvedFailedMessages();
+      
+      for (const message of failedMessages) {
+        await this.resendMessage(
+          message.chainId,
+          BigInt(message.multiplier),
+          BigInt(message.protocolMintRate)
+        );
+      }
+    }, 60000);
+  }
+}
 
 ### Gas Optimization Techniques
 
@@ -715,16 +1030,16 @@ slither contracts/EcoDollar.sol --detect unchecked-lowlevel
 
 - [ ] Step 3: Enhance StablePool rebase initiation [Priority: High] [Est: 1.5h]
   - [ ] Sub-task 3.1: Write tests for initiateRebase function with comprehensive scenarios
-  - [ ] Sub-task 3.2: Implement enhanced initiateRebase with proper state management
-  - [ ] Sub-task 3.3: Add custom errors and event emissions
-  - [ ] Sub-task 3.4: Optimize gas usage in token balance calculation
+  - [ ] Sub-task 3.2: Implement initiateRebase exactly as shown in swimlane diagram
+  - [ ] Sub-task 3.3: Add profit tracking and reset functionality
+  - [ ] Sub-task 3.4: Implement the critical "set profit to 0 in storage" step
 
 - [ ] Step 4: Improve Rebaser calculation logic [Priority: High] [Est: 2h]
   - [ ] Sub-task 4.1: Write tests for Rebaser's handle function with diverse scenarios
-  - [ ] Sub-task 4.2: Enhance handle function with robust validation and cleaner flow
-  - [ ] Sub-task 4.3: Implement safe protocol fee calculation with edge case handling
-  - [ ] Sub-task 4.4: Add proper error handling for propagation failures
-  - [ ] Sub-task 4.5: Refactor chains and validChainIDs into efficient struct
+  - [ ] Sub-task 4.2: Implement calculation steps exactly as shown in swimlane diagram
+  - [ ] Sub-task 4.3: Implement ratio calculation of total supply and profit
+  - [ ] Sub-task 4.4: Implement protocol fee deduction and update reward rate
+  - [ ] Sub-task 4.5: Add proper spoke chain propagation with failure handling
 
 - [ ] Step 5: Upgrade EcoDollar rebasing [Priority: High] [Est: 1h]
   - [ ] Sub-task 5.1: Write comprehensive tests for EcoDollar rebase function
@@ -734,24 +1049,31 @@ slither contracts/EcoDollar.sol --detect unchecked-lowlevel
 
 - [ ] Step 6: Complete StablePool rebase finalization [Priority: High] [Est: 1.5h]
   - [ ] Sub-task 6.1: Write tests for StablePool's handle function with various scenarios
-  - [ ] Sub-task 6.2: Implement enhanced handle function with proper validation
-  - [ ] Sub-task 6.3: Add treasury mint logic with gas optimizations
-  - [ ] Sub-task 6.4: Integrate withdrawal queue processing after rebase
-  - [ ] Sub-task 6.5: Implement proper rebase state reset with error handling
+  - [ ] Sub-task 6.2: Implement handle function exactly as shown in swimlane diagram
+  - [ ] Sub-task 6.3: Implement "set the current multiplier" functionality
+  - [ ] Sub-task 6.4: Ensure proper end-of-process handling
+  - [ ] Sub-task 6.5: Integrate withdrawal queue processing after rebase
 
-- [ ] Step 7: Build integration test suite [Priority: Critical] [Est: 2h]
-  - [ ] Sub-task 7.1: Create end-to-end test for complete rebase flow
-  - [ ] Sub-task 7.2: Implement multi-chain testing with parallel anvil instances
-  - [ ] Sub-task 7.3: Add tests for error conditions (chain disconnection, message failure)
-  - [ ] Sub-task 7.4: Verify protocol fee distribution across treasury accounts
-  - [ ] Sub-task 7.5: Test interaction with withdrawal queue processing
+- [ ] Step 7: Implement Service Layer [Priority: High] [Est: 2h]
+  - [ ] Sub-task 7.1: Create service for tracking rebases and token balances
+  - [ ] Sub-task 7.2: Implement database for rebase information storage
+  - [ ] Sub-task 7.3: Create monitoring system for failed messages
+  - [ ] Sub-task 7.4: Implement immediate resend functionality for failed messages
+  - [ ] Sub-task 7.5: Add comprehensive logging and error handling
 
-- [ ] Step 8: Security and optimization [Priority: Critical] [Est: 1.5h]
-  - [ ] Sub-task 8.1: Run comprehensive security analysis with Slither
-  - [ ] Sub-task 8.2: Measure and optimize gas usage for cross-chain operations
-  - [ ] Sub-task 8.3: Verify access control across all components
-  - [ ] Sub-task 8.4: Complete NatSpec documentation for all functions
-  - [ ] Sub-task 8.5: Generate gas report and security analysis documentation
+- [ ] Step 8: Build integration test suite [Priority: Critical] [Est: 2h]
+  - [ ] Sub-task 8.1: Create end-to-end test for complete rebase flow
+  - [ ] Sub-task 8.2: Implement multi-chain testing with parallel anvil instances
+  - [ ] Sub-task 8.3: Test service layer for failed message handling
+  - [ ] Sub-task 8.4: Verify protocol fee distribution across treasury accounts
+  - [ ] Sub-task 8.5: Test interaction with withdrawal queue processing
+
+- [ ] Step 9: Security and optimization [Priority: Critical] [Est: 1.5h]
+  - [ ] Sub-task 9.1: Run comprehensive security analysis with Slither
+  - [ ] Sub-task 9.2: Measure and optimize gas usage for cross-chain operations
+  - [ ] Sub-task 9.3: Verify access control across all components
+  - [ ] Sub-task 9.4: Complete NatSpec documentation for all functions
+  - [ ] Sub-task 9.5: Generate gas report and security analysis documentation
 
 ## Validation Checkpoints
 
