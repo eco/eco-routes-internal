@@ -379,21 +379,13 @@ function handle(
         
         // STEP 4: Send to all spokes
         // Propagate rebase to all chains
-        bool allSucceeded = true;
         for (uint256 i = 0; i < chains.length; i++) {
             uint32 chain = chains[i];
-            bool success = _propagateRebase(chain, newMultiplier, protocolMintRate);
-            
-            if (!success) {
-                allSucceeded = false;
-            }
+            _propagateRebase(chain, newMultiplier, protocolMintRate);
         }
         
         // Reset state for next rebase cycle
         _resetRebaseState();
-        
-        // Log partial success through backend monitoring
-        // This allows the rebase to partially succeed without failing entirely
     }
 }
 
@@ -418,19 +410,13 @@ function _resetRebaseState() private {
  * @param _chain The destination chain ID
  * @param _multiplier The new reward multiplier
  * @param _protocolMintRate The protocol mint rate for fee distribution
- * @return success Whether the propagation was successful
  */
 function _propagateRebase(
     uint32 _chain,
     uint256 _multiplier,
     uint256 _protocolMintRate
-) private returns (bool success) {
-    try {
-        propagateRebase(_chain, _multiplier, _protocolMintRate);
-        return true;
-    } catch {
-        return false;
-    }
+) private {
+    propagateRebase(_chain, _multiplier, _protocolMintRate);
 }
 
 /**
@@ -533,27 +519,24 @@ function handle(
     // This is handled by the Hyperlane protocol
     
     // STEP 2: Set the current multiplier
-    try IEcoDollar(REBASE_TOKEN).rebase(newMultiplier) {
-        // Calculate and mint protocol share
-        uint256 totalShares = IEcoDollar(REBASE_TOKEN).getTotalShares();
-        uint256 protocolMintAmount = (protocolMintRate * totalShares) / BASE;
-        
-        if (protocolMintAmount > 0) {
-            IEcoDollar(REBASE_TOKEN).mint(TREASURY_ADDRESS, protocolMintAmount);
-        }
-        
-        // Process withdrawal queues if applicable
-        _processWithdrawalQueues();
-        
-        // Reset rebase state
-        rebaseInProgress = false;
-        
-        // Emit rebase completion event
-        emit RebaseFinalized(newMultiplier, protocolMintRate, protocolMintAmount);
-    } catch (bytes memory reason) {
-        // Handle rebase failure and reset state
-        rebaseInProgress = false;
+    IEcoDollar(REBASE_TOKEN).rebase(newMultiplier);
+    
+    // Calculate and mint protocol share
+    uint256 totalShares = IEcoDollar(REBASE_TOKEN).getTotalShares();
+    uint256 protocolMintAmount = (protocolMintRate * totalShares) / BASE;
+    
+    if (protocolMintAmount > 0) {
+        IEcoDollar(REBASE_TOKEN).mint(TREASURY_ADDRESS, protocolMintAmount);
     }
+    
+    // Process withdrawal queues if applicable
+    _processWithdrawalQueues();
+    
+    // Reset rebase state
+    rebaseInProgress = false;
+    
+    // Emit rebase completion event
+    emit RebaseFinalized(newMultiplier, protocolMintRate, protocolMintAmount);
     
     // STEP 3: End process
     // No further action required, process is complete
