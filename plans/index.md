@@ -6,9 +6,9 @@ This document serves as an index of all implementation plans for the Eco Routes 
 
 | Plan | Description | Status | Last Updated | Branch |
 |------|-------------|--------|-------------|--------|
-| [Crowd Liquidity Protocol](./crowd-liquidity-project-plan.md) | Master plan for cross-chain rebasing token and liquidity pool system | Approved | 2025-03-26 | N/A |
-| [Rebase Flow Implementation](./rebase-flow-implementation-plan.md) | Implementation of cross-chain rebase mechanism | Active | 2025-03-26 | feat/rebase/rebase-flow-implementation |
-| [Withdrawal Queue Implementation](./withdrawal-queue-implementation-plan.md) | Implementation of withdrawal queue for liquidity management | Draft | 2025-03-26 | feat/withdrawal/withdrawal-queue-implementation |
+| [Crowd Liquidity Protocol](./full/crowd-liquidity-project-plan.md) | Master plan for cross-chain rebasing token and liquidity pool system | Approved | 2025-03-26 | N/A |
+| [Rebase Flow Implementation](./full/rebase-flow-implementation-plan.md) | Implementation of cross-chain rebase mechanism | Active | 2025-03-26 | feat/rebase/rebase-flow-implementation |
+| [Withdrawal Queue Implementation](./full/withdrawal-queue-implementation-plan.md) | Implementation of withdrawal queue for liquidity management | Draft | 2025-03-26 | feat/withdrawal/withdrawal-queue-implementation |
 
 ## Completed Plans
 
@@ -18,8 +18,8 @@ No completed plans yet.
 
 | Template | Description | Purpose |
 |----------|-------------|---------|
-| [Example Project Plan](./example-project-plan.md) | Template for project-level plans | Creating new project-wide plans |
-| [Example Implementation Plan](./example-implementation-plan.md) | Template for specific implementation plans | Creating component implementation plans |
+| [Example Project Plan](./examples/example-project-plan.md) | Template for project-level plans | Creating new project-wide plans |
+| [Example Implementation Plan](./examples/example-implementation-plan.md) | Template for specific implementation plans | Creating component implementation plans |
 
 ## Implementation Path
 
