@@ -135,6 +135,14 @@
    - "Git Execution Log" tracking all branch operations and commits
    - Visual aids for complex concepts (diagrams, decision trees)
 4. YOU SHALL USE "Last Position" markers to guarantee seamless continuation
+5. YOU MUST SYNCHRONIZE plan summaries with implementation plans:
+   - For EVERY change made to an implementation plan, make corresponding changes to its summary
+   - Store summaries in `/plans/summaries/<plan-name>-summary.md`
+   - Ensure all decision points are reflected with their current status in the summary
+   - Update the summary whenever decision points are resolved or changed
+   - Keep implementation steps and technical considerations consistent between plan and summary
+   - Create a detailed summary IMMEDIATELY after creating a new implementation plan
+   - In a single commit, update both the implementation plan and its summary
 
 #### Decision Architecture
 1. YOU MUST PRESENT architectural decisions using "Decision Points" with:

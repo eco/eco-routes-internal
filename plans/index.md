@@ -2,6 +2,8 @@
 
 This document serves as an index of all implementation plans for the Eco Routes Protocol. It provides quick access to all plans, their current status, and other key information.
 
+> **Note**: For each implementation plan, a corresponding summary is maintained in the `/plans/summaries/` directory. These summaries provide a technical overview with decision points, implementation steps, and current status. Summaries are kept in sync with their corresponding implementation plans at all times.
+
 ## Active Plans
 
 | Plan | Description | Status | Last Updated | Branch |
