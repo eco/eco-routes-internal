@@ -386,36 +386,17 @@ function handle(
             
             if (!success) {
                 allSucceeded = false;
-                emit RebasePropagationFailed(chain);
-                // Emit event for manual management later
-                _emitFailedMessage(chain, newMultiplier, protocolMintRate);
             }
         }
         
         // Reset state for next rebase cycle
         _resetRebaseState();
         
-        // If any propagation failed, emit event but don't revert
-        // This allows the rebase to partially succeed while allowing for manual recovery later
-        if (!allSucceeded) {
-            emit PartialRebaseCompletion();
-        }
+        // Log partial success through backend monitoring
+        // This allows the rebase to partially succeed without failing entirely
     }
 }
 
-/**
- * @dev Emit event for failed message to enable manual recovery
- * @param _chain The destination chain ID
- * @param _multiplier The new reward multiplier
- * @param _protocolMintRate The protocol mint rate for fee distribution
- */
-function _emitFailedMessage(
-    uint32 _chain,
-    uint256 _multiplier,
-    uint256 _protocolMintRate
-) private {
-    emit MessageFailed(_chain, _multiplier, _protocolMintRate);
-}
 
 /**
  * @dev Internal function to reset rebase state
@@ -444,8 +425,9 @@ function _propagateRebase(
     uint256 _multiplier,
     uint256 _protocolMintRate
 ) private returns (bool success) {
-    try this.propagateRebase(_chain, _multiplier, _protocolMintRate) returns (bool result) {
-        return result;
+    try {
+        propagateRebase(_chain, _multiplier, _protocolMintRate);
+        return true;
     } catch {
         return false;
     }
@@ -456,18 +438,12 @@ function _propagateRebase(
  * @param _chain The destination chain ID
  * @param _multiplier The new reward multiplier
  * @param _protocolMintRate The protocol mint rate for fee distribution
- * @return success Whether the propagation was successful
  */
 function propagateRebase(
     uint32 _chain,
     uint256 _multiplier,
     uint256 _protocolMintRate
-) external returns (bool success) {
-    // Only allow internal calls from this contract
-    if (msg.sender != address(this)) {
-        revert UnauthorizedCaller(msg.sender, address(this));
-    }
-    
+) private {
     // Encode message with rebase data
     bytes memory message = abi.encode(_multiplier, _protocolMintRate);
     
@@ -480,26 +456,16 @@ function propagateRebase(
         IPostDispatchHook(RELAYER)
     );
     
-    // Check if contract has enough ETH for fee
-    if (address(this).balance < fee) {
-        emit InsufficientFeeForRebase(_chain, fee, address(this).balance);
-        return false;
-    }
-    
     // Dispatch message to destination chain
-    try IMailbox(MAILBOX).dispatch{value: fee}(
+    uint256 messageId = IMailbox(MAILBOX).dispatch{value: fee}(
         _chain,
         POOL,
         message,
         "", // Empty metadata for relayer
         IPostDispatchHook(RELAYER)
-    ) returns (uint256 messageId) {
-        emit RebasePropagated(_chain, _multiplier, _protocolMintRate, messageId);
-        return true;
-    } catch (bytes memory reason) {
-        emit RebasePropagationError(_chain, reason);
-        return false;
-    }
+    );
+    
+    // Backend will monitor these messages
 }
 ```
 
@@ -585,9 +551,8 @@ function handle(
         // Emit rebase completion event
         emit RebaseFinalized(newMultiplier, protocolMintRate, protocolMintAmount);
     } catch (bytes memory reason) {
-        // Handle rebase failure
+        // Handle rebase failure and reset state
         rebaseInProgress = false;
-        emit RebaseApplicationFailed(reason);
     }
     
     // STEP 3: End process
@@ -661,14 +626,9 @@ error RebaseInProgress();
 error UnauthorizedMailbox(address actual, address expected);
 error UnauthorizedSender(bytes32 actual, bytes32 expected);
 error InvalidOriginChain(uint32 actual, uint32 expected);
-error RebaseApplicationFailed(bytes reason);
 
 // Rebaser errors
-error UnauthorizedCaller(address actual, address expected);
 error InvalidOriginChain(uint32 chain);
-error InsufficientFeeForRebase(uint32 chain, uint256 required, uint256 available);
-error RebasePropagationError(uint32 chain, bytes reason);
-error PartialRebaseCompletion();
 
 // EcoDollar errors
 error RewardMultiplierTooLow(uint256 provided, uint256 minimum);
