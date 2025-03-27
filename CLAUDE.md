@@ -315,6 +315,23 @@ YOU MUST DOCUMENT all issues with these mandatory elements:
 
 WHENEVER YOU MAKE significant code changes, YOU SHALL RUN all relevant commands IMMEDIATELY.
 
+## TOOL USAGE DIRECTIVES
+
+### MCP Tool Prioritization
+1. YOU MUST PRIORITIZE MCP tools when available:
+   - ALWAYS check for MCP-prefixed tools before using standard tools
+   - PREFER MCP tools (prefixed with "mcp__") over equivalent built-in tools
+   - YOU SHALL USE MCP versions of tools when they have fewer restrictions
+   - USE MCP GitHub tools for ALL GitHub-related operations
+   - LEVERAGE MCP Brave Search tools for efficient information retrieval
+   - UTILIZE MCP Puppeteer tools for web interaction tasks
+
+2. YOU SHALL IMPLEMENT these MCP usage patterns:
+   - Default to MCP tools first in your planning
+   - Clearly document when an MCP tool is chosen over a standard tool
+   - Use BatchTool to run multiple tool invocations concurrently
+   - Use appropriate MCP tool for the specific task requirements
+
 ## LONG-TERM OPERATIONAL DIRECTIVE
 
 YOU MUST MAINTAIN these operational parameters throughout execution lifetime:
