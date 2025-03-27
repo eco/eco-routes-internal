@@ -15,7 +15,7 @@
 
 ## Overview
 
-This implementation plan provides detailed steps for implementing the Withdrawal Queue mechanism as defined in the [Crowd Liquidity Protocol Plan](./crowd-liquidity-protocol-plan.md). The withdrawal queue is a critical component that ensures fair and orderly processing of withdrawals when a token's liquidity falls below its threshold, maintaining system stability while providing users with a predictable experience.
+This implementation plan provides detailed steps for implementing the Withdrawal Queue mechanism as defined in the [Crowd Liquidity Project Plan](./crowd-liquidity-project-plan.md). The withdrawal queue is a critical component that ensures fair and orderly processing of withdrawals when a token's liquidity falls below its threshold, maintaining system stability while providing users with a predictable experience.
 
 ## Implementation Information
 
@@ -23,7 +23,7 @@ This implementation plan provides detailed steps for implementing the Withdrawal
 - **Priority**: High
 - **Estimated Time**: 6 hours
 - **Affected Components**: StablePool
-- **Parent Project Plan**: [Crowd Liquidity Protocol Plan](./crowd-liquidity-protocol-plan.md)
+- **Parent Project Plan**: [Crowd Liquidity Project Plan](./crowd-liquidity-project-plan.md)
 - **Related Implementation Plans**: [Rebase Flow Implementation](./rebase-flow-implementation-plan.md) (complementary)
 - **Git Branch**: feat/withdrawal/withdrawal-queue-implementation
 

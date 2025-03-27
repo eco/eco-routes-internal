@@ -6,7 +6,7 @@ This document serves as an index of all implementation plans for the Eco Routes 
 
 | Plan | Description | Status | Last Updated | Branch |
 |------|-------------|--------|-------------|--------|
-| [Crowd Liquidity Protocol](./crowd-liquidity-protocol-plan.md) | Master plan for cross-chain rebasing token and liquidity pool system | Approved | 2025-03-26 | N/A |
+| [Crowd Liquidity Protocol](./crowd-liquidity-project-plan.md) | Master plan for cross-chain rebasing token and liquidity pool system | Approved | 2025-03-26 | N/A |
 | [Rebase Flow Implementation](./rebase-flow-implementation-plan.md) | Implementation of cross-chain rebase mechanism | Active | 2025-03-26 | feat/rebase/rebase-flow-implementation |
 | [Withdrawal Queue Implementation](./withdrawal-queue-implementation-plan.md) | Implementation of withdrawal queue for liquidity management | Draft | 2025-03-26 | feat/withdrawal/withdrawal-queue-implementation |
 
@@ -23,7 +23,7 @@ No completed plans yet.
 
 ## Implementation Path
 
-The implementation of the Crowd Liquidity Protocol will proceed in the following order:
+The implementation of the Crowd Liquidity Project will proceed in the following order:
 
 1. **Rebase Flow Implementation**: Implement cross-chain rebase mechanism
    - Handle profit collection, calculation, and distribution
@@ -49,9 +49,9 @@ The implementation of the Crowd Liquidity Protocol will proceed in the following
 
 | Date | Plan | Decision Point | Selected Option | Reasoning |
 |------|------|----------------|-----------------|-----------|
-| 2025-03-26 | Crowd Liquidity Protocol | Rebase Timing Mechanism | Scheduled Time-Based Rebases | Better control over timing and gas optimization |
-| 2025-03-26 | Crowd Liquidity Protocol | Withdrawal Queue Processing Strategy | Process Queues Only During Rebalancing | Cleaner code structure, more reliable processing |
-| 2025-03-26 | Crowd Liquidity Protocol | Cross-Chain Communication Protocol | Hybrid Messaging With Fallback Systems | Higher resilience and flexibility |
+| 2025-03-26 | Crowd Liquidity Project | Rebase Timing Mechanism | Scheduled Time-Based Rebases | Better control over timing and gas optimization |
+| 2025-03-26 | Crowd Liquidity Project | Withdrawal Queue Processing Strategy | Process Queues Only During Rebalancing | Cleaner code structure, more reliable processing |
+| 2025-03-26 | Crowd Liquidity Project | Cross-Chain Communication Protocol | Hybrid Messaging With Fallback Systems | Higher resilience and flexibility |
 | 2025-03-26 | Rebase Flow Implementation | Rebase Trigger Mechanism | Admin-triggered rebases | Better control over timing and gas optimization |
 | 2025-03-26 | Rebase Flow Implementation | Protocol Fee Distribution | Auto-mint to treasury | Simpler flow, more gas-efficient |
 

@@ -15,7 +15,7 @@
 
 ## Overview
 
-This implementation plan provides detailed steps for implementing the cross-chain Rebase Flow mechanism as defined in the [Crowd Liquidity Protocol Plan](./crowd-liquidity-protocol-plan.md). The rebase flow is a crucial component that ensures eUSD tokens maintain consistent value across all chains by collecting yield information, calculating a global multiplier, and distributing that multiplier to all participating chains.
+This implementation plan provides detailed steps for implementing the cross-chain Rebase Flow mechanism as defined in the [Crowd Liquidity Project Plan](./crowd-liquidity-project-plan.md). The rebase flow is a crucial component that ensures eUSD tokens maintain consistent value across all chains by collecting yield information, calculating a global multiplier, and distributing that multiplier to all participating chains.
 
 ## Implementation Information
 
@@ -23,7 +23,7 @@ This implementation plan provides detailed steps for implementing the cross-chai
 - **Priority**: High
 - **Estimated Time**: 8 hours
 - **Affected Components**: StablePool, Rebaser, EcoDollar, Hyperlane integration
-- **Parent Project Plan**: [Crowd Liquidity Protocol Plan](./crowd-liquidity-protocol-plan.md)
+- **Parent Project Plan**: [Crowd Liquidity Project Plan](./crowd-liquidity-project-plan.md)
 - **Related Implementation Plans**: Withdrawal Queue Implementation (dependent)
 - **Git Branch**: feat/rebase/rebase-flow-implementation
 
