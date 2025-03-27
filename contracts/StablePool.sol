@@ -156,7 +156,6 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
             // need to rebase, add to withdrawal queue
             _addToWithdrawalQueue(_preferredToken, msg.sender, _amount);
         }
-        IEcoDollar(REBASE_TOKEN).burn(msg.sender, _amount);
     }
 
     /**
