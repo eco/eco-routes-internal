@@ -65,10 +65,6 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
     bytes32 public tokensHash;  // Hash of the current token list
     mapping(address => uint256) public tokenThresholds;
     
-    // Legacy withdrawal queue (for backward compatibility)
-    mapping(address => WithdrawalQueueInfo) public queueInfos;
-    mapping(bytes32 => WithdrawalQueueEntry) private withdrawalQueues;
-    
     // Enhanced withdrawal queue with priority
     mapping(uint256 => WithdrawalRequest) public withdrawalQueue;
     uint256 public nextWithdrawalId;             // Next ID to assign
@@ -137,14 +133,14 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
     }
 
     /**
-     * @notice Legacy withdraw function - redirects to requestWithdrawal for backward compatibility
+     * @notice Standard withdraw function - now adds to the withdrawal queue for fair profit distribution
      * @param _preferredToken The token to withdraw
      * @param _amount The amount to withdraw
-     * @dev this will now queue withdrawals instead of processing immediately
+     * @dev this adds to the withdrawal queue to be processed after the next rebase
      */
     function withdraw(address _preferredToken, uint80 _amount) external {
-        // For backward compatibility, redirect to the new request withdrawal function
-        requestWithdrawal(_preferredToken, _amount, 0);
+        // This now uses the enhanced withdrawal system
+        requestWithdrawal(_preferredToken, uint256(_amount), 0);
     }
     
     /**
@@ -481,8 +477,8 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
                 _token
             )
         );
-        // withdrawal queue processing
-        processWithdrawalQueue(_token);
+        // Process withdrawal queue with the new system
+        processWithdrawalQueue();
 
         // send reward to caller
         uint256 toSend = rebalancePurse;
@@ -751,32 +747,7 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
         emit TokenThresholdsChanged(_thresholdChanges);
     }
 
-    /**
-     * @notice Processes the withdrawal queue for a token
-     * @param _token The token whose withdrawalQueue is being processed
-     */
-    function processWithdrawalQueue(address _token) internal {
-        WithdrawalQueueInfo memory queueInfo = queueInfos[_token];
-        WithdrawalQueueEntry memory entry = withdrawalQueues[
-            keccak256(abi.encodePacked(_token, queueInfo.head))
-        ];
-        uint16 head = queueInfo.head;
-        while (entry.next != 0) {
-            IERC20 stable = IERC20(_token);
-            if (stable.balanceOf(address(this)) > tokenThresholds[_token]) {
-                stable.safeTransfer(entry.user, entry.amount);
-                head = entry.next;
-                entry = withdrawalQueues[
-                    keccak256(abi.encodePacked(_token, entry.next))
-                ];
-            } else {
-                // dip below threshold during withdrawal queue processing
-                emit WithdrawalQueueThresholdReached(_token);
-                break;
-            }
-        }
-        queueInfos[_token].head = head;
-    }
+    // Legacy code removed - replaced with enhanced withdrawal queue system
 
     function setRebaseFee(uint96 _fee) external onlyOwner {
         rebaseFee = _fee;
@@ -842,38 +813,7 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
         IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
     }
 
-    /**
-     * @dev Legacy version of adding to withdrawal queue for backward compatibility
-     */
-    function _addToWithdrawalQueue(
-        address _token,
-        address _withdrawer,
-        uint80 _amount
-    ) internal {
-        uint16 index;
-        WithdrawalQueueInfo memory queueInfo = queueInfos[_token];
-        if (queueInfo.lowest == 0) {
-            index = queueInfo.highest;
-            queueInfo.highest++;
-        } else {
-            index = queueInfo.lowest;
-            queueInfo.lowest--;
-        }
-        WithdrawalQueueEntry memory entry = WithdrawalQueueEntry(
-            _withdrawer,
-            _amount,
-            0 //sentinel value
-        );
-        withdrawalQueues[keccak256(abi.encodePacked(_token, queueInfo.tail))]
-            .next = index;
-        queueInfo.tail = index;
-
-        withdrawalQueues[keccak256(abi.encodePacked(_token, index))] = entry;
-
-        queueInfos[_token] = queueInfo;
-
-        emit AddedToWithdrawalQueue(_token, entry);
-    }
+    // Legacy code removed
     
     /**
      * @notice Internal helper to process a single withdrawal

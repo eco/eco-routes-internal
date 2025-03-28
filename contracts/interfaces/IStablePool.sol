@@ -4,20 +4,7 @@ pragma solidity ^0.8.20;
 import {Route, TokenAmount} from "../types/Intent.sol";
 
 interface IStablePool {
-    // Legacy withdrawal queue structure
-    struct WithdrawalQueueEntry {
-        address user;
-        uint80 amount;
-        uint16 next; // may need a higher number...
-    }
-
-    struct WithdrawalQueueInfo {
-        // same size as WithdrawalQueueEntry.next
-        uint16 head;
-        uint16 tail;
-        uint16 highest;
-        uint16 lowest;
-    }
+    // Enhanced withdrawal system structures
 
     // New enhanced withdrawal request structure with priority tracking
     struct WithdrawalRequest {
@@ -60,11 +47,7 @@ interface IStablePool {
     event Withdrawn(address indexed user, address indexed token, uint256 amount);
     event RebalanceComplete(uint32 sourceDomain, uint256 newBalance);
     
-    // Legacy event
-    event AddedToWithdrawalQueue(address indexed user, WithdrawalQueueEntry entry);
-    event WithdrawalQueueThresholdReached(address token);
-    
-    // New withdrawal queue events
+    // Withdrawal queue events
     event WithdrawalQueued(
         uint256 indexed withdrawalId,
         address indexed user, 
