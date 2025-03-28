@@ -221,89 +221,116 @@ The diagram above illustrates the complete implementation flow with:
 
 ### Core Architecture Enhancements
 
-#### 1. StablePool Share Tracking in Deposit/Withdraw
+#### 1. Improved Share Tracking Approaches
 
-##### Deposit Flow with Rebaser Communication
+After analyzing the challenges with per-transaction delta updates, we've identified more robust approaches for keeping the Rebaser updated with total shares:
 
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#6C78AF', 'primaryTextColor': '#fff', 'primaryBorderColor': '#5D69A0', 'lineColor': '#5D69A0', 'secondaryColor': '#D3D8F9', 'tertiaryColor': '#E7E9FC' }}}%%
-
-sequenceDiagram
-    participant User
-    participant StablePool
-    participant EcoDollar
-    participant Mailbox
-    participant Rebaser
-    
-    User->>StablePool: deposit(token, amount)
-    StablePool->>StablePool: Verify token is whitelisted
-    StablePool->>User: Get tokens from user
-    StablePool->>EcoDollar: mint(user, amount)
-    EcoDollar-->>EcoDollar: Increase user's shares
-    EcoDollar-->>EcoDollar: Increase totalShares
-    StablePool->>EcoDollar: getTotalShares()
-    EcoDollar-->>StablePool: Current total shares
-    
-    Note over StablePool,Rebaser: Real-time share update to Rebaser
-    StablePool->>StablePool: Prepare share update message
-    StablePool->>Mailbox: Send share update to Rebaser
-    Mailbox-->>Rebaser: Deliver message with new share total
-    Rebaser->>Rebaser: Update chainShares for origin chain
-    Rebaser->>Rebaser: Recalculate total shares across chains
-    Rebaser->>Rebaser: Emit TotalSharesUpdated event
-    
-    StablePool->>StablePool: Emit SharesUpdated event
-    StablePool->>StablePool: Emit Deposited event
-    StablePool-->>User: Deposit complete
-```
-
-##### Withdrawal Flow with Rebaser Communication
+##### Approach A: Periodic Batch Updates with Pre-Rebase Sync (Recommended)
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#6C78AF', 'primaryTextColor': '#fff', 'primaryBorderColor': '#5D69A0', 'lineColor': '#5D69A0', 'secondaryColor': '#D3D8F9', 'tertiaryColor': '#E7E9FC' }}}%%
 
 sequenceDiagram
-    participant User
+    participant Users
     participant StablePool
     participant EcoDollar
     participant Mailbox
     participant Rebaser
-    participant WithdrawalQueue
     
-    User->>StablePool: withdraw(token, amount)
-    StablePool->>StablePool: Verify token is whitelisted
-    StablePool->>StablePool: Check user's balance
-    StablePool->>EcoDollar: burn(user, amount)
-    EcoDollar-->>EcoDollar: Decrease user's shares
-    EcoDollar-->>EcoDollar: Decrease totalShares
-    StablePool->>EcoDollar: getTotalShares()
-    EcoDollar-->>StablePool: Current total shares
-    
-    Note over StablePool,Rebaser: Real-time share update to Rebaser
-    StablePool->>StablePool: Prepare share update message
-    StablePool->>Mailbox: Send share update to Rebaser
-    Mailbox-->>Rebaser: Deliver message with new share total
-    Rebaser->>Rebaser: Update chainShares for origin chain
-    Rebaser->>Rebaser: Recalculate total shares across chains
-    Rebaser->>Rebaser: Emit TotalSharesUpdated event
-    
-    StablePool->>StablePool: Emit SharesUpdated event
-    
-    alt Sufficient Liquidity
-        StablePool->>User: Transfer requested tokens
-        StablePool->>StablePool: Emit Withdrawn event
-    else Insufficient Liquidity
-        StablePool->>WithdrawalQueue: Add user to withdrawal queue
+    rect rgb(240, 248, 255)
+    Note over Users,StablePool: Normal Operation Period
+    Users->>StablePool: Multiple deposits/withdrawals
+    StablePool->>EcoDollar: mint/burn operations
+    EcoDollar-->>EcoDollar: Update shares internally
     end
     
-    StablePool-->>User: Withdrawal complete
+    rect rgb(255, 248, 220)
+    Note over StablePool,Rebaser: Scheduled Batch Update (e.g., hourly)
+    StablePool->>EcoDollar: getTotalShares()
+    EcoDollar-->>StablePool: Current total shares
+    StablePool->>StablePool: Store previous reported shares
+    StablePool->>StablePool: Calculate net change since last report
+    StablePool->>Mailbox: Send batch update with (total, changeAmount, sequenceNum)
+    Mailbox-->>Rebaser: Deliver batch update
+    Rebaser->>Rebaser: Update chainShares with sequence verification
+    Rebaser->>Rebaser: Update totalShares across chains
+    end
+    
+    rect rgb(245, 245, 220)
+    Note over StablePool,Rebaser: Mandatory Pre-Rebase Sync
+    Note right of Rebaser: Rebase Initiated
+    Rebaser->>Rebaser: Request current shares from all pools
+    Rebaser->>Mailbox: Send share verification request
+    Mailbox-->>StablePool: Deliver verification request
+    StablePool->>EcoDollar: getTotalShares()
+    EcoDollar-->>StablePool: Current exact shares
+    StablePool->>Mailbox: Send exact share count with high priority
+    Mailbox-->>Rebaser: Deliver exact share count
+    Rebaser->>Rebaser: Update with authoritative values
+    Rebaser->>Rebaser: Proceed with rebase calculations
+    end
+```
+
+##### Approach B: Threshold-Based Delta Updates with Reconciliation
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#6C78AF', 'primaryTextColor': '#fff', 'primaryBorderColor': '#5D69A0', 'lineColor': '#5D69A0', 'secondaryColor': '#D3D8F9', 'tertiaryColor': '#E7E9FC' }}}%%
+
+flowchart TD
+    subgraph "StablePool Operations"
+        deposit["Deposit/Withdraw Operations"]
+        deposit --> updateLocal["Update Local Delta Counter"]
+        updateLocal --> checkThreshold{"Delta > Threshold?"}
+        checkThreshold -->|Yes| sendUpdate["Send Delta Update to Rebaser"]
+        checkThreshold -->|No| continue["Continue Operations"]
+        
+        timer["Timer (15-minute interval)"]
+        timer --> checkPending{"Pending Deltas?"}
+        checkPending -->|Yes| sendBatch["Send Accumulated Deltas"]
+        checkPending -->|No| reset["Reset Timer"]
+        
+        rebaseReq["Rebase Request Received"]
+        rebaseReq --> sendExact["Send Exact Share Count with High Priority"]
+    end
+    
+    subgraph "Rebaser Operations"
+        receiveUpdate["Receive Delta Updates"]
+        receiveUpdate --> applyDelta["Apply to Chain Shares"]
+        applyDelta --> updateTotal["Update Total Shares"]
+        
+        receiveExact["Receive Exact Share Count"]
+        receiveExact --> reconcile["Reconcile with Current Value"]
+        reconcile --> detectDrift{"Significant Drift?"}
+        detectDrift -->|Yes| recordIssue["Record Discrepancy"]
+        detectDrift -->|No| useExact["Use Exact Value for Rebase"]
+        
+        weekly["Weekly Reconciliation"]
+        weekly --> requestCounts["Request Exact Counts from All Chains"]
+    end
+    
+    sendUpdate --> receiveUpdate
+    sendBatch --> receiveUpdate
+    sendExact --> receiveExact
+    requestCounts --> rebaseReq
+    
+    classDef normal fill:#E7E9FC,stroke:#6C78AF
+    classDef important fill:#FFD700,stroke:#B8860B,stroke-width:2px
+    classDef process fill:#D3D8F9,stroke:#5D69A0
+    
+    class deposit,updateLocal,continue,timer normal
+    class sendUpdate,sendBatch,sendExact,receiveExact,reconcile,requestCounts process
+    class rebaseReq,detectDrift,recordIssue,useExact important
 ```
 
 ##### Implementation Details
 
 ```solidity
 /**
- * @notice Deposit token and immediately update Rebaser with share delta
+ * @notice Batch-based share tracking implementation (Approach A)
+ */
+
+/**
+ * @notice Standard deposit function without immediate share updates
  * @param _token The token to deposit
  * @param _amount The amount to deposit
  */
@@ -316,56 +343,22 @@ function deposit(address _token, uint256 _amount) external {
     // Transfer token from user to pool
     IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
     
-    // Get shares before minting
-    uint256 sharesBefore = IEcoDollar(REBASE_TOKEN).getTotalShares();
-    
     // Mint eUSD tokens to the user
     IEcoDollar(REBASE_TOKEN).mint(msg.sender, _amount);
     
-    // Get shares after minting to calculate delta
-    uint256 sharesAfter = IEcoDollar(REBASE_TOKEN).getTotalShares();
-    int256 shareDelta = int256(sharesAfter) - int256(sharesBefore);
-    
-    // Send immediate share delta to Rebaser (positive for deposit)
-    _updateRebaserWithShareDelta(shareDelta);
+    // Get current shares for local tracking only
+    uint256 currentShares = IEcoDollar(REBASE_TOKEN).getTotalShares();
     
     // Emit events for tracking
     emit Deposited(msg.sender, _token, _amount);
-    emit SharesUpdated(sharesAfter, shareDelta);
+    emit SharesUpdated(currentShares);
+    
+    // No immediate cross-chain communication
+    // Shares will be reported in next scheduled batch update
 }
 
 /**
- * @notice Notify Rebaser of share delta (positive for increase, negative for decrease)
- * @param _shareDelta The change in shares (can be positive or negative)
- */
-function _updateRebaserWithShareDelta(int256 _shareDelta) internal {
-    // Skip update if no change (though this should never happen)
-    if (_shareDelta == 0) return;
-    
-    // Encode message with share delta
-    bytes memory message = abi.encode(_shareDelta);
-    
-    // Quote fee for cross-chain message
-    uint256 fee = IMailbox(MAILBOX).quoteDispatch(
-        HOME_CHAIN,
-        REBASER,
-        message,
-        "", // Empty metadata for relayer
-        IPostDispatchHook(RELAYER)
-    );
-    
-    // Send share delta to Rebaser
-    IMailbox(MAILBOX).dispatch{value: fee}(
-        HOME_CHAIN,
-        REBASER,
-        message,
-        "", // Empty metadata for relayer
-        IPostDispatchHook(RELAYER)
-    );
-}
-
-/**
- * @notice Withdraw tokens and immediately update Rebaser with share delta
+ * @notice Standard withdrawal function without immediate share updates
  * @param _preferredToken The token to withdraw
  * @param _amount The amount to withdraw
  */
@@ -385,22 +378,14 @@ function withdraw(address _preferredToken, uint80 _amount) external {
         );
     }
     
-    // Get shares before burning
-    uint256 sharesBefore = IEcoDollar(REBASE_TOKEN).getTotalShares();
-    
     // Burn eUSD tokens
     IEcoDollar(REBASE_TOKEN).burn(msg.sender, _amount);
     
-    // Get shares after burning to calculate delta
-    uint256 sharesAfter = IEcoDollar(REBASE_TOKEN).getTotalShares();
-    int256 shareDelta = int256(sharesAfter) - int256(sharesBefore);
-    // shareDelta will be negative for withdrawals
+    // Get current shares for local tracking only
+    uint256 currentShares = IEcoDollar(REBASE_TOKEN).getTotalShares();
     
-    // Send immediate share delta to Rebaser
-    _updateRebaserWithShareDelta(shareDelta);
-    
-    // Track locally and emit event
-    emit SharesUpdated(sharesAfter, shareDelta);
+    // Local tracking only - no cross-chain update
+    emit SharesUpdated(currentShares);
     
     // Process withdrawal
     if (IERC20(_preferredToken).balanceOf(address(this)) > tokenThresholds[_preferredToken] + _amount) {
@@ -412,11 +397,107 @@ function withdraw(address _preferredToken, uint80 _amount) external {
         _addToWithdrawalQueue(_preferredToken, msg.sender, _amount);
     }
 }
+
+/**
+ * @notice Periodic batch update of share totals to Rebaser
+ * @dev Called on a scheduled basis (e.g., hourly) or before rebases
+ */
+function sendSharesUpdate() external {
+    // Only callable by authorized scheduler or admin
+    if (msg.sender != SCHEDULER && msg.sender != owner()) {
+        revert UnauthorizedSharesUpdate(msg.sender);
+    }
+    
+    // Get current total shares
+    uint256 currentShares = IEcoDollar(REBASE_TOKEN).getTotalShares();
+    
+    // Calculate net change since last report
+    int256 changeAmount = int256(currentShares) - int256(lastReportedShares);
+    
+    // Create batch update with metadata
+    BatchShareUpdate memory update = BatchShareUpdate({
+        totalShares: currentShares,
+        changeSinceLastReport: changeAmount,
+        sequenceNumber: ++updateSequence,
+        timestamp: block.timestamp
+    });
+    
+    // Encode message with batch update
+    bytes memory message = abi.encode(update);
+    
+    // Send to Rebaser
+    uint256 fee = IMailbox(MAILBOX).quoteDispatch(
+        HOME_CHAIN,
+        REBASER,
+        message,
+        "", // Empty metadata for relayer
+        IPostDispatchHook(RELAYER)
+    );
+    
+    IMailbox(MAILBOX).dispatch{value: fee}(
+        HOME_CHAIN,
+        REBASER,
+        message,
+        "", // Empty metadata for relayer
+        IPostDispatchHook(RELAYER)
+    );
+    
+    // Update last reported value for next time
+    lastReportedShares = currentShares;
+    
+    emit SharesBatchUpdated(currentShares, changeAmount, updateSequence);
+}
+
+/**
+ * @notice Responds to a verification request from Rebaser
+ * @param _requestId Unique identifier for the verification request
+ */
+function respondToShareVerification(uint256 _requestId) external {
+    // Only callable by authorized verifier or admin
+    if (msg.sender != VERIFIER && msg.sender != owner()) {
+        revert UnauthorizedVerification(msg.sender);
+    }
+    
+    // Get exact current share count
+    uint256 exactShares = IEcoDollar(REBASE_TOKEN).getTotalShares();
+    
+    // Prepare high-priority verification response
+    bytes memory message = abi.encode(
+        ShareVerification({
+            requestId: _requestId,
+            exactShares: exactShares,
+            timestamp: block.timestamp,
+            isPreRebase: true
+        })
+    );
+    
+    // Send with higher gas limit and priority to ensure delivery before rebase
+    uint256 fee = IMailbox(MAILBOX).quoteDispatch(
+        HOME_CHAIN,
+        REBASER,
+        message,
+        abi.encode(true), // High priority flag
+        IPostDispatchHook(RELAYER)
+    );
+    
+    IMailbox(MAILBOX).dispatch{value: fee}(
+        HOME_CHAIN,
+        REBASER,
+        message,
+        abi.encode(true), // High priority flag
+        IPostDispatchHook(RELAYER)
+    );
+    
+    // Update last verified value
+    lastVerifiedShares = exactShares;
+    
+    emit SharesVerified(_requestId, exactShares);
+}
 ```
 
-#### 2. Rebaser Total Shares Tracking
+#### 2. Rebaser Enhanced Share Tracking
 
-##### Real-time Share Tracking System
+##### Robust Share Tracking System with Verification
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#6C78AF', 'primaryTextColor': '#fff', 'primaryBorderColor': '#5D69A0', 'lineColor': '#5D69A0', 'secondaryColor': '#D3D8F9', 'tertiaryColor': '#E7E9FC' }}}%%
@@ -480,13 +561,28 @@ flowchart TD
  * @param _origin The chain ID that reported shares
  * @param _shares The number of shares reported from that chain
  */
+// Define data structures for robust share tracking
+struct BatchShareUpdate {
+    uint256 totalShares;        // Current total shares on this chain
+    int256 changeSinceLastReport; // Net change since last report
+    uint64 sequenceNumber;      // Monotonically increasing sequence number
+    uint64 timestamp;           // Timestamp of this update
+}
+
+struct ShareVerification {
+    uint256 requestId;         // ID of the verification request
+    uint256 exactShares;       // Exact current share count
+    uint64 timestamp;          // Timestamp of verification
+    bool isPreRebase;          // Whether this was requested before a rebase
+}
+
 /**
- * @notice Handle share delta updates from StablePool contracts
+ * @notice Process batch share updates from StablePool
  * @param _origin The chain ID from which the message was sent
  * @param _sender The address that sent the message (32-byte form)
- * @param _message The encoded payload containing share delta
+ * @param _message The encoded batch update
  */
-function handleShareDelta(
+function handleBatchShareUpdate(
     uint32 _origin,
     bytes32 _sender,
     bytes calldata _message
@@ -504,40 +600,165 @@ function handleShareDelta(
         revert InvalidOriginChain(_origin);
     }
     
-    // Decode message payload - single value containing share delta (can be positive or negative)
-    int256 shareDelta = abi.decode(_message, (int256));
+    // Decode batch update
+    BatchShareUpdate memory update = abi.decode(_message, (BatchShareUpdate));
     
-    // Update chain shares using delta - ordering doesn't matter with deltas
-    _updateChainSharesDelta(_origin, shareDelta);
+    // Sequence number verification to prevent replay or out-of-order processing
+    if (update.sequenceNumber <= chainLastSequence[_origin]) {
+        // Skip or log outdated updates but don't revert
+        emit OutdatedShareUpdate(_origin, update.sequenceNumber, chainLastSequence[_origin]);
+        return;
+    }
+    
+    // Update sequence tracking
+    chainLastSequence[_origin] = update.sequenceNumber;
+    
+    // Update chain shares with the new total
+    chainShares[_origin] = update.totalShares;
+    chainLastUpdated[_origin] = update.timestamp;
+    
+    // Recalculate total shares across all chains
+    _recalculateTotalShares();
+    
+    // Emit event for tracking
+    emit BatchSharesUpdated(
+        _origin, 
+        update.totalShares, 
+        update.changeSinceLastReport, 
+        update.sequenceNumber
+    );
 }
 
 /**
- * @notice Update shares for a specific chain using delta and recalculate global total
- * @param _origin The chain ID that reported share change
- * @param _shareDelta The change in shares (positive for increase, negative for decrease)
+ * @notice Process share verification message (used before rebases)
+ * @param _origin The chain ID from which the message was sent
+ * @param _sender The address that sent the message (32-byte form)
+ * @param _message The encoded verification data
  */
-function _updateChainSharesDelta(uint32 _origin, int256 _shareDelta) private {
-    // Skip processing if delta is zero
-    if (_shareDelta == 0) return;
+function handleShareVerification(
+    uint32 _origin,
+    bytes32 _sender,
+    bytes calldata _message
+) external payable {
+    // Security validations
+    if (msg.sender != MAILBOX) {
+        revert UnauthorizedMailbox(msg.sender, MAILBOX);
+    }
     
-    // Apply delta to current chain shares - handle both positive and negative
-    if (_shareDelta > 0) {
-        // Safe addition - increase in shares
-        chainShares[_origin] += uint256(_shareDelta);
-    } else {
-        // Safe subtraction - decrease in shares
-        uint256 absDelta = uint256(-_shareDelta);
-        
-        // Prevent underflow
-        if (absDelta > chainShares[_origin]) {
-            // This should never happen but handle it safely
-            chainShares[_origin] = 0;
-        } else {
-            chainShares[_origin] -= absDelta;
-        }
+    if (_sender != POOL) {
+        revert UnauthorizedSender(_sender, POOL);
+    }
+    
+    if (!validChainIDs[_origin]) {
+        revert InvalidOriginChain(_origin);
+    }
+    
+    // Decode verification data
+    ShareVerification memory verification = abi.decode(_message, (ShareVerification));
+    
+    // Check if this is a response to our verification request
+    if (verificationRequests[verification.requestId].isActive) {
+        // Mark request as fulfilled
+        verificationRequests[verification.requestId].fulfilled = true;
+        verificationRequests[verification.requestId].responseTime = block.timestamp;
+    }
+    
+    // Update chain shares with the verified exact value
+    uint256 previousShares = chainShares[_origin];
+    chainShares[_origin] = verification.exactShares;
+    chainLastVerified[_origin] = verification.timestamp;
+    
+    // Check for significant drift between reported and actual values
+    int256 drift = int256(verification.exactShares) - int256(previousShares);
+    if (uint256(drift < 0 ? -drift : drift) > DRIFT_THRESHOLD) {
+        emit SignificantShareDrift(_origin, previousShares, verification.exactShares, drift);
     }
     
     // Recalculate total shares across all chains
+    _recalculateTotalShares();
+    
+    // Update verification status for this chain
+    chainVerified[_origin] = true;
+    
+    // If this is a pre-rebase verification and we have verification from all chains, mark ready
+    if (verification.isPreRebase) {
+        // Check if all chains are verified
+        bool allVerified = true;
+        for (uint256 i = 0; i < chains.length; i++) {
+            if (!chainVerified[chains[i]]) {
+                allVerified = false;
+                break;
+            }
+        }
+        
+        if (allVerified) {
+            readyForRebase = true;
+            emit AllChainsVerified(totalShares);
+        }
+    }
+    
+    emit ShareVerificationProcessed(
+        _origin,
+        verification.requestId, 
+        verification.exactShares,
+        verification.isPreRebase
+    );
+}
+
+/**
+ * @notice Request verification of share counts from all chains
+ * @dev Called before initiating a rebase
+ */
+function requestShareVerification() external onlyOwner {
+    // Create a new verification request
+    uint256 requestId = ++verificationRequestCounter;
+    
+    // Reset verification status for all chains
+    for (uint256 i = 0; i < chains.length; i++) {
+        chainVerified[chains[i]] = false;
+    }
+    
+    // Record verification request
+    verificationRequests[requestId] = VerificationRequest({
+        requestTime: block.timestamp,
+        isActive: true,
+        fulfilled: false,
+        responseTime: 0
+    });
+    
+    readyForRebase = false;
+    
+    // Send verification request to all chains
+    for (uint256 i = 0; i < chains.length; i++) {
+        uint32 chainId = chains[i];
+        
+        bytes memory message = abi.encode(requestId);
+        
+        // Send with high priority
+        uint256 fee = IMailbox(MAILBOX).quoteDispatch(
+            chainId,
+            POOL,
+            message,
+            abi.encode(true), // High priority flag
+            IPostDispatchHook(RELAYER)
+        );
+        
+        IMailbox(MAILBOX).dispatch{value: fee}(
+            chainId,
+            POOL,
+            message,
+            abi.encode(true), // High priority flag
+            IPostDispatchHook(RELAYER)
+        );
+    }
+    
+    emit VerificationRequested(requestId);
+}
+
+/**
+ * @notice Recalculate total shares across all chains
+ */
+function _recalculateTotalShares() private {
     uint256 totalSharesAcrossChains = 0;
     for (uint256 i = 0; i < chains.length; i++) {
         totalSharesAcrossChains += chainShares[chains[i]];
@@ -546,8 +767,8 @@ function _updateChainSharesDelta(uint32 _origin, int256 _shareDelta) private {
     // Update total shares state
     totalShares = totalSharesAcrossChains;
     
-    // Emit event for tracking
-    emit TotalSharesUpdated(totalShares, _origin, _shareDelta);
+    // Emit event
+    emit TotalSharesUpdated(totalShares);
 }
 ```
 
@@ -1003,16 +1224,24 @@ error InvalidOriginChain(uint32 chain);
 event RebaseInitiated(uint256 balances, uint256 shares, uint256 profit, uint32 homeChain, uint256 messageId);
 event RebaseFinalized(uint256 oldMultiplier, uint256 newMultiplier);
 event EcoDollarMultiplierUpdated(uint256 oldMultiplier, uint256 newMultiplier);
-event SharesUpdated(uint256 newTotalShares, int256 shareDelta);
+event SharesUpdated(uint256 newTotalShares);
+event SharesBatchUpdated(uint256 totalShares, int256 changeAmount, uint64 sequence);
+event SharesVerified(uint256 requestId, uint256 exactShares);
 event Deposited(address indexed user, address indexed token, uint256 amount);
 event Withdrawn(address indexed user, address indexed token, uint256 amount);
 
 // Rebaser events
 event ReceivedRebaseInformation(uint32 origin, uint256 balances, uint256 shares, uint256 profit);
 event CalculatedRebase(uint256 balancesTotal, uint256 sharesTotal, uint256 profitTotal, uint256 protocolShareAmount, uint256 newMultiplier);
+event BatchSharesUpdated(uint32 originChain, uint256 totalShares, int256 changeAmount, uint64 sequence);
+event OutdatedShareUpdate(uint32 originChain, uint64 receivedSequence, uint64 currentSequence);
+event SignificantShareDrift(uint32 originChain, uint256 previousValue, uint256 verifiedValue, int256 drift);
+event ShareVerificationProcessed(uint32 originChain, uint256 requestId, uint256 exactShares, bool isPreRebase);
+event VerificationRequested(uint256 requestId);
+event AllChainsVerified(uint256 totalVerifiedShares);
 event ProtocolShareMinted(uint256 protocolShareAmount, address treasury);
 event ProtocolShareRateSet(uint256 newRate);
-event TotalSharesUpdated(uint256 totalShares, uint32 originChain, int256 shareDelta);
+event TotalSharesUpdated(uint256 totalShares);
 ```
 
 
@@ -1020,14 +1249,27 @@ event TotalSharesUpdated(uint256 totalShares, uint32 originChain, int256 shareDe
 
 The following encoding formats are used consistently throughout the system for future service integration:
 
-1. **StablePool to Rebaser** (share delta message):
+1. **StablePool to Rebaser** (batch share update):
    ```solidity
-   abi.encode(shareDelta)
+   abi.encode(BatchShareUpdate({
+       totalShares: currentShares,
+       changeSinceLastReport: changeAmount,
+       sequenceNumber: sequence,
+       timestamp: block.timestamp
+   }))
    ```
-   Where:
-   - `shareDelta`: Change in shares (int256, positive for deposits, negative for withdrawals)
    
-2. **StablePool to Rebaser** (rebase initiation):
+2. **StablePool to Rebaser** (verification response):
+   ```solidity
+   abi.encode(ShareVerification({
+       requestId: requestId,
+       exactShares: currentShares,
+       timestamp: block.timestamp,
+       isPreRebase: true
+   }))
+   ```
+   
+3. **StablePool to Rebaser** (rebase initiation):
    ```solidity
    abi.encode(localTokens, localShares, profit)
    ```
@@ -1036,7 +1278,14 @@ The following encoding formats are used consistently throughout the system for f
    - `localShares`: Total EcoDollar shares
    - `profit`: Accumulated profit since last rebase
 
-3. **Rebaser to StablePool** (multiplier update):
+4. **Rebaser to StablePool** (verification request):
+   ```solidity
+   abi.encode(requestId)
+   ```
+   Where:
+   - `requestId`: Unique identifier for the verification request
+
+5. **Rebaser to StablePool** (multiplier update):
    ```solidity
    abi.encode(newMultiplier)
    ```
@@ -1182,56 +1431,81 @@ slither contracts/EcoDollar.sol --detect unchecked-lowlevel
   - [ ] Sub-task 1.3: Create helper functions for cross-chain test scenarios
 
 - [ ] Step 2: Fix critical issues [Priority: Critical] [Est: 0.5h]
-  - [ ] Sub-task 2.1: Update EcoDollar with updateRewardMultiplier method
-  - [ ] Sub-task 2.2: Write tests verifying fixes
-  - [ ] Sub-task 2.3: Run security analysis on fixed code
+  - [x] Sub-task 2.1: Verify EcoDollar has updateRewardMultiplier method (found at line 79 in EcoDollar.sol)
+  - [x] Sub-task 2.2: Verify we need to fix double burn in withdraw (found at lines 138-152 in StablePool.sol)
+  - [x] Sub-task 2.3: Verify rebaseInProgress flag has been removed (confirmed in comments at line 66 in StablePool.sol)
+  - [ ] Sub-task 2.4: Write tests verifying fixes
+  - [ ] Sub-task 2.5: Run security analysis on fixed code
 
-- [ ] Step 3: Implement share delta reporting from StablePool [Priority: High] [Est: 2.5h]
+- [ ] Step 3: Implement batch share updates from StablePool [Priority: High] [Est: 3h]
   - [ ] Sub-task 3.1: Add accumulatedProfit variable to StablePool contract
-  - [ ] Sub-task 3.2: Add _updateRebaserWithShareDelta helper function for cross-chain messaging
-  - [ ] Sub-task 3.3: Update deposit function to calculate and send share deltas to Rebaser
-  - [ ] Sub-task 3.4: Update withdraw function to calculate and send share deltas to Rebaser
-  - [ ] Sub-task 3.5: Update SharesUpdated event to include share delta
-  - [ ] Sub-task 3.6: Write tests for share delta tracking
-  - [ ] Sub-task 3.7: Implement initiateRebase with fixed authority check
-  - [ ] Sub-task 3.8: Ensure proper profit reset in storage (accumulatedProfit = 0)
+  - [ ] Sub-task 3.2: Add lastReportedShares variable to track previous reported value
+  - [ ] Sub-task 3.3: Add updateSequence counter for message sequencing
+  - [ ] Sub-task 3.4: Add BatchShareUpdate struct definition
+  - [ ] Sub-task 3.5: Add ShareVerification struct definition
+  - [ ] Sub-task 3.6: Implement sendSharesUpdate function for periodic batch updates
+  - [ ] Sub-task 3.7: Add SharesBatchUpdated event
+  - [ ] Sub-task 3.8: Implement respondToShareVerification for pre-rebase verification
+  - [ ] Sub-task 3.9: Update initiateRebase to include profit information
+  - [ ] Sub-task 3.10: Standardize message encoding format (replace abi.encodePacked with abi.encode)
+  - [ ] Sub-task 3.11: Ensure proper profit reset in storage (accumulatedProfit = 0)
+  - [ ] Sub-task 3.12: Write tests for batch update and verification
+  - [ ] Sub-task 3.13: Fix double burn in withdraw() function
+  - [ ] Sub-task 3.14: Add proper deposit/withdraw event emissions with share updates
 
-- [ ] Step 4: Implement Rebaser share delta tracking [Priority: High] [Est: 2.5h]
+- [ ] Step 4: Implement robust Rebaser share tracking [Priority: High] [Est: 3h]
   - [ ] Sub-task 4.1: Add chainShares mapping to track shares by chain ID
-  - [ ] Sub-task 4.2: Implement totalShares state variable for cross-chain aggregation
-  - [ ] Sub-task 4.3: Add handleShareDelta function to process delta-based updates
-  - [ ] Sub-task 4.4: Implement _updateChainSharesDelta helper with safe math
-  - [ ] Sub-task 4.5: Update TotalSharesUpdated event to include origin chain and delta
-  - [ ] Sub-task 4.6: Update rebase calculation function to use current totalShares value
-  - [ ] Sub-task 4.7: Write tests for share delta tracking functionality
-  - [ ] Sub-task 4.8: Add constructor parameter for initialProtocolShareRate
-  - [ ] Sub-task 4.9: Implement owner-controlled setProtocolShareRate function
-  - [ ] Sub-task 4.10: Implement protocol share allocation and minting to treasury
+  - [x] Sub-task 4.2: Validate that chains and validChainIDs are already defined (confirmed at lines 33-40 in Rebaser.sol)
+  - [ ] Sub-task 4.3: Add sequence tracking (chainLastSequence) for each chain
+  - [ ] Sub-task 4.4: Add timestamp tracking (chainLastUpdated, chainLastVerified)
+  - [ ] Sub-task 4.5: Add VerificationRequest struct and tracking system
+  - [ ] Sub-task 4.6: Add chainVerified mapping for tracking verification status
+  - [ ] Sub-task 4.7: Add readyForRebase flag for pre-rebase coordination
+  - [ ] Sub-task 4.8: Add BatchShareUpdate struct definition
+  - [ ] Sub-task 4.9: Add ShareVerification struct definition
+  - [ ] Sub-task 4.10: Implement handleBatchShareUpdate for batch updates
+  - [ ] Sub-task 4.11: Implement handleShareVerification for verification messages
+  - [ ] Sub-task 4.12: Implement requestShareVerification for pre-rebase coordination
+  - [ ] Sub-task 4.13: Implement _recalculateTotalShares helper function
+  - [ ] Sub-task 4.14: Update rebase calculation to use verified share values
+  - [ ] Sub-task 4.15: Add drift detection and reporting mechanisms
+  - [x] Sub-task 4.16: Verify constructor already accepts protocolRate parameter (confirmed at line 72 in Rebaser.sol)
+  - [x] Sub-task 4.17: Verify owner-controlled changeprotocolRate function exists (found at line 109 in Rebaser.sol)
+  - [ ] Sub-task 4.18: Implement protocol share allocation and minting to treasury
+  - [ ] Sub-task 4.19: Update standardized message encoding (using abi.encode consistently)
+  - [ ] Sub-task 4.20: Remove protocol token minting from propagateRebase
 
 - [ ] Step 5: Refine EcoDollar's multiplier update mechanism [Priority: High] [Est: 1h]
-  - [ ] Sub-task 5.1: Enhance updateRewardMultiplier method security
-  - [ ] Sub-task 5.2: Improve event emissions for multiplier changes
-  - [ ] Sub-task 5.3: Verify share-to-token conversion accuracy across multiplier changes
+  - [x] Sub-task 5.1: Verify updateRewardMultiplier method security (confirmed with onlyOwner at line 79 in EcoDollar.sol)
+  - [x] Sub-task 5.2: Verify event emissions for multiplier changes (found at line 82 in EcoDollar.sol)
+  - [x] Sub-task 5.3: Verify share-to-token conversion accuracy (confirmed at lines 60-71 in EcoDollar.sol)
+  - [ ] Sub-task 5.4: Add minimum multiplier validation check (optional, may not be needed for rebases)
 
 - [ ] Step 6: Complete StablePool rebase finalization [Priority: High] [Est: 1.5h]
   - [ ] Sub-task 6.1: Write tests for StablePool's handle function with various scenarios
-  - [ ] Sub-task 6.2: Implement handle function exactly as shown in swimlane diagram
-  - [ ] Sub-task 6.3: Implement direct EcoDollar multiplier update from StablePool
-  - [ ] Sub-task 6.4: Ensure proper end-of-process handling
+  - [x] Sub-task 6.2: Verify access control in handle function (confirmed at lines 311-317 in StablePool.sol)  
+  - [ ] Sub-task 6.3: Update handle function to use standardized message format
+  - [ ] Sub-task 6.4: Remove protocol token minting from handle function (lines 325-328 in StablePool.sol)
+  - [ ] Sub-task 6.5: Add proper event emissions for multiplier updates
+  - [ ] Sub-task 6.6: Ensure proper end-of-process handling
 
+- [ ] Step 7: Build integration test suite [Priority: Critical] [Est: 1.5h]
+  - [ ] Sub-task 7.1: Create unit tests for StablePool batch share updates
+  - [ ] Sub-task 7.2: Create unit tests for Rebaser share tracking and verification
+  - [ ] Sub-task 7.3: Test message format consistency across components
+  - [ ] Sub-task 7.4: Verify correct profit tracking and reset
+  - [ ] Sub-task 7.5: Verify protocol share minting on home chain only
+  - [ ] Sub-task 7.6: Test batch share updates with various scenarios
+  - [ ] Sub-task 7.7: Test pre-rebase verification with sequence numbering
+  - [ ] Sub-task 7.8: Test double burn fix in withdraw function
 
-- [ ] Step 8: Build integration test suite [Priority: Critical] [Est: 1.5h]
-  - [ ] Sub-task 8.1: Create unit tests for StablePool and Rebaser components
-  - [ ] Sub-task 8.2: Test message format consistency across components
-  - [ ] Sub-task 8.3: Verify correct profit tracking and reset
-  - [ ] Sub-task 8.4: Verify protocol share minting on home chain only
-
-- [ ] Step 9: Security and optimization [Priority: Critical] [Est: 1.5h]
-  - [ ] Sub-task 9.1: Run comprehensive security analysis with Slither
-  - [ ] Sub-task 9.2: Measure and optimize gas usage for cross-chain operations
-  - [ ] Sub-task 9.3: Verify access control across all components
-  - [ ] Sub-task 9.4: Complete NatSpec documentation for all functions
-  - [ ] Sub-task 9.5: Generate gas report and security analysis documentation
+- [ ] Step 8: Security and optimization [Priority: Critical] [Est: 1.5h]
+  - [ ] Sub-task 8.1: Run comprehensive security analysis with Slither
+  - [ ] Sub-task 8.2: Measure and optimize gas usage for batch updates
+  - [ ] Sub-task 8.3: Verify access control for new batch update functions
+  - [ ] Sub-task 8.4: Verify message sequence integrity protections
+  - [ ] Sub-task 8.5: Complete NatSpec documentation for all new functions
+  - [ ] Sub-task 8.6: Generate gas report and security analysis documentation
 
 ## Validation Checkpoints
 
@@ -1240,23 +1514,27 @@ slither contracts/EcoDollar.sol --detect unchecked-lowlevel
 | Subtask | Compilation | Test Coverage | Security Checks | Gas Analysis | Documentation |
 |---------|-------------|---------------|-----------------|--------------|---------------|
 | 1.1-1.3 Test infrastructure | Must compile | Framework tested | N/A | N/A | Test strategy documented |
-| 2.1-2.4 Fix critical bugs | Must compile | 100% coverage | Slither validation | Before/after comparison | Bug fix documented |
-| 3.1-3.4 StablePool rebase | Must compile | 100% coverage | Access control verified | Gas snapshot | NatSpec complete |
-| 4.1-4.5 Rebaser calculation | Must compile | 100% coverage | Math safety verified | Gas optimization | NatSpec complete |
-| 5.1-5.5 EcoDollar updates | Must compile | 100% coverage | Privilege checks verified | Gas analysis | NatSpec complete |
-| 6.1-6.4 Rebase finalization | Must compile | 100% coverage | No protocol fee minting verified | Gas snapshot | NatSpec complete |
-| 7.1-7.5 Integration testing | Must compile | E2E flow covered | Attack vectors tested | N/A | Test cases documented |
-| 8.1-8.5 Security & optimization | Must compile | All tests pass | No critical findings | 10%+ gas reduction | Complete report |
+| 2.1-2.5 Validate and fix critical issues | Must compile | 100% coverage | Slither validation | Before/after comparison | Bug fix documented |
+| 3.1-3.14 Batch share updates in StablePool | Must compile | 100% coverage | Access control verified | Gas snapshot | NatSpec complete |
+| 4.1-4.20 Share tracking in Rebaser | Must compile | 100% coverage | Math safety verified | Gas optimization | NatSpec complete |
+| 5.1-5.4 EcoDollar multiplier mechanism | Must compile | 100% coverage | Privilege checks verified | Gas analysis | NatSpec complete |
+| 6.1-6.6 StablePool message handling | Must compile | 100% coverage | No protocol fee minting verified | Gas snapshot | NatSpec complete |
+| 7.1-7.8 Integration testing | Must compile | E2E flow covered | Attack vectors tested | N/A | Test cases documented |
+| 8.1-8.6 Security & optimization | Must compile | All tests pass | No critical findings | 10%+ gas reduction | Complete report |
 
 ### Quality Requirements
 
 - **Code must follow all [Solidity Implementation Requirements](../CLAUDE.md#solidity-implementation-requirements)**
-- **100% test coverage for all modified functions**
-- **All functions must have comprehensive NatSpec documentation**
+- **100% test coverage for all new and modified functions**
+- **All new functions must have comprehensive NatSpec documentation**
 - **All public/external functions must use custom errors instead of require strings**
 - **All state changes must emit appropriate events**
 - **All code must follow the checks-effects-interactions pattern**
 - **All functions must implement proper access control**
+- **All message encodings should use abi.encode consistently**
+- **All cross-chain messages should include sequence numbering when appropriate**
+- **All token transfers should be properly tested for reentrancy vulnerabilities**
+- **All functions should include appropriate validation checks before state changes**
 
 ## Risk Assessment
 
@@ -1264,24 +1542,42 @@ slither contracts/EcoDollar.sol --detect unchecked-lowlevel
 
 1. **Protocol Share Calculation**
    - **Risk**: Incorrect calculation could lead to over/under-minting of protocol share tokens
+   - **Current Implementation**: Rebaser has protocolRate (for protocol share) and calculates protocol share amount
    - **Mitigation**: Comprehensive testing with diverse scenarios, mathematical verification
 
-2. **Rebase State Management**
-   - **Risk**: Improper state management could block future rebases
-   - **Mitigation**: Ensure state is reset properly even on errors, add admin recovery function
+2. **Share Tracking Accuracy**
+   - **Risk**: Inaccurate share tracking could result in incorrect multiplier calculations
+   - **Current Implementation**: Basic tracking without sequence numbers or verification
+   - **Mitigation**: Add batch updates with sequence numbers and mandatory pre-rebase verification
+
+3. **Double Burn in Withdraw Function**
+   - **Risk**: Token shares are burned twice during withdrawal, leading to user fund loss
+   - **Current Implementation**: Confirmed issue in withdraw function
+   - **Mitigation**: Fix the withdraw function to only burn tokens once
 
 Note: Cross-chain message handling will be handled by a separate service, so associated risks and service integration testing are out of scope for this implementation.
 
 ### Medium-Risk Areas
 
-1. **Gas Optimization**
-   - **Risk**: Inefficient code could make operations too expensive
-   - **Mitigation**: Gas benchmarking, optimization of hot paths, minimize storage operations
+1. **Message Ordering and Sequence Integrity**
+   - **Risk**: Out-of-order message processing could cause incorrect state updates
+   - **Current Implementation**: No sequence numbering in messages
+   - **Mitigation**: Add sequence numbers, timestamps, and tracking for all cross-chain messages
 
+2. **Gas Optimization for Batch Updates**
+   - **Risk**: Excessive gas costs for frequent share updates across chains
+   - **Current Implementation**: Updates sent for every rebase without batching
+   - **Mitigation**: Implement batch updates to reduce frequency of cross-chain messages
 
-2. **Chain Addition/Removal**
-   - **Risk**: Adding/removing chains could disrupt rebase flow
-   - **Mitigation**: Ensure proper chain validation in contract code
+3. **Protocol Share Minting Location**
+   - **Risk**: Protocol share minted on all chains instead of just the home chain
+   - **Current Implementation**: StablePool mints protocol share tokens locally
+   - **Mitigation**: Move protocol share minting exclusively to home chain Rebaser
+
+4. **Chain Addition/Removal**
+   - **Risk**: Adding/removing chains could disrupt share tracking
+   - **Current Implementation**: Chains array and validChainIDs mapping exist but need enhancement
+   - **Mitigation**: Ensure proper chain validation with verification in the enhanced implementation
 
 ## Rollback and Recovery Plan
 
@@ -1292,7 +1588,17 @@ If implementation fails or critical issues are discovered:
    - Run comprehensive tests to verify fix works
    - Deploy emergency update if already in production
 
-2. **For Complex Implementation Issues**:
+2. **For Share Tracking Issues**:
+   - Add administrative rescue function to reset or correct share tracking state
+   - Implement verification fallback mechanism that can be triggered manually
+   - Add diagnostic function to identify discrepancies between expected and actual shares
+
+3. **For Message Format Compatibility**:
+   - Include version indicator in message format to support both old and new formats
+   - Add message format converter function during transition period
+   - Maintain backward compatibility with current message processing
+
+4. **For Rebaser Calculation Issues**:
    ```bash
    # Create debug branch for analysis
    git checkout -b debug/rebase-flow-issue-<issue-id>
@@ -1309,7 +1615,7 @@ If implementation fails or critical issues are discovered:
    git cherry-pick -x <fix-commit>
    ```
 
-3. **For Cross-Chain Coordination Issues**:
+5. **For Cross-Chain Coordination Issues**:
    - Implement circuit breaker in home chain Rebaser
    - Add admin recovery function to reset stuck rebase state
    - Create diagnostic function to verify system consistency
@@ -1319,8 +1625,11 @@ If implementation fails or critical issues are discovered:
 - [x] Plan created
 - [x] Plan approved by user
 - [x] Decisions confirmed (all Decision Points have exactly ONE selected option)
-- [ ] Implementation complete
-- [ ] Testing complete
+- [x] Current implementation analyzed and validated
+- [ ] Implementation of batch share updates complete
+- [ ] Implementation of share verification system complete
+- [ ] Testing complete with 100% coverage
+- [ ] Security analysis complete
 - [ ] Final review complete
 
 ## Commit Message Template
@@ -1337,6 +1646,36 @@ If implementation fails or critical issues are discovered:
 ```
 
 ---
+
+# Current Analysis Summary
+
+Based on a thorough review of the existing codebase, we've identified the following key points:
+
+1. **EcoDollar Contract**:
+   - The `updateRewardMultiplier` method already exists with proper access controls
+   - Share-based accounting is correctly implemented with token-to-share conversion functions
+   - Event emissions are properly implemented for multiplier updates
+
+2. **StablePool Contract**:
+   - The `rebaseInProgress` flag has already been removed as concurrent rebases are safe
+   - The contract currently uses `abi.encodePacked` for message encoding, which should be changed to `abi.encode`
+   - The current implementation mints protocol share tokens locally, which should be moved to home chain only
+   - There is a potential double burn issue in the withdraw function that needs to be fixed
+   - The contract needs additional state variables for batch share updates and verification
+
+3. **Rebaser Contract**:
+   - Already has chains array and validChainIDs mapping for chain tracking
+   - Already has protocolRate for protocol share calculation
+   - No sequence numbering or verification mechanism for share tracking
+   - The message decoding assumes a specific format that will need to be updated
+   - Contains a TODO comment to combine chain data as a struct
+
+4. **Cross-Chain Messaging**:
+   - Currently uses Hyperlane's IMailbox and IMessageRecipient interfaces
+   - Message formats need to be standardized to use abi.encode consistently
+   - No sequence numbering or verification system is currently implemented
+
+The implementation plan has been updated to reflect these findings, with specific tasks to enhance the existing implementation with batch-based share updates, verification mechanisms, and other improvements.
 
 > **IMPORTANT: Before moving to implementation:**
 >
