@@ -15,7 +15,7 @@
 
 ## Executive Summary
 
-This implementation plan details the cross-chain Rebase Flow mechanism for the Eco Routes Protocol. The rebase flow ensures eUSD tokens maintain consistent value across all supported chains through a three-phase process: collection of local pool metrics, centralized calculation of the global multiplier, and distribution of updated rates to all participating chains. This implementation will fix critical bugs in the existing contracts, optimize cross-chain messaging, and provide robust error handling for all components.
+This implementation plan details the cross-chain Rebase Flow mechanism for the Eco Routes Protocol utilizing a rebase-synchronized withdrawal queue model. The rebase flow ensures eUSD tokens maintain consistent value and fair profit distribution across all supported chains through a synchronized process: withdrawals are queued with tokens locked but not burned, a rebase process collects metrics from all chains, calculates a new multiplier centrally, propagates the updated multiplier to all chains, and finally processes all withdrawal queues using the new multiplier. This approach ensures perfect fairness in profit distribution, minimizes cross-chain message overhead, and eliminates cross-chain consistency challenges while maintaining protocol economic integrity.
 
 ## Implementation Information
 
@@ -33,37 +33,40 @@ This implementation plan details the cross-chain Rebase Flow mechanism for the E
 
 The Rebase Flow operates across a multi-chain architecture with these core components:
 
-1. **StablePool (per chain)**: Manages deposits/withdrawals and initiates rebase flow
+1. **StablePool (per chain)**: Manages deposits, withdrawal queues, and participates in rebase flow
 2. **Rebaser (home chain only)**: Central coordinator for cross-chain rebase calculations
 3. **EcoDollar (per chain)**: Rebasing token that uses share-based accounting
 4. **Hyperlane Integration**: Cross-chain messaging protocol for communication
 
 ### Current Implementation Status
 
-- **StablePool**: Basic rebase initiation exists but lacks proper state management
-- **Rebaser**: Most calculation logic exists but needs error handling improvements
+- **StablePool**: Basic rebase handling exists but lacks withdrawal queue functionality
+- **Rebaser**: Most calculation logic exists but needs synchronization improvements
 - **EcoDollar**: Share-based accounting implemented but rebase function needs validation
 - **Critical Bug**: Double burn in StablePool withdraw function must be fixed
-- **Missing Components**: Proper error handling, comprehensive testing, event emissions
+- **Missing Components**: Withdrawal queue system, rebase synchronization, proper error handling, comprehensive testing, event emissions
 
 ## Goals and Scope
 
 ### Primary Goals
 
-1. Implement complete cross-chain rebase flow matching the swimlane diagram
-2. Fix critical issues in existing implementation (update reward multiplier, remove rebaseInProgress flag)
-3. Ensure mathematically correct profit calculation and distribution
-4. Implement secure protocol share allocation and treasury distribution
-5. Build comprehensive test suite covering the entire rebase flow
+1. Implement rebase-synchronized withdrawal queue system across all chains
+2. Implement complete cross-chain rebase flow with synchronized processing
+3. Fix critical issues in existing implementation (update reward multiplier, remove rebaseInProgress flag)
+4. Ensure mathematically correct profit calculation and distribution
+5. Implement secure protocol share allocation and treasury distribution
+6. Ensure fair profit distribution to all users regardless of withdrawal timing
+7. Build comprehensive test suite covering the entire rebase flow
 
 ### Out of Scope
 
-1. Changes to the fundamental architecture of the system
-2. Withdrawal queue processing (in a separate implementation plan)
-3. Cross-chain message handling (will be handled by a service)
-4. Testing integration with external messaging service
-5. Changes to deployment strategy
-6. UI integration or external system interactions
+1. Changes to the fundamental architecture of the system beyond withdrawal queue implementation
+2. Cross-chain message handling (will be handled by a service)
+3. Testing integration with external messaging service
+4. Changes to deployment strategy
+5. UI integration or external system interactions
+6. Secondary markets for withdrawal queue positions
+7. Advanced queue optimization strategies
 
 ## Decision Points
 
@@ -191,17 +194,20 @@ The diagram above illustrates the complete implementation flow with:
 ### Files to Modify
 
 - **contracts/StablePool.sol**
+  - Implement withdrawal queue system with queue management functions
+  - Modify withdraw function to queue withdrawals instead of processing immediately
+  - Add queue processing function to execute after rebase
   - Add profit tracking variable to store accumulated profit
-  - Update deposit and withdraw functions to track and report EcoDollar shares
+  - Update deposit function to maintain protocol accounting
   - Enhance rebase initiation with fixed authority check
   - Implement handle function for receiving rebase data
   - Add direct access to update EcoDollar's multiplier
-  - Add event emissions for tracking share changes and rebase events
+  - Add event emissions for queue operations and rebase events
 
 - **contracts/Rebaser.sol**
   - Implement tracking of total EcoDollar shares across all chains
-  - Add share aggregation logic to handle function
-  - Optimize protocol share calculation using protocolShareRate
+  - Enhance protocol share calculation using protocolShareRate
+  - Add synchronization for withdrawal queue processing
   - Add owner-controlled function to update protocolShareRate
   - Add proper event emissions for share tracking and protocol share allocation
   - Combine chains and validChainIDs as a struct
@@ -217,15 +223,13 @@ The diagram above illustrates the complete implementation flow with:
   - Add updateRewardMultiplier to interface for StablePool access
 
 - **test/RebaseFlow.t.sol** (new file)
-  - Implement comprehensive test suite for rebase flow
+  - Implement comprehensive test suite for rebase flow and withdrawal queue
 
 ### Core Architecture Enhancements
 
-#### 1. Improved Share Tracking Approaches
+#### 1. Rebase-Synchronized Withdrawal Queue System
 
-After analyzing the challenges with per-transaction delta updates, we've identified more robust approaches for keeping the Rebaser updated with total shares:
-
-##### Approach A: Periodic Batch Updates with Pre-Rebase Sync (Recommended)
+The rebase-synchronized withdrawal queue approach fundamentally changes how withdrawals and rebases interact in the protocol:
 
 ```mermaid
 %%{init: {'theme': 'dark', 'themeVariables': { 'primaryColor': '#2D74BA', 'primaryTextColor': '#FFFFFF', 'primaryBorderColor': '#1D4E89', 'lineColor': '#5D9CEC', 'secondaryColor': '#1D2B3A', 'tertiaryColor': '#132030', 'textColor': '#FFFFFF', 'fontSize': '14px', 'fontFamily': 'Arial', 'edgeLabelBackground': '#132030', 'mainBkg': '#132030', 'clusterBkg': '#1D2B3A', 'altBackground': '#132030', 'actorBkg': '#2D74BA', 'actorBorder': '#1D4E89', 'actorTextColor': '#FFFFFF', 'noteBkgColor': '#284665', 'noteBorderColor': '#2D74BA', 'noteTextColor': '#FFFFFF' }}}%%
@@ -239,98 +243,75 @@ sequenceDiagram
     
     rect rgb(24, 44, 67)
     Note over Users,StablePool: Normal Operation Period
-    Users->>StablePool: Multiple deposits/withdrawals
-    StablePool->>EcoDollar: mint/burn operations
+    Users->>StablePool: Deposit funds
+    StablePool->>EcoDollar: Mint tokens
     EcoDollar-->>EcoDollar: Update shares internally
+    
+    Users->>StablePool: Request withdrawal
+    StablePool->>StablePool: Lock tokens in withdrawal queue
+    StablePool-->>Users: Withdrawal queued confirmation
     end
     
     rect rgb(32, 59, 89)
-    Note over StablePool,Rebaser: Scheduled Batch Update (e.g., hourly)
+    Note over StablePool,Rebaser: Rebase Initiation Phase
     StablePool->>EcoDollar: getTotalShares()
     EcoDollar-->>StablePool: Current total shares
-    StablePool->>StablePool: Store previous reported shares
-    StablePool->>StablePool: Calculate net change since last report
-    StablePool->>Mailbox: Send batch update with (total, changeAmount, sequenceNum)
-    Mailbox-->>Rebaser: Deliver batch update
-    Rebaser->>Rebaser: Update chainShares with sequence verification
-    Rebaser->>Rebaser: Update totalShares across chains
+    StablePool->>StablePool: Calculate local profit
+    StablePool->>Mailbox: Send local metrics to home chain
+    Mailbox-->>Rebaser: Deliver local metrics
     end
     
     rect rgb(49, 78, 112)
-    Note over StablePool,Rebaser: Mandatory Pre-Rebase Sync
-    Note right of Rebaser: Rebase Initiated
-    Rebaser->>Rebaser: Request current shares from all pools
-    Rebaser->>Mailbox: Send share verification request
-    Mailbox-->>StablePool: Deliver verification request
-    StablePool->>EcoDollar: getTotalShares()
-    EcoDollar-->>StablePool: Current exact shares
-    StablePool->>Mailbox: Send exact share count with high priority
-    Mailbox-->>Rebaser: Deliver exact share count
-    Rebaser->>Rebaser: Update with authoritative values
-    Rebaser->>Rebaser: Proceed with rebase calculations
+    Note over StablePool,Rebaser: Rebase Calculation Phase
+    Rebaser->>Rebaser: Aggregate metrics from all chains
+    Rebaser->>Rebaser: Calculate protocol share
+    Rebaser->>Rebaser: Mint protocol share to treasury
+    Rebaser->>Rebaser: Calculate new multiplier
+    Rebaser->>Mailbox: Distribute new multiplier to all chains
+    Mailbox-->>StablePool: Deliver new multiplier
+    StablePool->>EcoDollar: updateRewardMultiplier()
+    end
+    
+    rect rgb(59, 94, 135)
+    Note over StablePool,Users: Withdrawal Processing Phase
+    StablePool->>StablePool: Process withdrawal queue
+    StablePool->>EcoDollar: Burn tokens for queued withdrawals
+    StablePool->>Users: Transfer withdrawn assets
+    StablePool-->>Users: Withdrawal complete confirmation
     end
 ```
 
-##### Approach B: Threshold-Based Delta Updates with Reconciliation
+This approach provides several key advantages:
 
-```mermaid
-%%{init: {'theme': 'dark', 'themeVariables': { 'primaryColor': '#2D74BA', 'primaryTextColor': '#FFFFFF', 'primaryBorderColor': '#1D4E89', 'lineColor': '#5D9CEC', 'secondaryColor': '#1D2B3A', 'tertiaryColor': '#132030', 'textColor': '#FFFFFF', 'fontSize': '14px', 'fontFamily': 'Arial', 'edgeLabelBackground': '#132030', 'mainBkg': '#132030', 'clusterBkg': '#1D2B3A', 'nodeTextColor': '#FFFFFF', 'nodeBorder': '#2D74BA', 'labelTextColor': '#FFFFFF', 'clusterBorder': '#1D4E89' }}}%%
+1. **Fair Profit Distribution**: All users, whether staying or leaving, receive their fair share of profits through the rebase
+2. **Cross-Chain Efficiency**: Eliminates the need for per-transaction cross-chain messaging
+3. **Perfect Consistency**: No need for complex delta tracking or sequence verification
+4. **Economic Integrity**: Prevents users from "escaping" before rebases apply profits across the system
 
-flowchart TD
-    subgraph "StablePool Operations"
-        deposit["Deposit/Withdraw Operations"]
-        deposit --> updateLocal["Update Local Delta Counter"]
-        updateLocal --> checkThreshold{"Delta > Threshold?"}
-        checkThreshold -->|Yes| sendUpdate["Send Delta Update to Rebaser"]
-        checkThreshold -->|No| continue["Continue Operations"]
-        
-        timer["Timer (15-minute interval)"]
-        timer --> checkPending{"Pending Deltas?"}
-        checkPending -->|Yes| sendBatch["Send Accumulated Deltas"]
-        checkPending -->|No| reset["Reset Timer"]
-        
-        rebaseReq["Rebase Request Received"]
-        rebaseReq --> sendExact["Send Exact Share Count with High Priority"]
-    end
-    
-    subgraph "Rebaser Operations"
-        receiveUpdate["Receive Delta Updates"]
-        receiveUpdate --> applyDelta["Apply to Chain Shares"]
-        applyDelta --> updateTotal["Update Total Shares"]
-        
-        receiveExact["Receive Exact Share Count"]
-        receiveExact --> reconcile["Reconcile with Current Value"]
-        reconcile --> detectDrift{"Significant Drift?"}
-        detectDrift -->|Yes| recordIssue["Record Discrepancy"]
-        detectDrift -->|No| useExact["Use Exact Value for Rebase"]
-        
-        weekly["Weekly Reconciliation"]
-        weekly --> requestCounts["Request Exact Counts from All Chains"]
-    end
-    
-    sendUpdate --> receiveUpdate
-    sendBatch --> receiveUpdate
-    sendExact --> receiveExact
-    requestCounts --> rebaseReq
-    
-    classDef normal fill:#1D2B3A,stroke:#2D74BA,color:#FFFFFF
-    classDef important fill:#B85D2D,stroke:#89351D,color:#FFFFFF,stroke-width:2px
-    classDef process fill:#284665,stroke:#2D74BA,color:#FFFFFF
-    
-    class deposit,updateLocal,continue,timer normal
-    class sendUpdate,sendBatch,sendExact,receiveExact,reconcile,requestCounts process
-    class rebaseReq,detectDrift,recordIssue,useExact important
-```
-
-##### Implementation Details
+#### 2. Withdrawal Queue Implementation Details
 
 ```solidity
 /**
- * @notice Batch-based share tracking implementation (Approach A)
+ * @notice Withdrawal queue entry structure
  */
+struct WithdrawalRequest {
+    address user;           // User requesting withdrawal
+    uint256 shareAmount;    // Amount in shares (not tokens)
+    address preferredToken; // Token to receive upon withdrawal
+    uint256 requestTime;    // Timestamp of request
+    bool processed;         // Whether this request has been processed
+}
 
 /**
- * @notice Standard deposit function without immediate share updates
+ * @notice Withdrawal queue tracking
+ */
+mapping(uint256 => WithdrawalRequest) public withdrawalQueue;
+uint256 public nextWithdrawalId;        // Next ID to assign
+uint256 public firstPendingWithdrawal;  // First unprocessed withdrawal
+bool public withdrawalProcessingActive; // Processing state flag
+
+/**
+ * @notice Standard deposit function
  * @param _token The token to deposit
  * @param _amount The amount to deposit
  */
@@ -346,23 +327,19 @@ function deposit(address _token, uint256 _amount) external {
     // Mint eUSD tokens to the user
     IEcoDollar(REBASE_TOKEN).mint(msg.sender, _amount);
     
-    // Get current shares for local tracking only
-    uint256 currentShares = IEcoDollar(REBASE_TOKEN).getTotalShares();
+    // Update accumulated profit (optional, depends on implementation)
+    _updateProfit();
     
-    // Emit events for tracking
+    // Emit deposit event
     emit Deposited(msg.sender, _token, _amount);
-    emit SharesUpdated(currentShares);
-    
-    // No immediate cross-chain communication
-    // Shares will be reported in next scheduled batch update
 }
 
 /**
- * @notice Standard withdrawal function without immediate share updates
+ * @notice Queue a withdrawal request - tokens locked but not burned until after rebase
  * @param _preferredToken The token to withdraw
- * @param _amount The amount to withdraw
+ * @param _amount The amount to withdraw in tokens
  */
-function withdraw(address _preferredToken, uint80 _amount) external {
+function requestWithdrawal(address _preferredToken, uint256 _amount) external {
     // Verify token is whitelisted
     if (tokenThresholds[_preferredToken] == 0) {
         revert InvalidToken(_preferredToken);
@@ -378,105 +355,176 @@ function withdraw(address _preferredToken, uint80 _amount) external {
         );
     }
     
-    // Burn eUSD tokens
-    IEcoDollar(REBASE_TOKEN).burn(msg.sender, _amount);
+    // Calculate share amount at current multiplier
+    uint256 currentMultiplier = IEcoDollar(REBASE_TOKEN).rewardMultiplier();
+    uint256 shares = (_amount * 1e18) / currentMultiplier;
     
-    // Get current shares for local tracking only
-    uint256 currentShares = IEcoDollar(REBASE_TOKEN).getTotalShares();
+    // Transfer tokens to contract (lock them without burning)
+    IERC20(REBASE_TOKEN).transferFrom(msg.sender, address(this), _amount);
     
-    // Local tracking only - no cross-chain update
-    emit SharesUpdated(currentShares);
-    
-    // Process withdrawal
-    if (IERC20(_preferredToken).balanceOf(address(this)) > tokenThresholds[_preferredToken] + _amount) {
-        // Sufficient liquidity, process withdrawal immediately
-        IERC20(_preferredToken).safeTransfer(msg.sender, _amount);
-        emit Withdrawn(msg.sender, _preferredToken, _amount);
-    } else {
-        // Insufficient liquidity, add to withdrawal queue
-        _addToWithdrawalQueue(_preferredToken, msg.sender, _amount);
-    }
-}
-
-/**
- * @notice Periodic batch update of share totals to Rebaser
- * @dev Called on a scheduled basis (e.g., hourly) or before rebases
- */
-function sendSharesUpdate() external {
-    // Only callable by authorized scheduler or admin
-    if (msg.sender != SCHEDULER && msg.sender != owner()) {
-        revert UnauthorizedSharesUpdate(msg.sender);
-    }
-    
-    // Get current total shares
-    uint256 currentShares = IEcoDollar(REBASE_TOKEN).getTotalShares();
-    
-    // Calculate net change since last report
-    int256 changeAmount = int256(currentShares) - int256(lastReportedShares);
-    
-    // Create batch update with metadata
-    BatchShareUpdate memory update = BatchShareUpdate({
-        totalShares: currentShares,
-        changeSinceLastReport: changeAmount,
-        sequenceNumber: ++updateSequence,
-        timestamp: block.timestamp
+    // Add to withdrawal queue using shares
+    withdrawalQueue[nextWithdrawalId] = WithdrawalRequest({
+        user: msg.sender,
+        shareAmount: shares,
+        preferredToken: _preferredToken,
+        requestTime: block.timestamp,
+        processed: false
     });
     
-    // Encode message with batch update
-    bytes memory message = abi.encode(update);
-    
-    // Send to Rebaser
-    uint256 fee = IMailbox(MAILBOX).quoteDispatch(
-        HOME_CHAIN,
-        REBASER,
-        message,
-        "", // Empty metadata for relayer
-        IPostDispatchHook(RELAYER)
+    // Emit withdrawal queued event
+    emit WithdrawalQueued(
+        nextWithdrawalId,
+        msg.sender, 
+        _preferredToken, 
+        _amount,
+        shares
     );
     
-    IMailbox(MAILBOX).dispatch{value: fee}(
-        HOME_CHAIN,
-        REBASER,
-        message,
-        "", // Empty metadata for relayer
-        IPostDispatchHook(RELAYER)
-    );
-    
-    // Update last reported value for next time
-    lastReportedShares = currentShares;
-    
-    emit SharesBatchUpdated(currentShares, changeAmount, updateSequence);
+    // Increment queue counter
+    nextWithdrawalId++;
 }
 
 /**
- * @notice Responds to a verification request from Rebaser
- * @param _requestId Unique identifier for the verification request
+ * @notice Process the withdrawal queue after rebase
+ * @dev Only callable after a rebase has completed
  */
-function respondToShareVerification(uint256 _requestId) external {
-    // Only callable by authorized verifier or admin
-    if (msg.sender != VERIFIER && msg.sender != owner()) {
-        revert UnauthorizedVerification(msg.sender);
+function processWithdrawalQueue() external {
+    // Only callable by authorized processors or admin
+    if (msg.sender != PROCESSOR && msg.sender != owner()) {
+        revert UnauthorizedWithdrawalProcessor(msg.sender);
     }
     
-    // Get exact current share count
-    uint256 exactShares = IEcoDollar(REBASE_TOKEN).getTotalShares();
+    // Ensure rebase has happened recently
+    if (block.timestamp - lastRebaseTimestamp > MAX_REBASE_AGE) {
+        revert StaleRebase(lastRebaseTimestamp);
+    }
     
-    // Prepare high-priority verification response
+    // Set processing active
+    withdrawalProcessingActive = true;
+    
+    // Get current multiplier after rebase
+    uint256 currentMultiplier = IEcoDollar(REBASE_TOKEN).rewardMultiplier();
+    
+    // Process queue up to gas limit or count limit
+    uint256 processedCount = 0;
+    for (uint256 i = firstPendingWithdrawal; i < nextWithdrawalId && processedCount < MAX_WITHDRAWALS_PER_BATCH; i++) {
+        WithdrawalRequest storage request = withdrawalQueue[i];
+        
+        // Skip already processed requests
+        if (request.processed) {
+            continue;
+        }
+        
+        // Convert shares to tokens at current post-rebase multiplier
+        uint256 tokenAmount = (request.shareAmount * currentMultiplier) / 1e18;
+        
+        // Check if we have sufficient liquidity
+        address token = request.preferredToken;
+        if (IERC20(token).balanceOf(address(this)) < tokenThresholds[token] + tokenAmount) {
+            // Skip this request if insufficient liquidity
+            continue;
+        }
+        
+        // Burn the tokens that were transferred to the contract during queue
+        IEcoDollar(REBASE_TOKEN).burn(address(this), tokenAmount);
+        
+        // Transfer preferred token to user
+        IERC20(token).safeTransfer(request.user, tokenAmount);
+        
+        // Mark as processed
+        request.processed = true;
+        
+        // Emit withdrawal processed event
+        emit WithdrawalProcessed(
+            i,
+            request.user,
+            token,
+            tokenAmount,
+            block.timestamp - request.requestTime
+        );
+        
+        // Update counter
+        processedCount++;
+        
+        // Update firstPendingWithdrawal if this was the first item
+        if (i == firstPendingWithdrawal) {
+            firstPendingWithdrawal++;
+        }
+    }
+    
+    // Reset processing state
+    withdrawalProcessingActive = false;
+    
+    // Emit batch processing event
+    emit WithdrawalQueueProcessed(processedCount);
+}
+
+/**
+ * @notice Cancels a pending withdrawal request
+ * @param _withdrawalId The ID of the withdrawal to cancel
+ */
+function cancelWithdrawal(uint256 _withdrawalId) external {
+    // Get the withdrawal request
+    WithdrawalRequest storage request = withdrawalQueue[_withdrawalId];
+    
+    // Verify request exists and belongs to caller
+    if (request.user != msg.sender) {
+        revert UnauthorizedCancellation(_withdrawalId, msg.sender);
+    }
+    
+    // Verify request hasn't been processed
+    if (request.processed) {
+        revert WithdrawalAlreadyProcessed(_withdrawalId);
+    }
+    
+    // Verify withdrawal processing isn't active
+    if (withdrawalProcessingActive) {
+        revert WithdrawalProcessingActive();
+    }
+    
+    // Calculate token amount at current multiplier
+    uint256 currentMultiplier = IEcoDollar(REBASE_TOKEN).rewardMultiplier();
+    uint256 tokenAmount = (request.shareAmount * currentMultiplier) / 1e18;
+    
+    // Return tokens to user
+    IERC20(REBASE_TOKEN).transfer(msg.sender, tokenAmount);
+    
+    // Mark as processed
+    request.processed = true;
+    
+    // Emit cancellation event
+    emit WithdrawalCancelled(_withdrawalId, msg.sender, tokenAmount);
+}
+
+/**
+ * @notice Initiates the rebase process
+ * @dev Collects local metrics and sends to home chain
+ */
+function initiateRebase() external onlyRebaseAuthority {
+    // Calculate local profits
+    uint256 localProfit = accumulatedProfit;
+    
+    // Get current total shares
+    uint256 localShares = IEcoDollar(REBASE_TOKEN).getTotalShares();
+    
+    // Reset accumulated profit
+    accumulatedProfit = 0;
+    
+    // Send metrics to home chain
     bytes memory message = abi.encode(
-        ShareVerification({
-            requestId: _requestId,
-            exactShares: exactShares,
-            timestamp: block.timestamp,
-            isPreRebase: true
+        LocalMetrics({
+            profit: localProfit,
+            totalShares: localShares,
+            timestamp: block.timestamp
         })
     );
     
-    // Send with higher gas limit and priority to ensure delivery before rebase
+    // Send to Rebaser on home chain
     uint256 fee = IMailbox(MAILBOX).quoteDispatch(
         HOME_CHAIN,
         REBASER,
         message,
-        abi.encode(true), // High priority flag
+        "", // Empty metadata for relayer
         IPostDispatchHook(RELAYER)
     );
     
@@ -484,109 +532,115 @@ function respondToShareVerification(uint256 _requestId) external {
         HOME_CHAIN,
         REBASER,
         message,
-        abi.encode(true), // High priority flag
+        "", // Empty metadata for relayer
         IPostDispatchHook(RELAYER)
     );
     
-    // Update last verified value
-    lastVerifiedShares = exactShares;
-    
-    emit SharesVerified(_requestId, exactShares);
+    // Emit rebase initiated event
+    emit RebaseInitiated(localProfit, localShares);
 }
 ```
 
-#### 2. Rebaser Enhanced Share Tracking
-
-##### Robust Share Tracking System with Verification
+#### 3. Rebaser Central Coordination
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#6C78AF', 'primaryTextColor': '#fff', 'primaryBorderColor': '#5D69A0', 'lineColor': '#5D69A0', 'secondaryColor': '#D3D8F9', 'tertiaryColor': '#E7E9FC' }}}%%
+%%{init: {'theme': 'dark', 'themeVariables': { 'primaryColor': '#2D74BA', 'primaryTextColor': '#FFFFFF', 'primaryBorderColor': '#1D4E89', 'lineColor': '#5D9CEC', 'secondaryColor': '#1D2B3A', 'tertiaryColor': '#132030', 'textColor': '#FFFFFF', 'fontSize': '14px', 'fontFamily': 'Arial', 'edgeLabelBackground': '#132030', 'mainBkg': '#132030', 'clusterBkg': '#1D2B3A', 'nodeTextColor': '#FFFFFF', 'nodeBorder': '#2D74BA', 'labelTextColor': '#FFFFFF', 'clusterBorder': '#1D4E89' }}}%%
 
 flowchart TD
-    subgraph "Chain 1 (Optimism)"
-        deposit1["User deposits tokens"]
-        deposit1 --> update1["Update local shares"]
-        withdraw1["User withdraws tokens"]
-        withdraw1 --> burn1["Burn tokens & update shares"]
-        
-        update1 --> send1["Send immediate share update to Rebaser"]
-        burn1 --> send1
-        send1 --> shares1["chainShares[Chain1]"]
-    end
-    
-    subgraph "Chain 2 (Base)"
-        deposit2["User deposits tokens"]
-        deposit2 --> update2["Update local shares"]
-        withdraw2["User withdraws tokens"]
-        withdraw2 --> burn2["Burn tokens & update shares"]
-        
-        update2 --> send2["Send immediate share update to Rebaser"]
-        burn2 --> send2
-        send2 --> shares2["chainShares[Chain2]"]
-    end
-    
     subgraph "Home Chain"
-        rebaser["Rebaser contract"]
-        updateShares["updateChainShares()"]
-        
-        shares1 --> updateShares
-        shares2 --> updateShares
-        
-        updateShares --> aggregate["Aggregate total shares"]
-        aggregate --> globalShares["totalShares (always current)"]
-        globalShares --> emit["Emit TotalSharesUpdated"]
-        
-        rebaseStart["initiateRebase()"]
-        rebaseStart --> useShares["Use current totalShares"]
-        useShares --> calc["Calculate new multiplier"]
-        calc --> distribute["Distribute multiplier"]
+        rebaser["Rebaser Contract"]
+        receiveMetrics["Receive Local Metrics"]
+        trackChains["Track Chain Status"]
+        checkComplete{"All Chains Reported?"}
+        calculateShare["Calculate Protocol Share"]
+        mintTreasury["Mint to Treasury"]
+        calculateMultiplier["Calculate New Multiplier"]
+        distributeMultiplier["Distribute to All Chains"]
+        signalProcess["Signal Queue Processing"]
     end
     
-    classDef chain1 fill:#D4F1F9,stroke:#05445E
-    classDef chain2 fill:#D1F0B1,stroke:#2D5016
-    classDef home fill:#FFE8D4,stroke:#8B4000
-    classDef crit fill:#FFD700,stroke:#B8860B,stroke-width:2px
+    subgraph "Spoke Chains"
+        StablePool["StablePool Contract"]
+        receiveMultiplier["Receive New Multiplier"]
+        updateEcoDollar["Update EcoDollar Multiplier"]
+        processQueues["Process Withdrawal Queues"]
+    end
     
-    class deposit1,update1,withdraw1,burn1,send1 chain1
-    class deposit2,update2,withdraw2,burn2,send2 chain2
-    class rebaser,updateShares,aggregate,globalShares,emit,rebaseStart,useShares,calc,distribute home
-    class send1,send2,globalShares crit
+    receiveMetrics --> trackChains
+    trackChains --> checkComplete
+    checkComplete -->|No| trackChains
+    checkComplete -->|Yes| calculateShare
+    calculateShare --> mintTreasury
+    mintTreasury --> calculateMultiplier
+    calculateMultiplier --> distributeMultiplier
+    distributeMultiplier --> signalProcess
+    
+    distributeMultiplier -.-> receiveMultiplier
+    receiveMultiplier --> updateEcoDollar
+    updateEcoDollar --> processQueues
+    
+    classDef home fill:#1D2B3A,stroke:#2D74BA,color:#FFFFFF
+    classDef spoke fill:#203A5A,stroke:#5D9CEC,color:#FFFFFF
+    classDef critical fill:#B85D2D,stroke:#89351D,color:#FFFFFF,stroke-width:2px
+    
+    class rebaser,receiveMetrics,trackChains,checkComplete,calculateShare,mintTreasury,calculateMultiplier,distributeMultiplier,signalProcess home
+    class StablePool,receiveMultiplier,updateEcoDollar,processQueues spoke
+    class calculateShare,processQueues critical
 ```
 
 ##### Implementation Details
 
 ```solidity
 /**
- * @dev Processes and aggregates shares from all chains
- * @param _origin The chain ID that reported shares
- * @param _shares The number of shares reported from that chain
+ * @notice Local chain metrics data structure
  */
-// Define data structures for robust share tracking
-struct BatchShareUpdate {
-    uint256 totalShares;        // Current total shares on this chain
-    int256 changeSinceLastReport; // Net change since last report
-    uint64 sequenceNumber;      // Monotonically increasing sequence number
-    uint64 timestamp;           // Timestamp of this update
-}
-
-struct ShareVerification {
-    uint256 requestId;         // ID of the verification request
-    uint256 exactShares;       // Exact current share count
-    uint64 timestamp;          // Timestamp of verification
-    bool isPreRebase;          // Whether this was requested before a rebase
+struct LocalMetrics {
+    uint256 profit;        // Local profit since last rebase
+    uint256 totalShares;   // Current total shares on this chain
+    uint64 timestamp;      // Timestamp of the metrics
 }
 
 /**
- * @notice Process batch share updates from StablePool
+ * @notice Chain status tracking
+ */
+struct ChainInfo {
+    uint256 totalShares;   // Last reported total shares
+    uint256 profit;        // Last reported profit
+    uint64 lastUpdate;     // Timestamp of last update
+    bool hasReported;      // Whether this chain has reported for current rebase
+}
+
+// Chain tracking mappings
+mapping(uint32 => ChainInfo) public chainInfo;      // Chain ID => chain info
+mapping(uint32 => bool) public validChainIDs;       // Chain ID => validation status
+uint32[] public chains;                             // List of all chain IDs
+
+// Rebase state variables
+uint256 public totalShares;              // Total shares across all chains
+uint256 public totalProfit;              // Total profit for current rebase
+bool public rebaseInProgress;            // Rebase cycle state
+uint256 public protocolShareRate;        // Protocol's share of profits (in BASE units)
+uint256 public lastRebaseTimestamp;      // When the last rebase occurred
+uint256 public currentRebaseId;          // Unique ID for the current rebase cycle
+
+// Events
+event ChainReported(uint32 chainId, uint256 shares, uint256 profit);
+event RebaseInitiated(uint256 rebaseId, uint256 totalShares, uint256 totalProfit);
+event ProtocolShareMinted(uint256 protocolShare, address treasury);
+event NewMultiplierCalculated(uint256 oldMultiplier, uint256 newMultiplier);
+event RebaseCompleted(uint256 rebaseId, uint256 totalChains);
+
+/**
+ * @notice Process local metrics from a spoke chain
  * @param _origin The chain ID from which the message was sent
  * @param _sender The address that sent the message (32-byte form)
- * @param _message The encoded batch update
+ * @param _message The encoded local metrics
  */
-function handleBatchShareUpdate(
+function handle(
     uint32 _origin,
     bytes32 _sender,
     bytes calldata _message
-) external payable {
+) external payable override {
     // Security validations
     if (msg.sender != MAILBOX) {
         revert UnauthorizedMailbox(msg.sender, MAILBOX);
@@ -600,181 +654,313 @@ function handleBatchShareUpdate(
         revert InvalidOriginChain(_origin);
     }
     
-    // Decode batch update
-    BatchShareUpdate memory update = abi.decode(_message, (BatchShareUpdate));
+    // Decode local metrics
+    LocalMetrics memory metrics = abi.decode(_message, (LocalMetrics));
     
-    // Sequence number verification to prevent replay or out-of-order processing
-    if (update.sequenceNumber <= chainLastSequence[_origin]) {
-        // Skip or log outdated updates but don't revert
-        emit OutdatedShareUpdate(_origin, update.sequenceNumber, chainLastSequence[_origin]);
-        return;
+    // Update chain info
+    chainInfo[_origin].totalShares = metrics.totalShares;
+    chainInfo[_origin].profit = metrics.profit;
+    chainInfo[_origin].lastUpdate = metrics.timestamp;
+    chainInfo[_origin].hasReported = true;
+    
+    // Update global totals
+    totalShares += metrics.totalShares;
+    totalProfit += metrics.profit;
+    
+    // Emit chain reported event
+    emit ChainReported(_origin, metrics.totalShares, metrics.profit);
+    
+    // Check if all chains have reported
+    bool allReported = true;
+    for (uint256 i = 0; i < chains.length; i++) {
+        if (!chainInfo[chains[i]].hasReported) {
+            allReported = false;
+            break;
+        }
     }
     
-    // Update sequence tracking
-    chainLastSequence[_origin] = update.sequenceNumber;
+    // If all chains have reported, calculate and distribute the new multiplier
+    if (allReported && !rebaseInProgress) {
+        _performRebase();
+    }
+}
+
+/**
+ * @notice Manually trigger rebase if enough chains have reported
+ * @dev Only callable by owner
+ */
+function triggerRebase() external onlyOwner {
+    // Check if there are any reports to process
+    bool hasReports = false;
+    for (uint256 i = 0; i < chains.length; i++) {
+        if (chainInfo[chains[i]].hasReported) {
+            hasReports = true;
+            break;
+        }
+    }
     
-    // Update chain shares with the new total
-    chainShares[_origin] = update.totalShares;
-    chainLastUpdated[_origin] = update.timestamp;
+    require(hasReports, "No chain reports to process");
+    require(!rebaseInProgress, "Rebase already in progress");
     
-    // Recalculate total shares across all chains
-    _recalculateTotalShares();
+    _performRebase();
+}
+
+/**
+ * @notice Perform the rebase calculation and distribution
+ * @dev Internal function called when all chains have reported
+ */
+function _performRebase() private {
+    // Set rebase in progress
+    rebaseInProgress = true;
     
-    // Emit event for tracking
-    emit BatchSharesUpdated(
-        _origin, 
-        update.totalShares, 
-        update.changeSinceLastReport, 
-        update.sequenceNumber
+    // Increment rebase ID
+    currentRebaseId++;
+    
+    // Get current multiplier
+    uint256 oldMultiplier = currentMultiplier;
+    
+    // Emit rebase initiated event
+    emit RebaseInitiated(currentRebaseId, totalShares, totalProfit);
+    
+    // Calculate protocol share amount
+    uint256 protocolShare = (totalProfit * protocolShareRate) / BASE;
+    
+    // Mint protocol share to treasury
+    if (protocolShare > 0) {
+        // TOKEN refers to local EcoDollar contract on home chain
+        IEcoDollar(TOKEN).mint(TREASURY_ADDRESS, protocolShare);
+        emit ProtocolShareMinted(protocolShare, TREASURY_ADDRESS);
+    }
+    
+    // Calculate new multiplier based on remaining profit and total shares
+    uint256 newMultiplier;
+    if (totalShares > 0) {
+        // Calculate raw profit increase in multiplier units
+        uint256 profitMultiplierIncrease = ((totalProfit - protocolShare) * BASE) / totalShares;
+        
+        // New multiplier is old multiplier plus profit-based increase
+        newMultiplier = oldMultiplier + profitMultiplierIncrease;
+    } else {
+        // If no shares, maintain the current multiplier
+        newMultiplier = oldMultiplier;
+    }
+    
+    // Update current multiplier
+    currentMultiplier = newMultiplier;
+    
+    // Emit new multiplier calculated event
+    emit NewMultiplierCalculated(oldMultiplier, newMultiplier);
+    
+    // Distribute new multiplier to all chains
+    for (uint256 i = 0; i < chains.length; i++) {
+        _distributeMultiplier(chains[i], newMultiplier);
+    }
+    
+    // Reset for next rebase cycle
+    _resetRebaseState();
+    
+    // Update last rebase timestamp
+    lastRebaseTimestamp = block.timestamp;
+    
+    // Emit rebase completed event
+    emit RebaseCompleted(currentRebaseId, chains.length);
+}
+
+/**
+ * @notice Distribute new multiplier to a specific chain
+ * @param _chainId The chain ID to send the multiplier to
+ * @param _multiplier The new multiplier value
+ */
+function _distributeMultiplier(uint32 _chainId, uint256 _multiplier) private {
+    // Encode the multiplier message
+    // Include a flag to signal withdrawal queue processing
+    bytes memory message = abi.encode(
+        RebaseResult({
+            multiplier: _multiplier,
+            rebaseId: currentRebaseId,
+            processQueues: true,
+            timestamp: block.timestamp
+        })
+    );
+    
+    // Send to StablePool on destination chain
+    uint256 fee = IMailbox(MAILBOX).quoteDispatch(
+        _chainId,
+        POOL,
+        message,
+        "", // Empty metadata for relayer
+        IPostDispatchHook(RELAYER)
+    );
+    
+    IMailbox(MAILBOX).dispatch{value: fee}(
+        _chainId,
+        POOL,
+        message,
+        "", // Empty metadata for relayer
+        IPostDispatchHook(RELAYER)
     );
 }
 
 /**
- * @notice Process share verification message (used before rebases)
- * @param _origin The chain ID from which the message was sent
- * @param _sender The address that sent the message (32-byte form)
- * @param _message The encoded verification data
+ * @notice Reset state for next rebase cycle
  */
-function handleShareVerification(
-    uint32 _origin,
-    bytes32 _sender,
-    bytes calldata _message
-) external payable {
-    // Security validations
-    if (msg.sender != MAILBOX) {
-        revert UnauthorizedMailbox(msg.sender, MAILBOX);
+function _resetRebaseState() private {
+    // Reset global accumulators
+    totalShares = 0;
+    totalProfit = 0;
+    
+    // Reset chain reporting status
+    for (uint256 i = 0; i < chains.length; i++) {
+        chainInfo[chains[i]].hasReported = false;
     }
     
-    if (_sender != POOL) {
-        revert UnauthorizedSender(_sender, POOL);
-    }
-    
-    if (!validChainIDs[_origin]) {
-        revert InvalidOriginChain(_origin);
-    }
-    
-    // Decode verification data
-    ShareVerification memory verification = abi.decode(_message, (ShareVerification));
-    
-    // Check if this is a response to our verification request
-    if (verificationRequests[verification.requestId].isActive) {
-        // Mark request as fulfilled
-        verificationRequests[verification.requestId].fulfilled = true;
-        verificationRequests[verification.requestId].responseTime = block.timestamp;
-    }
-    
-    // Update chain shares with the verified exact value
-    uint256 previousShares = chainShares[_origin];
-    chainShares[_origin] = verification.exactShares;
-    chainLastVerified[_origin] = verification.timestamp;
-    
-    // Check for significant drift between reported and actual values
-    int256 drift = int256(verification.exactShares) - int256(previousShares);
-    if (uint256(drift < 0 ? -drift : drift) > DRIFT_THRESHOLD) {
-        emit SignificantShareDrift(_origin, previousShares, verification.exactShares, drift);
-    }
-    
-    // Recalculate total shares across all chains
-    _recalculateTotalShares();
-    
-    // Update verification status for this chain
-    chainVerified[_origin] = true;
-    
-    // If this is a pre-rebase verification and we have verification from all chains, mark ready
-    if (verification.isPreRebase) {
-        // Check if all chains are verified
-        bool allVerified = true;
-        for (uint256 i = 0; i < chains.length; i++) {
-            if (!chainVerified[chains[i]]) {
-                allVerified = false;
-                break;
-            }
-        }
-        
-        if (allVerified) {
-            readyForRebase = true;
-            emit AllChainsVerified(totalShares);
-        }
-    }
-    
-    emit ShareVerificationProcessed(
-        _origin,
-        verification.requestId, 
-        verification.exactShares,
-        verification.isPreRebase
-    );
+    // Reset rebase flag
+    rebaseInProgress = false;
 }
 
 /**
- * @notice Request verification of share counts from all chains
- * @dev Called before initiating a rebase
+ * @notice Update the protocol share rate
+ * @param _newRate New protocol share rate (in BASE units)
+ * @dev Only callable by owner
  */
-function requestShareVerification() external onlyOwner {
-    // Create a new verification request
-    uint256 requestId = ++verificationRequestCounter;
-    
-    // Reset verification status for all chains
-    for (uint256 i = 0; i < chains.length; i++) {
-        chainVerified[chains[i]] = false;
-    }
-    
-    // Record verification request
-    verificationRequests[requestId] = VerificationRequest({
-        requestTime: block.timestamp,
-        isActive: true,
-        fulfilled: false,
-        responseTime: 0
-    });
-    
-    readyForRebase = false;
-    
-    // Send verification request to all chains
-    for (uint256 i = 0; i < chains.length; i++) {
-        uint32 chainId = chains[i];
-        
-        bytes memory message = abi.encode(requestId);
-        
-        // Send with high priority
-        uint256 fee = IMailbox(MAILBOX).quoteDispatch(
-            chainId,
-            POOL,
-            message,
-            abi.encode(true), // High priority flag
-            IPostDispatchHook(RELAYER)
-        );
-        
-        IMailbox(MAILBOX).dispatch{value: fee}(
-            chainId,
-            POOL,
-            message,
-            abi.encode(true), // High priority flag
-            IPostDispatchHook(RELAYER)
-        );
-    }
-    
-    emit VerificationRequested(requestId);
-}
-
-/**
- * @notice Recalculate total shares across all chains
- */
-function _recalculateTotalShares() private {
-    uint256 totalSharesAcrossChains = 0;
-    for (uint256 i = 0; i < chains.length; i++) {
-        totalSharesAcrossChains += chainShares[chains[i]];
-    }
-    
-    // Update total shares state
-    totalShares = totalSharesAcrossChains;
-    
-    // Emit event
-    emit TotalSharesUpdated(totalShares);
+function setProtocolShareRate(uint256 _newRate) external onlyOwner {
+    require(_newRate <= BASE, "Rate cannot exceed 100%");
+    protocolShareRate = _newRate;
+    emit ProtocolShareRateSet(_newRate);
 }
 ```
+```
 
-#### 3. IEcoDollar Interface Update
+#### 4. StablePool Rebase Finalization
 
 ```solidity
+/**
+ * @notice RebaseResult structure for receiving updated multipliers and processing commands
+ */
+struct RebaseResult {
+    uint256 multiplier;      // New reward multiplier value
+    uint256 rebaseId;        // Unique identifier for this rebase
+    bool processQueues;      // Flag indicating whether to process withdrawal queues
+    uint64 timestamp;        // Timestamp when this result was created
+}
+
+/**
+ * @notice Handler for incoming messages from Rebaser
+ */
+function handle(
+    uint32 _origin,
+    bytes32 _sender,
+    bytes calldata _message
+) external payable override {
+    // Security validations
+    if (msg.sender != MAILBOX) {
+        revert UnauthorizedMailbox(msg.sender, MAILBOX);
+    }
+    
+    if (_sender != REBASER) {
+        revert UnauthorizedSender(_sender, REBASER);
+    }
+    
+    if (_origin != HOME_CHAIN) {
+        revert InvalidOriginChain(_origin, HOME_CHAIN);
+    }
+    
+    // Decode the rebase result
+    RebaseResult memory result = abi.decode(_message, (RebaseResult));
+    
+    // Store the last rebase timestamp
+    lastRebaseTimestamp = result.timestamp;
+    lastRebaseId = result.rebaseId;
+    
+    // Get current multiplier for event emission
+    uint256 oldMultiplier = IEcoDollar(REBASE_TOKEN).rewardMultiplier();
+    
+    // Update EcoDollar's reward multiplier
+    IEcoDollar(REBASE_TOKEN).updateRewardMultiplier(result.multiplier);
+    
+    // Emit the multiplier update event
+    emit RewardMultiplierUpdated(oldMultiplier, result.multiplier, result.rebaseId);
+    
+    // Process withdrawal queues if indicated
+    if (result.processQueues) {
+        // Auto-process the withdrawal queue after rebase
+        _processWithdrawalQueue();
+        
+        // Emit queue processing event
+        emit WithdrawalQueueProcessingTriggered(result.rebaseId);
+    }
+}
+
+/**
+ * @notice Internal function to process the withdrawal queue
+ * @dev Processes a batch of withdrawal requests with the updated multiplier
+ */
+function _processWithdrawalQueue() private {
+    // Set processing state
+    withdrawalProcessingActive = true;
+    
+    // Get current multiplier after rebase
+    uint256 currentMultiplier = IEcoDollar(REBASE_TOKEN).rewardMultiplier();
+    
+    // Track processed count for event emission
+    uint256 processedCount = 0;
+    
+    // Process queue up to gas limit or count limit
+    for (uint256 i = firstPendingWithdrawal; i < nextWithdrawalId && processedCount < MAX_WITHDRAWALS_PER_BATCH; i++) {
+        WithdrawalRequest storage request = withdrawalQueue[i];
+        
+        // Skip already processed requests
+        if (request.processed) {
+            continue;
+        }
+        
+        // Convert shares to tokens at current post-rebase multiplier
+        uint256 tokenAmount = (request.shareAmount * currentMultiplier) / 1e18;
+        
+        // Check if we have sufficient liquidity
+        address token = request.preferredToken;
+        if (IERC20(token).balanceOf(address(this)) < tokenThresholds[token] + tokenAmount) {
+            // Skip this request if insufficient liquidity
+            continue;
+        }
+        
+        // Burn the tokens that were transferred to the contract during queue
+        IEcoDollar(REBASE_TOKEN).burn(address(this), tokenAmount);
+        
+        // Transfer preferred token to user
+        IERC20(token).safeTransfer(request.user, tokenAmount);
+        
+        // Mark as processed
+        request.processed = true;
+        
+        // Emit withdrawal processed event
+        emit WithdrawalProcessed(
+            i,
+            request.user,
+            token,
+            tokenAmount,
+            block.timestamp - request.requestTime
+        );
+        
+        // Update counter
+        processedCount++;
+        
+        // Update firstPendingWithdrawal if this was the first item
+        if (i == firstPendingWithdrawal) {
+            firstPendingWithdrawal++;
+        }
+    }
+    
+    // Reset processing state
+    withdrawalProcessingActive = false;
+    
+    // Emit batch processing event
+    emit WithdrawalQueueProcessed(processedCount);
+}
+
+/**
+ * @notice IEcoDollar Interface Update
+ */
 interface IEcoDollar {
     // Existing methods...
     
@@ -790,86 +976,13 @@ interface IEcoDollar {
      */
     function rewardMultiplier() external view returns (uint256);
     
+    /**
+     * @notice Get the total shares
+     * @return The current total shares amount
+     */
+    function getTotalShares() external view returns (uint256);
+    
     // Other methods...
-}
-```
-
-#### 2. StablePool Rebase Initiation
-
-```solidity
-/**
- * @notice Broadcasts yield information to the home chain for rebase calculations
- * @param _tokens The current list of token addresses to include in calculation
- * @dev Only callable by owner, initiates the cross-chain rebase process
- * @dev Follows the exact steps in the swimlane diagram:
- *      1. Start (admin triggered)
- *      2. Pool earns funds from yield
- *      3. Save amount of profit
- *      4. Send message to home
- *      5. Set profit to 0 in storage
- */
-function initiateRebase(
-    address[] calldata _tokens
-) external checkTokenList(_tokens) {
-    // Only allowed to be called by a fixed address with authority to trigger rebases
-    if (msg.sender != REBASE_AUTHORITY) {
-        revert UnauthorizedRebaseInitiator(msg.sender, REBASE_AUTHORITY);
-    }
-    // Note: We allow concurrent rebases since they don't conflict
-    // Each rebase resets profit to zero, and new rebases simply add new profit
-    
-    // Calculate local token balances (earned from yield)
-    uint256 length = _tokens.length;
-    uint256 localTokens = 0;
-    
-    for (uint256 i = 0; i < length; ++i) {
-        // Safe to use unchecked for gas optimization as token balances are limited
-        unchecked {
-            localTokens += IERC20(_tokens[i]).balanceOf(address(this));
-        }
-    }
-    
-    // Get total shares from EcoDollar
-    uint256 localShares = IEcoDollar(REBASE_TOKEN).getTotalShares();
-    
-    // Get current accumulated profit value (tracked as a variable in StablePool)
-    uint256 profit = accumulatedProfit;
-    
-    // Encode message with local metrics including profit
-    // Use consistent encoding format for external service integration
-    bytes memory message = abi.encode(
-        localTokens,  // Total tokens across all supported assets
-        localShares,  // Total shares from EcoDollar
-        profit        // Accumulated profit since last rebase
-    );
-    
-    // This message will be processed by the external cross-chain messaging service
-    // The exact integration mechanism will be implemented by the service
-    // For testing purposes, we use Hyperlane's mailbox interface
-    
-    // Quote fee for cross-chain message
-    uint256 fee = IMailbox(MAILBOX).quoteDispatch(
-        HOME_CHAIN,
-        REBASER,
-        message,
-        "", // Empty metadata for relayer
-        IPostDispatchHook(RELAYER)
-    );
-    
-    // Dispatch message to home chain
-    uint256 messageId = IMailbox(MAILBOX).dispatch{value: fee}(
-        HOME_CHAIN,
-        REBASER,
-        message,
-        "", // Empty metadata for relayer
-        IPostDispatchHook(RELAYER)
-    );
-    
-    // Critical: Set profit to 0 in storage to prevent double-counting
-    accumulatedProfit = 0;
-    
-    // Emit event for tracking
-    emit RebaseInitiated(localTokens, localShares, profit, HOME_CHAIN, messageId);
 }
 ```
 
@@ -1216,32 +1329,36 @@ error UnauthorizedMailbox(address actual, address expected);
 error UnauthorizedSender(bytes32 actual, bytes32 expected);
 error InvalidOriginChain(uint32 actual, uint32 expected);
 error UnauthorizedRebaseInitiator(address actual, address expected);
+error InvalidToken(address token);
+error InsufficientTokenBalance(address token, uint256 balance, uint256 required);
+error UnauthorizedWithdrawalProcessor(address caller);
+error StaleRebase(uint256 lastRebaseTimestamp);
+error WithdrawalProcessingActive();
+error WithdrawalAlreadyProcessed(uint256 withdrawalId);
+error UnauthorizedCancellation(uint256 withdrawalId, address caller);
 
 // Rebaser errors
 error InvalidOriginChain(uint32 chain);
+error UnauthorizedMailbox(address actual, address expected);
+error UnauthorizedSender(bytes32 actual, bytes32 expected);
 
 // StablePool events
-event RebaseInitiated(uint256 balances, uint256 shares, uint256 profit, uint32 homeChain, uint256 messageId);
-event RebaseFinalized(uint256 oldMultiplier, uint256 newMultiplier);
-event EcoDollarMultiplierUpdated(uint256 oldMultiplier, uint256 newMultiplier);
-event SharesUpdated(uint256 newTotalShares);
-event SharesBatchUpdated(uint256 totalShares, int256 changeAmount, uint64 sequence);
-event SharesVerified(uint256 requestId, uint256 exactShares);
+event RebaseInitiated(uint256 profit, uint256 shares);
+event RewardMultiplierUpdated(uint256 oldMultiplier, uint256 newMultiplier, uint256 rebaseId);
 event Deposited(address indexed user, address indexed token, uint256 amount);
-event Withdrawn(address indexed user, address indexed token, uint256 amount);
+event WithdrawalQueued(uint256 indexed withdrawalId, address indexed user, address token, uint256 amount, uint256 shares);
+event WithdrawalProcessed(uint256 indexed withdrawalId, address indexed user, address token, uint256 amount, uint256 waitTime);
+event WithdrawalCancelled(uint256 indexed withdrawalId, address indexed user, uint256 amount);
+event WithdrawalQueueProcessed(uint256 processedCount);
+event WithdrawalQueueProcessingTriggered(uint256 rebaseId);
 
 // Rebaser events
-event ReceivedRebaseInformation(uint32 origin, uint256 balances, uint256 shares, uint256 profit);
-event CalculatedRebase(uint256 balancesTotal, uint256 sharesTotal, uint256 profitTotal, uint256 protocolShareAmount, uint256 newMultiplier);
-event BatchSharesUpdated(uint32 originChain, uint256 totalShares, int256 changeAmount, uint64 sequence);
-event OutdatedShareUpdate(uint32 originChain, uint64 receivedSequence, uint64 currentSequence);
-event SignificantShareDrift(uint32 originChain, uint256 previousValue, uint256 verifiedValue, int256 drift);
-event ShareVerificationProcessed(uint32 originChain, uint256 requestId, uint256 exactShares, bool isPreRebase);
-event VerificationRequested(uint256 requestId);
-event AllChainsVerified(uint256 totalVerifiedShares);
-event ProtocolShareMinted(uint256 protocolShareAmount, address treasury);
+event ChainReported(uint32 chainId, uint256 shares, uint256 profit);
+event RebaseInitiated(uint256 rebaseId, uint256 totalShares, uint256 totalProfit);
+event ProtocolShareMinted(uint256 protocolShare, address treasury);
+event NewMultiplierCalculated(uint256 oldMultiplier, uint256 newMultiplier);
+event RebaseCompleted(uint256 rebaseId, uint256 totalChains);
 event ProtocolShareRateSet(uint256 newRate);
-event TotalSharesUpdated(uint256 totalShares);
 ```
 
 
@@ -1249,48 +1366,33 @@ event TotalSharesUpdated(uint256 totalShares);
 
 The following encoding formats are used consistently throughout the system for future service integration:
 
-1. **StablePool to Rebaser** (batch share update):
+1. **StablePool to Rebaser** (local metrics report):
    ```solidity
-   abi.encode(BatchShareUpdate({
-       totalShares: currentShares,
-       changeSinceLastReport: changeAmount,
-       sequenceNumber: sequence,
+   abi.encode(LocalMetrics({
+       profit: localProfit,
+       totalShares: localShares,
        timestamp: block.timestamp
    }))
    ```
-   
-2. **StablePool to Rebaser** (verification response):
+   Where:
+   - `localProfit`: Accumulated profit since last rebase
+   - `localShares`: Current total EcoDollar shares on this chain
+   - `timestamp`: When these metrics were collected
+
+2. **Rebaser to StablePool** (rebase result with withdrawal processing signal):
    ```solidity
-   abi.encode(ShareVerification({
-       requestId: requestId,
-       exactShares: currentShares,
-       timestamp: block.timestamp,
-       isPreRebase: true
+   abi.encode(RebaseResult({
+       multiplier: newMultiplier,
+       rebaseId: currentRebaseId,
+       processQueues: true,
+       timestamp: block.timestamp
    }))
    ```
-   
-3. **StablePool to Rebaser** (rebase initiation):
-   ```solidity
-   abi.encode(localTokens, localShares, profit)
-   ```
    Where:
-   - `localTokens`: Total value of tokens held by the pool
-   - `localShares`: Total EcoDollar shares
-   - `profit`: Accumulated profit since last rebase
-
-4. **Rebaser to StablePool** (verification request):
-   ```solidity
-   abi.encode(requestId)
-   ```
-   Where:
-   - `requestId`: Unique identifier for the verification request
-
-5. **Rebaser to StablePool** (multiplier update):
-   ```solidity
-   abi.encode(newMultiplier)
-   ```
-   Where:
-   - `newMultiplier`: New reward multiplier value to be applied
+   - `newMultiplier`: New reward multiplier value to apply
+   - `rebaseId`: Unique identifier for the current rebase cycle
+   - `processQueues`: Flag indicating whether to process withdrawal queues
+   - `timestamp`: When the rebase was completed
 
 Note: External cross-chain message handling and service integration testing are out of scope for this implementation.
 
@@ -1430,80 +1532,72 @@ slither contracts/EcoDollar.sol --detect unchecked-lowlevel
   - [ ] Sub-task 1.2: Set up multi-chain testing framework using parallel anvil instances
   - [ ] Sub-task 1.3: Create helper functions for cross-chain test scenarios
 
-- [ ] Step 2: Fix critical issues [Priority: Critical] [Est: 0.5h]
+- [ ] Step 2: Fix critical issues and prepare for withdrawal queue [Priority: Critical] [Est: 0.5h]
   - [x] Sub-task 2.1: Verify EcoDollar has updateRewardMultiplier method (found at line 79 in EcoDollar.sol)
   - [x] Sub-task 2.2: Verify we need to fix double burn in withdraw (found at lines 138-152 in StablePool.sol)
   - [x] Sub-task 2.3: Verify rebaseInProgress flag has been removed (confirmed in comments at line 66 in StablePool.sol)
   - [ ] Sub-task 2.4: Write tests verifying fixes
-  - [ ] Sub-task 2.5: Run security analysis on fixed code
+  - [ ] Sub-task 2.5: Run security analysis on contracts
 
-- [ ] Step 3: Implement batch share updates from StablePool [Priority: High] [Est: 3h]
-  - [ ] Sub-task 3.1: Add accumulatedProfit variable to StablePool contract
-  - [ ] Sub-task 3.2: Add lastReportedShares variable to track previous reported value
-  - [ ] Sub-task 3.3: Add updateSequence counter for message sequencing
-  - [ ] Sub-task 3.4: Add BatchShareUpdate struct definition
-  - [ ] Sub-task 3.5: Add ShareVerification struct definition
-  - [ ] Sub-task 3.6: Implement sendSharesUpdate function for periodic batch updates
-  - [ ] Sub-task 3.7: Add SharesBatchUpdated event
-  - [ ] Sub-task 3.8: Implement respondToShareVerification for pre-rebase verification
-  - [ ] Sub-task 3.9: Update initiateRebase to include profit information
-  - [ ] Sub-task 3.10: Standardize message encoding format (replace abi.encodePacked with abi.encode)
+- [ ] Step 3: Implement withdrawal queue system in StablePool [Priority: High] [Est: 3h]
+  - [ ] Sub-task 3.1: Add WithdrawalRequest struct definition
+  - [ ] Sub-task 3.2: Add withdrawal queue state variables (mapping, counters, flags)
+  - [ ] Sub-task 3.3: Add lastRebaseTimestamp and lastRebaseId variables
+  - [ ] Sub-task 3.4: Add accumulatedProfit variable for profit tracking
+  - [ ] Sub-task 3.5: Add withdrawal queue-related events
+  - [ ] Sub-task 3.6: Implement requestWithdrawal function (replacing withdraw)
+  - [ ] Sub-task 3.7: Implement cancelWithdrawal function for user convenience
+  - [ ] Sub-task 3.8: Implement processWithdrawalQueue functions (public and internal)
+  - [ ] Sub-task 3.9: Update initiateRebase to use LocalMetrics structure
+  - [ ] Sub-task 3.10: Standardize message encoding format (using abi.encode consistently)
   - [ ] Sub-task 3.11: Ensure proper profit reset in storage (accumulatedProfit = 0)
-  - [ ] Sub-task 3.12: Write tests for batch update and verification
-  - [ ] Sub-task 3.13: Fix double burn in withdraw() function
-  - [ ] Sub-task 3.14: Add proper deposit/withdraw event emissions with share updates
+  - [ ] Sub-task 3.12: Write comprehensive tests for withdrawal queue system
 
-- [ ] Step 4: Implement robust Rebaser share tracking [Priority: High] [Est: 3h]
-  - [ ] Sub-task 4.1: Add chainShares mapping to track shares by chain ID
-  - [x] Sub-task 4.2: Validate that chains and validChainIDs are already defined (confirmed at lines 33-40 in Rebaser.sol)
-  - [ ] Sub-task 4.3: Add sequence tracking (chainLastSequence) for each chain
-  - [ ] Sub-task 4.4: Add timestamp tracking (chainLastUpdated, chainLastVerified)
-  - [ ] Sub-task 4.5: Add VerificationRequest struct and tracking system
-  - [ ] Sub-task 4.6: Add chainVerified mapping for tracking verification status
-  - [ ] Sub-task 4.7: Add readyForRebase flag for pre-rebase coordination
-  - [ ] Sub-task 4.8: Add BatchShareUpdate struct definition
-  - [ ] Sub-task 4.9: Add ShareVerification struct definition
-  - [ ] Sub-task 4.10: Implement handleBatchShareUpdate for batch updates
-  - [ ] Sub-task 4.11: Implement handleShareVerification for verification messages
-  - [ ] Sub-task 4.12: Implement requestShareVerification for pre-rebase coordination
-  - [ ] Sub-task 4.13: Implement _recalculateTotalShares helper function
-  - [ ] Sub-task 4.14: Update rebase calculation to use verified share values
-  - [ ] Sub-task 4.15: Add drift detection and reporting mechanisms
-  - [x] Sub-task 4.16: Verify constructor already accepts protocolRate parameter (confirmed at line 72 in Rebaser.sol)
-  - [x] Sub-task 4.17: Verify owner-controlled changeprotocolRate function exists (found at line 109 in Rebaser.sol)
-  - [ ] Sub-task 4.18: Implement protocol share allocation and minting to treasury
-  - [ ] Sub-task 4.19: Update standardized message encoding (using abi.encode consistently)
-  - [ ] Sub-task 4.20: Remove protocol token minting from propagateRebase
+- [ ] Step 4: Implement Rebaser central coordination [Priority: High] [Est: 2.5h]
+  - [ ] Sub-task 4.1: Add LocalMetrics struct definition 
+  - [ ] Sub-task 4.2: Add ChainInfo struct and tracking mappings
+  - [x] Sub-task 4.3: Validate that chains and validChainIDs are already defined (confirmed at lines 33-40 in Rebaser.sol)
+  - [ ] Sub-task 4.4: Add rebase state variables (totalShares, totalProfit, rebaseInProgress, etc)
+  - [ ] Sub-task 4.5: Add RebaseResult struct for cross-chain communication
+  - [ ] Sub-task 4.6: Update handle function to process LocalMetrics from StablePools
+  - [ ] Sub-task 4.7: Implement _performRebase function for centralized calculation
+  - [ ] Sub-task 4.8: Implement _distributeMultiplier to send results to all chains
+  - [ ] Sub-task 4.9: Add proper event emissions for rebase steps
+  - [x] Sub-task 4.10: Verify constructor already accepts protocolRate parameter (confirmed at line 72 in Rebaser.sol)
+  - [x] Sub-task 4.11: Update setProtocolShareRate function (similar to existing changeprotocolRate)
+  - [ ] Sub-task 4.12: Implement protocol share allocation and minting to treasury
+  - [ ] Sub-task 4.13: Standardize message encoding using abi.encode consistently
 
-- [ ] Step 5: Refine EcoDollar's multiplier update mechanism [Priority: High] [Est: 1h]
+- [ ] Step 5: Refine EcoDollar's multiplier update mechanism [Priority: Medium] [Est: 0.5h]
   - [x] Sub-task 5.1: Verify updateRewardMultiplier method security (confirmed with onlyOwner at line 79 in EcoDollar.sol)
   - [x] Sub-task 5.2: Verify event emissions for multiplier changes (found at line 82 in EcoDollar.sol)
   - [x] Sub-task 5.3: Verify share-to-token conversion accuracy (confirmed at lines 60-71 in EcoDollar.sol)
-  - [ ] Sub-task 5.4: Add minimum multiplier validation check (optional, may not be needed for rebases)
+  - [ ] Sub-task 5.4: Review minimum multiplier validation (optional, may not be needed for rebases)
 
 - [ ] Step 6: Complete StablePool rebase finalization [Priority: High] [Est: 1.5h]
-  - [ ] Sub-task 6.1: Write tests for StablePool's handle function with various scenarios
+  - [ ] Sub-task 6.1: Add RebaseResult struct for receiving updates
   - [x] Sub-task 6.2: Verify access control in handle function (confirmed at lines 311-317 in StablePool.sol)  
-  - [ ] Sub-task 6.3: Update handle function to use standardized message format
+  - [ ] Sub-task 6.3: Update handle function to decode RebaseResult
   - [ ] Sub-task 6.4: Remove protocol token minting from handle function (lines 325-328 in StablePool.sol)
-  - [ ] Sub-task 6.5: Add proper event emissions for multiplier updates
-  - [ ] Sub-task 6.6: Ensure proper end-of-process handling
+  - [ ] Sub-task 6.5: Add queue processing trigger to handle function
+  - [ ] Sub-task 6.6: Add proper event emissions for multiplier updates and queue processing
+  - [ ] Sub-task 6.7: Write tests for handle function with various scenarios
 
 - [ ] Step 7: Build integration test suite [Priority: Critical] [Est: 1.5h]
-  - [ ] Sub-task 7.1: Create unit tests for StablePool batch share updates
-  - [ ] Sub-task 7.2: Create unit tests for Rebaser share tracking and verification
+  - [ ] Sub-task 7.1: Create unit tests for StablePool withdrawal queue system
+  - [ ] Sub-task 7.2: Create unit tests for Rebaser coordination capabilities
   - [ ] Sub-task 7.3: Test message format consistency across components
   - [ ] Sub-task 7.4: Verify correct profit tracking and reset
   - [ ] Sub-task 7.5: Verify protocol share minting on home chain only
-  - [ ] Sub-task 7.6: Test batch share updates with various scenarios
-  - [ ] Sub-task 7.7: Test pre-rebase verification with sequence numbering
-  - [ ] Sub-task 7.8: Test double burn fix in withdraw function
+  - [ ] Sub-task 7.6: Test the complete rebase cycle across multiple chains
+  - [ ] Sub-task 7.7: Test withdrawal queue processing after rebase
+  - [ ] Sub-task 7.8: Test share calculations during rebases
 
 - [ ] Step 8: Security and optimization [Priority: Critical] [Est: 1.5h]
   - [ ] Sub-task 8.1: Run comprehensive security analysis with Slither
-  - [ ] Sub-task 8.2: Measure and optimize gas usage for batch updates
-  - [ ] Sub-task 8.3: Verify access control for new batch update functions
-  - [ ] Sub-task 8.4: Verify message sequence integrity protections
+  - [ ] Sub-task 8.2: Measure and optimize gas usage for withdrawal queue processing
+  - [ ] Sub-task 8.3: Verify access control for all new functions
+  - [ ] Sub-task 8.4: Verify message encoding security
   - [ ] Sub-task 8.5: Complete NatSpec documentation for all new functions
   - [ ] Sub-task 8.6: Generate gas report and security analysis documentation
 
@@ -1514,13 +1608,13 @@ slither contracts/EcoDollar.sol --detect unchecked-lowlevel
 | Subtask | Compilation | Test Coverage | Security Checks | Gas Analysis | Documentation |
 |---------|-------------|---------------|-----------------|--------------|---------------|
 | 1.1-1.3 Test infrastructure | Must compile | Framework tested | N/A | N/A | Test strategy documented |
-| 2.1-2.5 Validate and fix critical issues | Must compile | 100% coverage | Slither validation | Before/after comparison | Bug fix documented |
-| 3.1-3.14 Batch share updates in StablePool | Must compile | 100% coverage | Access control verified | Gas snapshot | NatSpec complete |
-| 4.1-4.20 Share tracking in Rebaser | Must compile | 100% coverage | Math safety verified | Gas optimization | NatSpec complete |
+| 2.1-2.5 Critical issues & preparation | Must compile | 100% coverage | Slither validation | Before/after comparison | Bug fix documented |
+| 3.1-3.12 Withdrawal queue in StablePool | Must compile | 100% coverage | Access control verified | Gas snapshot | NatSpec complete |
+| 4.1-4.13 Rebaser central coordination | Must compile | 100% coverage | Math safety verified | Gas optimization | NatSpec complete |
 | 5.1-5.4 EcoDollar multiplier mechanism | Must compile | 100% coverage | Privilege checks verified | Gas analysis | NatSpec complete |
-| 6.1-6.6 StablePool message handling | Must compile | 100% coverage | No protocol fee minting verified | Gas snapshot | NatSpec complete |
+| 6.1-6.7 StablePool rebase finalization | Must compile | 100% coverage | No protocol fee minting verified | Gas snapshot | NatSpec complete |
 | 7.1-7.8 Integration testing | Must compile | E2E flow covered | Attack vectors tested | N/A | Test cases documented |
-| 8.1-8.6 Security & optimization | Must compile | All tests pass | No critical findings | 10%+ gas reduction | Complete report |
+| 8.1-8.6 Security & optimization | Must compile | All tests pass | No critical findings | Optimization report | Complete documentation |
 
 ### Quality Requirements
 
