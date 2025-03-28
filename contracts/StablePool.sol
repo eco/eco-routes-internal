@@ -17,67 +17,63 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
     using SafeERC20 for IERC20;
     using ECDSA for bytes32;
 
-    // address of Lit agent
+    // Immutable address variables
     address public immutable LIT_AGENT;
-
-    // address of inbox
     address public immutable INBOX;
-
-    // address of rebase token
     address public immutable REBASE_TOKEN;
-
-    // address of master chain
     uint32 public immutable HOME_CHAIN;
-
-    // address of the Rebaser contract on the master chain
     bytes32 public immutable REBASER;
-
-    // address of mailbox
     address public immutable MAILBOX;
-
-    // address of the relayer
-    address public immutable RELAYER; // relayer?
-
+    address public immutable RELAYER;
     address public immutable TOKEN_MESSENGER;
-
     address public immutable MESSAGE_TRANSMITTER;
+    
+    // Processor address for withdrawal queue processing
+    address public PROCESSOR;
 
-    // fee leveed on accessLiquidity to fund rebases
+    // Fee parameters
     uint256 public rebaseFee;
-
-    // fee leveed on accessLiquidity to fund rebalances
     uint256 public rebalanceFee;
-
-    // fee leveed on intent withdrawal to fund protocol
     uint256 public protocolFee;
-
-    // fee leveed on intent withdrawal to incentivize withdraw call
     uint256 public withdrawerFee;
-
-    // reward for calling rebase
     uint256 public rebasePurse;
-
-    // reward for calling rebalance
     uint256 public rebalancePurse;
 
-    // whether the pool's liquidity can be accessed by solvers via Lit
+    // Emergency withdrawal fee constants
+    uint256 public constant EMERGENCY_FEE_RATE = 50;        // 0.5% in basis points (50/10000)
+    uint256 public constant EMERGENCY_FEE_MAX = 10000;      // Basis points denominator
+    
+    // Withdrawal queue constants
+    uint256 public constant MIN_QUEUE_TIME = 1 hours;       // Minimum time in queue before eligible for processing
+    uint256 public constant MAX_QUEUE_TIME = 7 days;        // Maximum guaranteed queue time before processing
+    uint256 public constant MAX_WITHDRAWALS_PER_BATCH = 50; // Gas limit protection
+    uint256 public constant GAS_BUFFER = 100000;            // Gas buffer for safe transaction completion
+    uint256 public constant MAX_REBASE_AGE = 7 days;        // Maximum age of rebase data before considered stale
+    
+    // State variables
     bool public litPaused;
-
-    // whether a rebase is currently in progress
     bool public rebaseInProgress;
-
-    // hash of the current token list
-    // check event logs to find the current token list
-    bytes32 public tokensHash;
-
-    // token address => threshold for rebase
+    bool public withdrawalProcessingActive;      // Processing state flag
+    
+    // Rebase tracking
+    uint256 public lastRebaseTimestamp;          // Last time a rebase was processed
+    uint256 public lastRebaseId;                 // ID of the last processed rebase
+    uint256 public accumulatedProfit;            // Accumulated profit for rebase
+    uint256 public accumulatedProtocolProfit;    // Accumulated profit from emergency withdrawals
+    
+    // Token management
+    bytes32 public tokensHash;  // Hash of the current token list
     mapping(address => uint256) public tokenThresholds;
-
-    // token address => withdrawal queue info
+    
+    // Legacy withdrawal queue (for backward compatibility)
     mapping(address => WithdrawalQueueInfo) public queueInfos;
-
-    // keccak256(token, index) => withdrawal queue entry
     mapping(bytes32 => WithdrawalQueueEntry) private withdrawalQueues;
+    
+    // Enhanced withdrawal queue with priority
+    mapping(uint256 => WithdrawalRequest) public withdrawalQueue;
+    uint256 public nextWithdrawalId;             // Next ID to assign
+    uint256 public firstPendingWithdrawal;       // First unprocessed withdrawal
+    uint256 public totalQueuedWithdrawals;       // Total tokens in withdrawal queue
 
     modifier checkTokenList(address[] memory tokenList) {
         require(
@@ -117,6 +113,15 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
         rebalanceFee = _rebalanceFee;
         protocolFee = _protocolFee;
         withdrawerFee = _withdrawerFee;
+        
+        // Initialize withdrawal queue variables
+        PROCESSOR = _owner;  // Initially set processor to owner
+        nextWithdrawalId = 1;  // Start with ID 1 for better UX
+        firstPendingWithdrawal = 1;
+        
+        // Initialize timestamps
+        lastRebaseTimestamp = block.timestamp;
+        
         address[] memory init;
         _addTokens(init, _initialTokens);
     }
@@ -125,37 +130,278 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
 
     function deposit(address _token, uint256 _amount) external {
         _deposit(_token, _amount);
+        // Update accumulated profit tracking (for yield tracking)
+        _updateProfit();
         EcoDollar(REBASE_TOKEN).mint(msg.sender, _amount);
         emit Deposited(msg.sender, _token, _amount);
     }
 
     /**
-     * @notice Withdraw `_amount` of `_preferredToken` from the pool
+     * @notice Legacy withdraw function - redirects to requestWithdrawal for backward compatibility
      * @param _preferredToken The token to withdraw
      * @param _amount The amount to withdraw
-     * @dev if the pool's balance is below the threshold, the user's funds will be taken and they will be added to the withdrawal queue
+     * @dev this will now queue withdrawals instead of processing immediately
      */
     function withdraw(address _preferredToken, uint80 _amount) external {
+        // For backward compatibility, redirect to the new request withdrawal function
+        requestWithdrawal(_preferredToken, _amount, 0);
+    }
+    
+    /**
+     * @notice Queue a standard withdrawal request - tokens locked but not burned until after rebase
+     * @param _preferredToken The token to withdraw
+     * @param _amount The amount to withdraw in tokens
+     * @param _waitingPeriod Optional min waiting period (0 for default MIN_QUEUE_TIME)
+     */
+    function requestWithdrawal(
+        address _preferredToken, 
+        uint256 _amount,
+        uint32 _waitingPeriod
+    ) public {
+        // Verify token is whitelisted
+        if (tokenThresholds[_preferredToken] == 0) {
+            revert InvalidToken();
+        }
+        
+        // Check user's balance
         uint256 tokenBalance = IERC20(REBASE_TOKEN).balanceOf(msg.sender);
-
-        require(
-            tokenBalance >= _amount,
-            InsufficientTokenBalance(
+        if (tokenBalance < _amount) {
+            revert InsufficientTokenBalance(
                 _preferredToken,
                 tokenBalance,
-                _amount - tokenBalance
-            )
-        );
-
-        IEcoDollar(REBASE_TOKEN).burn(msg.sender, _amount);
-
-        if (tokenBalance > tokenThresholds[_preferredToken]) {
-            IERC20(_preferredToken).safeTransfer(msg.sender, _amount);
-            emit Withdrawn(msg.sender, _preferredToken, _amount);
-        } else {
-            // need to rebase, add to withdrawal queue
-            _addToWithdrawalQueue(_preferredToken, msg.sender, _amount);
+                _amount
+            );
         }
+        
+        // Use default waiting period if 0 is specified
+        uint32 waitPeriod = _waitingPeriod == 0 ? uint32(MIN_QUEUE_TIME) : _waitingPeriod;
+        
+        // Cap maximum waiting period
+        if (waitPeriod > MAX_QUEUE_TIME) {
+            waitPeriod = uint32(MAX_QUEUE_TIME);
+        }
+        
+        // Calculate share amount at current multiplier
+        uint256 currentMultiplier = IEcoDollar(REBASE_TOKEN).rewardMultiplier();
+        uint256 shares = (_amount * 1e18) / currentMultiplier;
+        
+        // Transfer tokens to contract (lock them without burning)
+        IERC20(REBASE_TOKEN).transferFrom(msg.sender, address(this), _amount);
+        
+        // Add to withdrawal queue using shares
+        withdrawalQueue[nextWithdrawalId] = WithdrawalRequest({
+            user: msg.sender,
+            shareAmount: shares,
+            preferredToken: _preferredToken,
+            requestTime: block.timestamp,
+            waitingPeriod: waitPeriod,
+            processed: false
+        });
+        
+        // Update total queued withdrawals
+        totalQueuedWithdrawals += _amount;
+        
+        // Emit withdrawal queued event
+        emit WithdrawalQueued(
+            nextWithdrawalId,
+            msg.sender, 
+            _preferredToken, 
+            _amount,
+            shares
+        );
+        
+        // Increment queue counter
+        nextWithdrawalId++;
+    }
+    
+    /**
+     * @notice Process emergency withdrawal with fee - immediate processing without waiting
+     * @param _preferredToken The token to withdraw
+     * @param _amount The amount to withdraw in tokens
+     */
+    function emergencyWithdraw(address _preferredToken, uint256 _amount) external {
+        // Verify token is whitelisted
+        if (tokenThresholds[_preferredToken] == 0) {
+            revert InvalidToken();
+        }
+        
+        // Check user's balance
+        uint256 tokenBalance = IERC20(REBASE_TOKEN).balanceOf(msg.sender);
+        if (tokenBalance < _amount) {
+            revert InsufficientTokenBalance(
+                _preferredToken,
+                tokenBalance,
+                _amount
+            );
+        }
+        
+        // Check if pool has enough liquidity
+        uint256 poolTokenBalance = IERC20(_preferredToken).balanceOf(address(this));
+        if (poolTokenBalance < tokenThresholds[_preferredToken] + _amount) {
+            revert InsufficientPoolLiquidity(_preferredToken, _amount);
+        }
+        
+        // Calculate fee
+        uint256 feeAmount = (_amount * EMERGENCY_FEE_RATE) / EMERGENCY_FEE_MAX;
+        
+        // Calculate net withdrawal amount
+        uint256 netWithdrawal = _amount - feeAmount;
+        
+        // Burn tokens from user
+        IEcoDollar(REBASE_TOKEN).burn(msg.sender, _amount);
+        
+        // Transfer preferred token to user
+        IERC20(_preferredToken).safeTransfer(msg.sender, netWithdrawal);
+        
+        // Add fee to protocol profit
+        accumulatedProtocolProfit += feeAmount;
+        
+        // Emit emergency withdrawal event
+        emit EmergencyWithdrawal(
+            msg.sender,
+            _preferredToken,
+            _amount,
+            netWithdrawal,
+            feeAmount
+        );
+    }
+    
+    /**
+     * @notice Process the withdrawal queue after rebase
+     * @dev Processes withdrawals with priority based on time in queue
+     */
+    function processWithdrawalQueue() external {
+        // Only callable by authorized processors or admin
+        if (msg.sender != PROCESSOR && msg.sender != owner()) {
+            revert UnauthorizedWithdrawalProcessor(msg.sender);
+        }
+        
+        // Ensure rebase has happened recently
+        if (block.timestamp - lastRebaseTimestamp > MAX_REBASE_AGE) {
+            revert StaleRebase(lastRebaseTimestamp);
+        }
+        
+        // Set processing active
+        withdrawalProcessingActive = true;
+        
+        // Get current multiplier after rebase
+        uint256 currentMultiplier = IEcoDollar(REBASE_TOKEN).rewardMultiplier();
+        
+        // Keep track of processed count and gas usage
+        uint256 processedCount = 0;
+        uint256 initialGas = gasleft();
+        
+        // First pass: Process withdrawals that have exceeded MAX_QUEUE_TIME (priority)
+        for (uint256 i = firstPendingWithdrawal; i < nextWithdrawalId && processedCount < MAX_WITHDRAWALS_PER_BATCH; i++) {
+            // Check remaining gas
+            if (gasleft() < GAS_BUFFER) break;
+            
+            WithdrawalRequest storage request = withdrawalQueue[i];
+            
+            // Skip already processed requests
+            if (request.processed) continue;
+            
+            // Check if this is an old withdrawal (priority processing)
+            if (block.timestamp - request.requestTime > MAX_QUEUE_TIME) {
+                if (_processWithdrawal(i, request, currentMultiplier)) {
+                    processedCount++;
+                }
+            }
+        }
+        
+        // Second pass: Process withdrawals that meet minimum waiting period
+        for (uint256 i = firstPendingWithdrawal; i < nextWithdrawalId && processedCount < MAX_WITHDRAWALS_PER_BATCH; i++) {
+            // Check remaining gas
+            if (gasleft() < GAS_BUFFER) break;
+            
+            WithdrawalRequest storage request = withdrawalQueue[i];
+            
+            // Skip already processed requests
+            if (request.processed) continue;
+            
+            // Process if minimum waiting period has passed
+            if (block.timestamp - request.requestTime >= request.waitingPeriod) {
+                if (_processWithdrawal(i, request, currentMultiplier)) {
+                    processedCount++;
+                }
+            }
+        }
+        
+        // Update first pending withdrawal
+        _updateFirstPendingWithdrawal();
+        
+        // Reset processing state
+        withdrawalProcessingActive = false;
+        
+        // Emit batch processing event
+        emit WithdrawalQueueProcessed(
+            processedCount,
+            initialGas - gasleft(),
+            totalQueuedWithdrawals
+        );
+    }
+    
+    /**
+     * @notice Cancels a pending withdrawal request
+     * @param _withdrawalId The ID of the withdrawal to cancel
+     */
+    function cancelWithdrawal(uint256 _withdrawalId) external {
+        // Get the withdrawal request
+        WithdrawalRequest storage request = withdrawalQueue[_withdrawalId];
+        
+        // Verify request exists and belongs to caller
+        if (request.user != msg.sender) {
+            revert UnauthorizedCancellation(_withdrawalId, msg.sender);
+        }
+        
+        // Verify request hasn't been processed
+        if (request.processed) {
+            revert WithdrawalAlreadyProcessed(_withdrawalId);
+        }
+        
+        // Verify withdrawal processing isn't active
+        if (withdrawalProcessingActive) {
+            revert WithdrawalProcessingActive();
+        }
+        
+        // Calculate token amount at current multiplier
+        uint256 currentMultiplier = IEcoDollar(REBASE_TOKEN).rewardMultiplier();
+        uint256 tokenAmount = (request.shareAmount * currentMultiplier) / 1e18;
+        
+        // Return tokens to user
+        IERC20(REBASE_TOKEN).transfer(msg.sender, tokenAmount);
+        
+        // Mark as processed
+        request.processed = true;
+        
+        // Update total queued withdrawals
+        if (tokenAmount <= totalQueuedWithdrawals) {
+            totalQueuedWithdrawals -= tokenAmount;
+        } else {
+            totalQueuedWithdrawals = 0;
+        }
+        
+        // Emit cancellation event
+        emit WithdrawalCancelled(_withdrawalId, msg.sender, tokenAmount);
+    }
+    
+    /**
+     * @notice Get estimated wait time for a new withdrawal
+     * @return waitTime Estimated wait time in seconds
+     */
+    function getEstimatedWaitTime() external view returns (uint256) {
+        // If no rebase for a long time, estimate based on MAX_QUEUE_TIME
+        if (block.timestamp - lastRebaseTimestamp > 2 days) {
+            return MAX_QUEUE_TIME;
+        }
+        
+        // Base estimate on time since last rebase and number of queued withdrawals
+        uint256 avgRebaseInterval = 1 days; // Can be made dynamic based on history
+        uint256 queueFactor = totalQueuedWithdrawals > 0 ? 
+            (totalQueuedWithdrawals / 10000) + 1 : 1;
+        
+        uint256 estimatedTime = avgRebaseInterval * queueFactor;
+        return estimatedTime > MAX_QUEUE_TIME ? MAX_QUEUE_TIME : estimatedTime;
     }
 
     /**
@@ -274,62 +520,148 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
         require(!rebaseInProgress, "Rebase already in progress");
         rebaseInProgress = true;
 
-        uint256 length = _tokens.length;
-        uint256 localTokens = 0;
-        for (uint256 i = 0; i < length; ++i) {
-            localTokens += IERC20(_tokens[i]).balanceOf(address(this));
-        }
-
-        uint256 localShares = EcoDollar(REBASE_TOKEN).totalShares();
-
+        // Calculate local profit
+        uint256 localProfit = accumulatedProfit;
+        
+        // Reset accumulated profit
+        accumulatedProfit = 0;
+        
+        // Add protocol profit from emergency withdrawals
+        localProfit += accumulatedProtocolProfit;
+        accumulatedProtocolProfit = 0;
+        
+        // Get total shares from EcoDollar contract
+        uint256 localShares = IEcoDollar(REBASE_TOKEN).getTotalShares();
+        
+        // Create LocalMetrics structure
+        LocalMetrics memory metrics = LocalMetrics({
+            profit: localProfit,
+            totalShares: localShares,
+            timestamp: uint64(block.timestamp)
+        });
+        
+        // Encode using consistent format for future service integration
+        bytes memory message = abi.encode(metrics);
+        
+        // Send to Rebaser on home chain
         uint256 fee = IMailbox(MAILBOX).quoteDispatch(
             HOME_CHAIN,
             REBASER,
-            abi.encodePacked(localTokens, localShares),
-            "", // metadata for relayer
+            message,
+            "", // Empty metadata for relayer
             IPostDispatchHook(RELAYER)
         );
+        
         IMailbox(MAILBOX).dispatch{value: fee}(
             HOME_CHAIN,
             REBASER,
-            abi.encodePacked(localTokens, localShares),
-            "", // metadata for relayer
+            message,
+            "", // Empty metadata for relayer
             IPostDispatchHook(RELAYER)
         );
+        
+        // Emit rebase initiated event
+        emit RebaseInitiated(localProfit, localShares);
     }
 
     /**
-     * @notice finishes the rebase flow
-     * @param _origin The origin chain of the message
-     * @param _sender The address of the sender on the origin chain
-     * @param _message The message body
+     * @notice Handles incoming messages from Rebaser
+     * @param _origin The origin chain ID
+     * @param _sender The sender address in 32-byte form
+     * @param _message The message payload
      */
     function handle(
         uint32 _origin,
         bytes32 _sender,
         bytes calldata _message
     ) external payable override {
-        // Ensure only the local mailbox can call this
-        require(msg.sender == MAILBOX, "Caller is not the local mailbox");
-
-        require(_sender == REBASER, "sender is not the rebaser contract");
-
-        // Check that the origin chain is valid (non-zero mailbox address)
-        require(_origin == HOME_CHAIN, "Invalid origin chain");
-
-        (uint256 rewardMultiplier, uint256 protocolMintRate) = abi.decode(
-            _message,
-            (uint256, uint256)
-        );
-        IEcoDollar(REBASE_TOKEN).rebase(rewardMultiplier);
-
-        IEcoDollar(REBASE_TOKEN).mint(
-            address(this),
-            ((protocolMintRate * IEcoDollar(REBASE_TOKEN).getTotalShares()) /
-                1E18)
-        );
-
+        // Security validations
+        if (msg.sender != MAILBOX) {
+            revert UnauthorizedMailbox(msg.sender, MAILBOX);
+        }
+        
+        if (_sender != REBASER) {
+            revert UnauthorizedSender(_sender, REBASER);
+        }
+        
+        if (_origin != HOME_CHAIN) {
+            revert InvalidOriginChain(_origin, HOME_CHAIN);
+        }
+        
+        // Decode the rebase result
+        RebaseResult memory result = abi.decode(_message, (RebaseResult));
+        
+        // Store the last rebase timestamp and ID
+        lastRebaseTimestamp = result.timestamp;
+        lastRebaseId = result.rebaseId;
+        
+        // Get current multiplier for event emission
+        uint256 oldMultiplier = IEcoDollar(REBASE_TOKEN).rewardMultiplier();
+        
+        // Update EcoDollar's reward multiplier
+        IEcoDollar(REBASE_TOKEN).updateRewardMultiplier(result.multiplier);
+        
+        // Emit the multiplier update event
+        emit RewardMultiplierUpdated(oldMultiplier, result.multiplier, result.rebaseId);
+        
+        // Reset rebase in progress flag
         rebaseInProgress = false;
+        
+        // Process withdrawal queues if indicated
+        if (result.processQueues) {
+            // Auto-process the withdrawal queue after rebase
+            _processWithdrawalQueue();
+            
+            // Emit queue processing event
+            emit WithdrawalQueueProcessingTriggered(result.rebaseId);
+        }
+    }
+    
+    /**
+     * @notice Internal function to process the withdrawal queue
+     * @dev Processes a batch of withdrawal requests with the updated multiplier
+     */
+    function _processWithdrawalQueue() private {
+        // Set processing state
+        withdrawalProcessingActive = true;
+        
+        // Get current multiplier after rebase
+        uint256 currentMultiplier = IEcoDollar(REBASE_TOKEN).rewardMultiplier();
+        
+        // Track processed count for event emission
+        uint256 processedCount = 0;
+        uint256 initialGas = gasleft();
+        
+        // Process queue up to gas limit or count limit
+        for (uint256 i = firstPendingWithdrawal; i < nextWithdrawalId && processedCount < MAX_WITHDRAWALS_PER_BATCH; i++) {
+            // Break if we're running low on gas
+            if (gasleft() < GAS_BUFFER) break;
+            
+            WithdrawalRequest storage request = withdrawalQueue[i];
+            
+            // Skip already processed requests
+            if (request.processed) {
+                continue;
+            }
+            
+            // Try to process this withdrawal
+            if (_processWithdrawal(i, request, currentMultiplier)) {
+                processedCount++;
+            }
+        }
+        
+        // Update first pending withdrawal pointer
+        _updateFirstPendingWithdrawal();
+        
+        // Reset processing state
+        withdrawalProcessingActive = false;
+        
+        // Emit batch processing event
+        emit WithdrawalQueueProcessed(
+            processedCount,
+            initialGas - gasleft(),
+            totalQueuedWithdrawals
+        );
     }
 
     //////////////////////////////// OWNER FUNCTIONS ////////////////////////////////
@@ -465,6 +797,14 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
         withdrawerFee = _fee;
         emit WithdrawerFeeChanged(_fee);
     }
+    
+    /**
+     * @notice Set the authorized processor address for withdrawal queue processing
+     * @param _processor The address of the authorized processor
+     */
+    function setProcessor(address _processor) external onlyOwner {
+        PROCESSOR = _processor;
+    }
 
     //////////////////////////////// INTERNAL FUNCTIONS ////////////////////////////////
 
@@ -502,6 +842,9 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
         IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
     }
 
+    /**
+     * @dev Legacy version of adding to withdrawal queue for backward compatibility
+     */
     function _addToWithdrawalQueue(
         address _token,
         address _withdrawer,
@@ -530,5 +873,79 @@ contract StablePool is IStablePool, Ownable, IMessageRecipient {
         queueInfos[_token] = queueInfo;
 
         emit AddedToWithdrawalQueue(_token, entry);
+    }
+    
+    /**
+     * @notice Internal helper to process a single withdrawal
+     * @param _id The withdrawal request ID
+     * @param _request The withdrawal request
+     * @param _currentMultiplier Current EcoDollar multiplier
+     * @return success Whether the withdrawal was successfully processed
+     */
+    function _processWithdrawal(
+        uint256 _id,
+        WithdrawalRequest storage _request,
+        uint256 _currentMultiplier
+    ) private returns (bool) {
+        // Convert shares to tokens at current post-rebase multiplier
+        uint256 tokenAmount = (_request.shareAmount * _currentMultiplier) / 1e18;
+        
+        // Check if we have sufficient liquidity
+        address token = _request.preferredToken;
+        if (IERC20(token).balanceOf(address(this)) < tokenThresholds[token] + tokenAmount) {
+            // Skip this request if insufficient liquidity
+            return false;
+        }
+        
+        // Burn the tokens that were transferred to the contract during queue
+        IEcoDollar(REBASE_TOKEN).burn(address(this), tokenAmount);
+        
+        // Transfer preferred token to user
+        IERC20(token).safeTransfer(_request.user, tokenAmount);
+        
+        // Mark as processed
+        _request.processed = true;
+        
+        // Update total queued withdrawals
+        if (tokenAmount <= totalQueuedWithdrawals) {
+            totalQueuedWithdrawals -= tokenAmount;
+        } else {
+            totalQueuedWithdrawals = 0;
+        }
+        
+        // Emit withdrawal processed event
+        emit WithdrawalProcessed(
+            _id,
+            _request.user,
+            token,
+            tokenAmount,
+            block.timestamp - _request.requestTime
+        );
+        
+        return true;
+    }
+    
+    /**
+     * @notice Updates the firstPendingWithdrawal pointer
+     */
+    function _updateFirstPendingWithdrawal() private {
+        for (uint256 i = firstPendingWithdrawal; i < nextWithdrawalId; i++) {
+            if (!withdrawalQueue[i].processed) {
+                firstPendingWithdrawal = i;
+                return;
+            }
+        }
+        
+        // If all are processed, set to next ID
+        firstPendingWithdrawal = nextWithdrawalId;
+    }
+    
+    /**
+     * @notice Track accumulated profit for rebase calculations
+     */
+    function _updateProfit() internal {
+        // Here we would add logic to calculate and track the profit
+        // This is a placeholder that would be filled with actual profit tracking code
+        // For now, it's just a stub to show where profit would be tracked
     }
 }

@@ -78,7 +78,15 @@ contract EcoDollar is IEcoDollar, Ownable {
 
     function rebase(uint256 _newMultiplier) external onlyOwner {
         //already guaranteed that newMultiplier is greater than current multiplier
+        uint256 oldMultiplier = rewardMultiplier;
         rewardMultiplier = _newMultiplier;
+        emit Rebased(totalSupply(), _newMultiplier);
+    }
+    
+    function updateRewardMultiplier(uint256 _newMultiplier) external onlyOwner {
+        uint256 oldMultiplier = rewardMultiplier;
+        rewardMultiplier = _newMultiplier;
+        emit RewardMultiplierUpdated(oldMultiplier, _newMultiplier);
     }
 
     function mint(address _account, uint256 _tokens) public {
