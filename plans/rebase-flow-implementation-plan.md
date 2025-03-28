@@ -137,7 +137,7 @@ The rebase flow follows this exact process as shown in the swimlane diagram:
 ### Visual Implementation Flow
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#6C78AF', 'primaryTextColor': '#fff', 'primaryBorderColor': '#5D69A0', 'lineColor': '#5D69A0', 'secondaryColor': '#D3D8F9', 'tertiaryColor': '#E7E9FC' }}}%%
+%%{init: {'theme': 'dark', 'themeVariables': { 'primaryColor': '#2D74BA', 'primaryTextColor': '#FFFFFF', 'primaryBorderColor': '#1D4E89', 'lineColor': '#5D9CEC', 'secondaryColor': '#1D2B3A', 'tertiaryColor': '#132030', 'textColor': '#FFFFFF', 'fontSize': '14px', 'fontFamily': 'Arial', 'edgeLabelBackground': '#132030', 'mainBkg': '#132030', 'clusterBkg': '#1D2B3A', 'nodeTextColor': '#FFFFFF', 'nodeBorder': '#2D74BA', 'labelTextColor': '#FFFFFF', 'clusterBorder': '#1D4E89' }}}%%
 
 flowchart TB
     subgraph "Spoke Chain"
@@ -169,8 +169,8 @@ flowchart TB
     calculateMultiplier --> sendMsgToSpokes
     sendMsgToSpokes --> receiveMultiplier
 
-    classDef started fill:#98FB98,stroke:#006400,stroke-width:2px
-    classDef critical fill:#FFD700,stroke:#B8860B,stroke-width:2px
+    classDef started fill:#37996E,stroke:#1E5941,stroke-width:2px,color:#FFFFFF
+    classDef critical fill:#B85D2D,stroke:#89351D,stroke-width:2px,color:#FFFFFF
     class start,calculateRatio started
     class resetProfit,determineProtocolShare critical
 ```
@@ -228,7 +228,7 @@ After analyzing the challenges with per-transaction delta updates, we've identif
 ##### Approach A: Periodic Batch Updates with Pre-Rebase Sync (Recommended)
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#6C78AF', 'primaryTextColor': '#fff', 'primaryBorderColor': '#5D69A0', 'lineColor': '#5D69A0', 'secondaryColor': '#D3D8F9', 'tertiaryColor': '#E7E9FC' }}}%%
+%%{init: {'theme': 'dark', 'themeVariables': { 'primaryColor': '#2D74BA', 'primaryTextColor': '#FFFFFF', 'primaryBorderColor': '#1D4E89', 'lineColor': '#5D9CEC', 'secondaryColor': '#1D2B3A', 'tertiaryColor': '#132030', 'textColor': '#FFFFFF', 'fontSize': '14px', 'fontFamily': 'Arial', 'edgeLabelBackground': '#132030', 'mainBkg': '#132030', 'clusterBkg': '#1D2B3A', 'altBackground': '#132030', 'actorBkg': '#2D74BA', 'actorBorder': '#1D4E89', 'actorTextColor': '#FFFFFF', 'noteBkgColor': '#284665', 'noteBorderColor': '#2D74BA', 'noteTextColor': '#FFFFFF' }}}%%
 
 sequenceDiagram
     participant Users
@@ -237,14 +237,14 @@ sequenceDiagram
     participant Mailbox
     participant Rebaser
     
-    rect rgb(240, 248, 255)
+    rect rgb(24, 44, 67)
     Note over Users,StablePool: Normal Operation Period
     Users->>StablePool: Multiple deposits/withdrawals
     StablePool->>EcoDollar: mint/burn operations
     EcoDollar-->>EcoDollar: Update shares internally
     end
     
-    rect rgb(255, 248, 220)
+    rect rgb(32, 59, 89)
     Note over StablePool,Rebaser: Scheduled Batch Update (e.g., hourly)
     StablePool->>EcoDollar: getTotalShares()
     EcoDollar-->>StablePool: Current total shares
@@ -256,7 +256,7 @@ sequenceDiagram
     Rebaser->>Rebaser: Update totalShares across chains
     end
     
-    rect rgb(245, 245, 220)
+    rect rgb(49, 78, 112)
     Note over StablePool,Rebaser: Mandatory Pre-Rebase Sync
     Note right of Rebaser: Rebase Initiated
     Rebaser->>Rebaser: Request current shares from all pools
@@ -274,7 +274,7 @@ sequenceDiagram
 ##### Approach B: Threshold-Based Delta Updates with Reconciliation
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#6C78AF', 'primaryTextColor': '#fff', 'primaryBorderColor': '#5D69A0', 'lineColor': '#5D69A0', 'secondaryColor': '#D3D8F9', 'tertiaryColor': '#E7E9FC' }}}%%
+%%{init: {'theme': 'dark', 'themeVariables': { 'primaryColor': '#2D74BA', 'primaryTextColor': '#FFFFFF', 'primaryBorderColor': '#1D4E89', 'lineColor': '#5D9CEC', 'secondaryColor': '#1D2B3A', 'tertiaryColor': '#132030', 'textColor': '#FFFFFF', 'fontSize': '14px', 'fontFamily': 'Arial', 'edgeLabelBackground': '#132030', 'mainBkg': '#132030', 'clusterBkg': '#1D2B3A', 'nodeTextColor': '#FFFFFF', 'nodeBorder': '#2D74BA', 'labelTextColor': '#FFFFFF', 'clusterBorder': '#1D4E89' }}}%%
 
 flowchart TD
     subgraph "StablePool Operations"
@@ -313,9 +313,9 @@ flowchart TD
     sendExact --> receiveExact
     requestCounts --> rebaseReq
     
-    classDef normal fill:#E7E9FC,stroke:#6C78AF
-    classDef important fill:#FFD700,stroke:#B8860B,stroke-width:2px
-    classDef process fill:#D3D8F9,stroke:#5D69A0
+    classDef normal fill:#1D2B3A,stroke:#2D74BA,color:#FFFFFF
+    classDef important fill:#B85D2D,stroke:#89351D,color:#FFFFFF,stroke-width:2px
+    classDef process fill:#284665,stroke:#2D74BA,color:#FFFFFF
     
     class deposit,updateLocal,continue,timer normal
     class sendUpdate,sendBatch,sendExact,receiveExact,reconcile,requestCounts process
