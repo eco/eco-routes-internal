@@ -1527,79 +1527,77 @@ slither contracts/EcoDollar.sol --detect unchecked-lowlevel
 
 ## Implementation Steps
 
-- [ ] Step 1: Set up advanced testing infrastructure [Priority: High] [Est: 1.5h]
-  - [ ] Sub-task 1.1: Create mock contracts with comprehensive functionality (mock Hyperlane mailbox, mock ERC20s)
-  - [ ] Sub-task 1.2: Set up multi-chain testing framework using parallel anvil instances
-  - [ ] Sub-task 1.3: Create helper functions for cross-chain test scenarios
+# Optimized Implementation Strategy
 
-- [ ] Step 2: Fix critical issues and prepare for withdrawal queue [Priority: Critical] [Est: 0.5h]
-  - [x] Sub-task 2.1: Verify EcoDollar has updateRewardMultiplier method (found at line 79 in EcoDollar.sol)
-  - [x] Sub-task 2.2: Verify we need to fix double burn in withdraw (found at lines 138-152 in StablePool.sol)
-  - [x] Sub-task 2.3: Verify rebaseInProgress flag has been removed (confirmed in comments at line 66 in StablePool.sol)
-  - [ ] Sub-task 2.4: Write tests verifying fixes
-  - [ ] Sub-task 2.5: Run security analysis on contracts
+## Phase 1: Critical Core Functionality [Priority: Critical] [Est: 5h]
 
-- [ ] Step 3: Implement withdrawal queue system in StablePool [Priority: High] [Est: 3h]
-  - [ ] Sub-task 3.1: Add WithdrawalRequest struct definition
-  - [ ] Sub-task 3.2: Add withdrawal queue state variables (mapping, counters, flags)
-  - [ ] Sub-task 3.3: Add lastRebaseTimestamp and lastRebaseId variables
-  - [ ] Sub-task 3.4: Add accumulatedProfit variable for profit tracking
-  - [ ] Sub-task 3.5: Add withdrawal queue-related events
-  - [ ] Sub-task 3.6: Implement requestWithdrawal function (replacing withdraw)
-  - [ ] Sub-task 3.7: Implement cancelWithdrawal function for user convenience
-  - [ ] Sub-task 3.8: Implement processWithdrawalQueue functions (public and internal)
-  - [ ] Sub-task 3.9: Update initiateRebase to use LocalMetrics structure
-  - [ ] Sub-task 3.10: Standardize message encoding format (using abi.encode consistently)
-  - [ ] Sub-task 3.11: Ensure proper profit reset in storage (accumulatedProfit = 0)
-  - [ ] Sub-task 3.12: Write comprehensive tests for withdrawal queue system
+- [ ] Task 1: Core StablePool Withdrawal Queue System
+  - [ ] 1.1: Design `WithdrawalRequest` struct and create withdrawal queue state variables
+  - [ ] 1.2: Implement standard and emergency withdrawal functions
+  - [ ] 1.3: Implement withdrawal cancellation functionality
+  - [ ] 1.4: Add core event definitions and custom errors
+  - [ ] 1.5: Fix double burn issue in withdraw function
+  - [ ] 1.6: Implement base queue processing logic
 
-- [ ] Step 4: Implement Rebaser central coordination [Priority: High] [Est: 2.5h]
-  - [ ] Sub-task 4.1: Add LocalMetrics struct definition 
-  - [ ] Sub-task 4.2: Add ChainInfo struct and tracking mappings
-  - [x] Sub-task 4.3: Validate that chains and validChainIDs are already defined (confirmed at lines 33-40 in Rebaser.sol)
-  - [ ] Sub-task 4.4: Add rebase state variables (totalShares, totalProfit, rebaseInProgress, etc)
-  - [ ] Sub-task 4.5: Add RebaseResult struct for cross-chain communication
-  - [ ] Sub-task 4.6: Update handle function to process LocalMetrics from StablePools
-  - [ ] Sub-task 4.7: Implement _performRebase function for centralized calculation
-  - [ ] Sub-task 4.8: Implement _distributeMultiplier to send results to all chains
-  - [ ] Sub-task 4.9: Add proper event emissions for rebase steps
-  - [x] Sub-task 4.10: Verify constructor already accepts protocolRate parameter (confirmed at line 72 in Rebaser.sol)
-  - [x] Sub-task 4.11: Update setProtocolShareRate function (similar to existing changeprotocolRate)
-  - [ ] Sub-task 4.12: Implement protocol share allocation and minting to treasury
-  - [ ] Sub-task 4.13: Standardize message encoding using abi.encode consistently
+- [ ] Task 2: Core Rebaser Contract Enhancements
+  - [ ] 2.1: Design `LocalMetrics` and `RebaseResult` structures
+  - [ ] 2.2: Implement `ChainInfo` struct to replace separate tracking
+  - [ ] 2.3: Create protocol share calculation logic
+  - [ ] 2.4: Update handle function to process metrics uniformly
 
-- [ ] Step 5: Refine EcoDollar's multiplier update mechanism [Priority: Medium] [Est: 0.5h]
-  - [x] Sub-task 5.1: Verify updateRewardMultiplier method security (confirmed with onlyOwner at line 79 in EcoDollar.sol)
-  - [x] Sub-task 5.2: Verify event emissions for multiplier changes (found at line 82 in EcoDollar.sol)
-  - [x] Sub-task 5.3: Verify share-to-token conversion accuracy (confirmed at lines 60-71 in EcoDollar.sol)
-  - [ ] Sub-task 5.4: Review minimum multiplier validation (optional, may not be needed for rebases)
+- [ ] Task 3: Standardize Cross-Chain Communication
+  - [ ] 3.1: Implement consistent message encoding with `abi.encode`
+  - [ ] 3.2: Add sequence numbering and timestamps to all messages
+  - [ ] 3.3: Standardize structs for message payloads
+  - [ ] 3.4: Ensure proper error handling for message processing
 
-- [ ] Step 6: Complete StablePool rebase finalization [Priority: High] [Est: 1.5h]
-  - [ ] Sub-task 6.1: Add RebaseResult struct for receiving updates
-  - [x] Sub-task 6.2: Verify access control in handle function (confirmed at lines 311-317 in StablePool.sol)  
-  - [ ] Sub-task 6.3: Update handle function to decode RebaseResult
-  - [ ] Sub-task 6.4: Remove protocol token minting from handle function (lines 325-328 in StablePool.sol)
-  - [ ] Sub-task 6.5: Add queue processing trigger to handle function
-  - [ ] Sub-task 6.6: Add proper event emissions for multiplier updates and queue processing
-  - [ ] Sub-task 6.7: Write tests for handle function with various scenarios
+## Phase 2: Integration & Coordination [Priority: High] [Est: 3h]
 
-- [ ] Step 7: Build integration test suite [Priority: Critical] [Est: 1.5h]
-  - [ ] Sub-task 7.1: Create unit tests for StablePool withdrawal queue system
-  - [ ] Sub-task 7.2: Create unit tests for Rebaser coordination capabilities
-  - [ ] Sub-task 7.3: Test message format consistency across components
-  - [ ] Sub-task 7.4: Verify correct profit tracking and reset
-  - [ ] Sub-task 7.5: Verify protocol share minting on home chain only
-  - [ ] Sub-task 7.6: Test the complete rebase cycle across multiple chains
-  - [ ] Sub-task 7.7: Test withdrawal queue processing after rebase
-  - [ ] Sub-task 7.8: Test share calculations during rebases
+- [ ] Task 4: Implement Rebase Flow Coordination
+  - [ ] 4.1: Add rebase initiation in StablePool with metrics collection
+  - [ ] 4.2: Implement central calculation in Rebaser
+  - [ ] 4.3: Implement multiplier distribution to all chains
+  - [ ] 4.4: Add protocol share minting on home chain
+  - [ ] 4.5: Connect withdrawal queue processing to rebase cycle
 
-- [ ] Step 8: Security and optimization [Priority: Critical] [Est: 1.5h]
-  - [ ] Sub-task 8.1: Run comprehensive security analysis with Slither
-  - [ ] Sub-task 8.2: Measure and optimize gas usage for withdrawal queue processing
-  - [ ] Sub-task 8.3: Verify access control for all new functions
-  - [ ] Sub-task 8.4: Verify message encoding security
-  - [ ] Sub-task 8.5: Complete NatSpec documentation for all new functions
-  - [ ] Sub-task 8.6: Generate gas report and security analysis documentation
+- [ ] Task 5: Enhanced Recovery & Security Features
+  - [ ] 5.1: Add circuit breaker for emergency halting
+  - [ ] 5.2: Implement admin recovery functions for stuck state
+  - [ ] 5.3: Add diagnostic functions for cross-chain verification
+  - [ ] 5.4: Implement chain timeout handling
+
+## Phase 3: Testing & Optimization [Priority: High] [Est: 2h]
+
+- [ ] Task 6: Core Testing Infrastructure
+  - [ ] 6.1: Create MockMailbox and test helpers
+  - [ ] 6.2: Set up simulation environment for cross-chain testing
+  - [ ] 6.3: Build common test fixtures and utilities
+
+- [ ] Task 7: Component-Level Testing
+  - [ ] 7.1: Test StablePool withdrawal queue (standard, emergency, cancel)
+  - [ ] 7.2: Test Rebaser calculation logic with various inputs
+  - [ ] 7.3: Test EcoDollar multiplier updates and share accounting
+  - [ ] 7.4: Test cross-chain message formats and processing
+
+- [ ] Task 8: Integration Testing
+  - [ ] 8.1: Test full rebase cycle across multiple chains
+  - [ ] 8.2: Test queue processing after rebases
+  - [ ] 8.3: Test error cases and recovery mechanisms
+  - [ ] 8.4: Test edge cases (zero profit, zero shares, etc.)
+
+## Phase 4: Quality Assurance & Deployment [Priority: Critical] [Est: 2h]
+
+- [ ] Task 9: Security Analysis
+  - [ ] 9.1: Run Slither for all contracts
+  - [ ] 9.2: Manually review critical paths (esp. asset transfers)
+  - [ ] 9.3: Verify access controls on all functions
+  - [ ] 9.4: Check reentrancy protection for token operations
+
+- [ ] Task 10: Documentation & Optimization
+  - [ ] 10.1: Complete NatSpec documentation for all functions
+  - [ ] 10.2: Measure and optimize gas usage for queue processing
+  - [ ] 10.3: Create gas usage report for key operations
+  - [ ] 10.4: Generate comprehensive API documentation
 
 ## Validation Checkpoints
 
