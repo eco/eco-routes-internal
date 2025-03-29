@@ -6,6 +6,7 @@ import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.so
 
 interface IEcoDollar is IERC20, IERC20Errors {
     event Rebased(uint256 _rewardMultiplier);
+    event RewardMultiplierUpdated(uint256 _oldMultiplier, uint256 _newMultiplier);
 
     error RewardMultiplierTooLow(
         uint256 _rewardMultiplier,
@@ -13,8 +14,10 @@ interface IEcoDollar is IERC20, IERC20Errors {
     );
 
     error InvalidRebase();
+    error UnauthorizedMultiplierUpdate(address caller);
 
     function getTotalShares() external view returns (uint256);
+    function rewardMultiplier() external view returns (uint256);
 
     function totalSupply() external view returns (uint256);
     function balanceOf(address account) external view returns (uint256);
@@ -23,6 +26,7 @@ interface IEcoDollar is IERC20, IERC20Errors {
         uint256 amount
     ) external returns (bool);
     function rebase(uint256 _newMultiplier) external;
+    function updateRewardMultiplier(uint256 _newMultiplier) external;
     function mint(address account, uint256 amount) external;
     function burn(address account, uint256 amount) external;
     function approve(address spender, uint256 amount) external returns (bool);
